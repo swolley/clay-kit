@@ -90,24 +90,25 @@ Rules:
 - Defaults when a field is missing, which is how an older superpowers plan runs: `Tier` medium, `Repo` the repo holding the plan, `Depends` none, `Accept` derived from the task's steps, `Verify` taken from the repo's own instructions. The orchestrator tells the user which defaults it applied.
 - Each task is a self-sufficient brief, because workers do not see the conversation. `Repo` is required in multi-repo workspaces. `Files` is a hint, not a contract: reviewer routing uses the real diff.
 - A task is done when all its non-cancelled steps are checked. The factory ticks the steps it completed and never edits cancelled ones.
-- The superpowers header line pointing to `subagent-driven-development` or `executing-plans` is not written: execution is `/factory plan`.
+- The superpowers header line pointing to `subagent-driven-development` or `executing-plans` is not written: execution is `/factory run`.
 
 ### 3.3 Gates
 
-Two human gates only: design (spec or short chat design) and plan. After the plan is approved, `/factory plan` runs without further prompts.
+Two human gates only: design (spec or short chat design) and plan. After the plan is approved, `/factory run` runs without further prompts.
 
 ## 4. Execution phase
 
 ### 4.1 Commands
 
 ```
-/factory plan <plan-file>        run the plan's open tasks
+/factory run <plan-file>         run the plan's open tasks
+/factory task "<text>"           run one ad hoc task without a plan
 /factory status                  list jobs and their stage
 /factory approve <job-id>        merge a needs-human job into the integration branch
 /factory rework <job-id> <note>  send a needs-human job back to its builder
 ```
 
-`/factory <free text>` runs a single ad hoc task without a plan, for small work.
+`/factory task` is for small work that does not need a plan. Subcommands are fixed words (`run`, `task`, `status`, `approve`, `rework`), so free text never collides with them.
 
 ### 4.2 Preconditions
 
@@ -115,7 +116,7 @@ At start the orchestrator checks that the plan exists and has checkbox tasks wit
 
 ### 4.3 Isolation mode: branches and worktrees
 
-At the start of `/factory plan` the orchestrator proposes a mode through the native question tool, with isolation as the recommended option, and records the choice in the plan's run state.
+At the start of `/factory run` the orchestrator proposes a mode through the native question tool, with isolation as the recommended option, and records the choice in the plan's run state.
 
 **Isolated (recommended, default).**
 - One integration branch per plan and repo: `factory/<plan-slug>`, created from the repo's main branch.
@@ -171,7 +172,7 @@ Runtime state in `factory/jobs/<job-id>/` of the main checkout, gitignored: `job
 
 ### 4.8 Resuming an interrupted run
 
-There is no separate resume command: `/factory plan <plan>` is idempotent and resumes by itself.
+There is no separate resume command: `/factory run <plan>` is idempotent and resumes by itself.
 
 At start the orchestrator reads the plan and `factory/jobs/` and classifies each task:
 
@@ -239,7 +240,7 @@ No session-start hook in the factory. Skills trigger by `description`. If a hook
 - **Skills:** run each skill against a throwaway repo with scripted prompts; check the gate holds, questions use the native tool, and output length stays within the style contract.
 - **Factory:** a fixture repo with a three-task plan covering a backend-only task, a UI task and a task that must escalate. Expected: backend task runs no ui/ux reviewer; UI task runs them; escalation lands in `needs-human`.
 - **Routing:** unit-level check that `routing.md` patterns select the expected reviewers for sample diffs.
-- **Resume:** kill a run at each stage (`spec`, `build`, `review` with one reviewer done, `approve`) and in current-branch mode with uncommitted changes; rerun `/factory plan` and check that merged tasks are skipped, the interrupted job is resumed without a duplicate branch, and `needs-human` jobs are left alone.
+- **Resume:** kill a run at each stage (`spec`, `build`, `review` with one reviewer done, `approve`) and in current-branch mode with uncommitted changes; rerun `/factory run` and check that merged tasks are skipped, the interrupted job is resumed without a duplicate branch, and `needs-human` jobs are left alone.
 
 ## 9. Open items
 
