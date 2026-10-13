@@ -12,7 +12,10 @@ One plugin that covers the whole path from an idea to merged code, for Claude Co
 It replaces the use of the `superpowers` plugin alongside a factory. It is a derivative of
 [obra/superpowers](https://github.com/obra/superpowers) (MIT) and of the structure of
 [zazencodes software-factory-claude-code](https://github.com/zazencodes/zazencodes-season-3/tree/main/src/software-factory-claude-code).
-Tiering ideas come from `savvy-flow`. Attribution and the MIT notice are kept in `LICENSE` and `NOTICE.md`.
+Tiering, self-contained briefs and `filemap.md` come from
+[savvy-flow](https://github.com/JohnnyVizz/claude-kit/tree/main/plugins/savvy-flow); the optional progress
+reporting targets [savvy-progress](https://github.com/JohnnyVizz/claude-kit/tree/main/plugins/savvy-progress)
+(both MIT, claude-kit, checked at commit `272a877`). Attribution and the MIT notices are kept in `LICENSE` and `NOTICE.md`.
 
 ### Success criteria
 
