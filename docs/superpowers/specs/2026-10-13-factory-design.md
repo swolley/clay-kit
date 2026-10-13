@@ -248,12 +248,20 @@ in the working folder and one level below it (a workspace root with several repo
   hide it. Elapsed time is not shown here, only in the pane.
 - **Toast** when a job starts waiting for the user (`needs-human` or `waiting-input`), and once at start-up if
   some already are.
-- **Pane** (`factory-agents`) with, per plan, the same bar with the elapsed time and these sections: Waiting for
-  you, Running, Finished (collapsible) and Planned (task title, tier, `after` dependencies). Each job is a two-line card: a status dot
-  (state only: yellow waiting, light running, green landed), id, tier in its own color, the phase and elapsed time, then a
-  thin bar on a five-step track (spec, build, review, approve, landed) whose color is the tier and nothing else, and the reviewers as LEDs: a colored dot (green `PASS`, red `CHANGES`, gray pending) with the name beside it
-  (`security` shortened to `sec`; a `!` or `…` after the name is a cue besides color), with a legend under the tiles. The top of the pane has summary tiles (running, waiting, landed,
-  elapsed).
+- **Pane** (`factory-agents`), written for someone who follows the work or decides what to run. At the top one sentence of
+  the situation, what needs the user first (`2 waiting for you · 2 running · 1 planned · 1 landed`), a toggle `only what needs
+  me`, and the reviewer legend. Then, per plan, its thin bar with `done/total` and elapsed time, and a **table with one row per
+  task in plan order**: status dot and task title, a thin bar on a five-step track (spec, build, review, approve, landed) colored
+  by tier, the status (`review r1 1/3`, `waiting for you`, `planned · after 1, 2`, `landed`), who is in charge (the tier, and the
+  roles that have the task now with their model and effort), elapsed time, and the reviewers as LEDs (a colored dot, green
+  `PASS`, red `CHANGES`, gray pending, with the name beside it; `security` shortened to `sec`, a `!` or `…` as a cue besides color).
+  Planned tasks appear as rows too, so the order of the plan can be read in one place. A dot says the state only (yellow waiting,
+  light running, green landed); a bar color says the tier only.
+- **Who is working, and on which model.** The "in charge" column writes the roles that have the task now (the builder; the
+  reviewers whose verdict is still pending; the approver). The data comes from two places: `job.json` `agents`, the model and
+  effort the orchestrator passed at spawn, and the mod's own observation of `agent.spawn` events, which carry the model the
+  engine resolved (not the effort). When the observed model differs from the one asked for, the pane shows the observed one
+  with `(asked X)` highlighted. Observation covers only agents started in the session that loaded the mod.
 - Commands are `factory-progress` and `factory-agents`. A mod command name may only hold letters, digits, `_` and `-`:
   the engine refused `factory:progress` in a live session (verified 2026-10-13), so the colon form that skills get from
   their plugin namespace is not available to mod commands.
@@ -261,12 +269,6 @@ in the working folder and one level below it (a workspace root with several repo
   timestamps, so the mod never parses plans and can show elapsed time. Cost and tokens are not shown: the factory
   does not record them. The pure logic (parsing, summary, bar,
   scan of the folders with an injected file system) is in `hooks/model.ts` and tested with Node's runner.
-- **Who is working, and on which model.** On each job's header the pane writes the roles that have the job now (the builder; the
-  reviewers whose verdict is still pending; the approver) with their model and effort, e.g. `ux, ui · sonnet medium`. The data comes
-  from two places: `job.json` `agents`, the model and effort the orchestrator passed at spawn, and the mod's own observation of
-  `agent.spawn` events, which carry the model the engine resolved (not the effort). When the observed model differs from the one
-  asked for, the pane shows the observed one with `(asked X)` highlighted. Observation covers only agents started in the
-  session that loaded the mod.
 - Hosts without mods ignore the folder; nothing else depends on it.
 
 ### 6.2 Optional savvy-progress hook

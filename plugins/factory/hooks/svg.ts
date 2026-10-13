@@ -45,29 +45,6 @@ export function pillBar(o: PillBar): string {
   )
 }
 
-export type TilePill = {
-  label: string
-  value: string
-  width?: number
-  height?: number
-  valueColor?: string
-  bg: string
-  border: string
-}
-
-// A rounded tile with a small label over a bold value.
-export function tilePill(o: TilePill): string {
-  const w = o.width ?? 118
-  const h = o.height ?? 46
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
-    `<rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="8" fill="${o.bg}" stroke="${o.border}"/>` +
-    `<text x="12" y="17" font-family="${FONT}" font-size="11" fill="#98a1b3">${escapeXml(o.label)}</text>` +
-    `<text x="12" y="36" font-family="${FONT}" font-size="15" font-weight="700" fill="${o.valueColor ?? '#e6e9ef'}">${escapeXml(o.value)}</text>` +
-    `</svg>`
-  )
-}
-
 export type SlimBar = { done: number; total: number; width: number; height?: number; fill: string; track: string }
 
 // A thin, fully rounded bar with no text: its meaning is written beside it, and its color says one thing only.

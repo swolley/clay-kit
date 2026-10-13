@@ -12,24 +12,27 @@ import {
   planElapsed,
   reviewerLabel,
   roleOf,
+  rowStatus,
   scan,
   stageStep,
   summarize,
+  situationText,
+  taskRows,
   tierColor,
   verdictMark,
   waitingIds,
   waitingLabel,
   workingNow,
 } from './model'
-import type { Fs, Job, PlanView, Summary } from './model'
-import { pillBar, slimBar, tilePill } from './svg'
+import type { Fs, Job, PlanView, Summary, TaskRow } from './model'
+import { pillBar, slimBar } from './svg'
 
 const PANE = 'factory-agents'
 const POLL_MS = 3000
 
 const view = atom({ plugin: 'factory', key: 'view' } as const, { plans: [], waiting: 0, running: 0 } as Summary)
 const isHidden = atom({ plugin: 'factory', key: 'isHidden' } as const, false)
-const isFinishedOpen = atom({ plugin: 'factory', key: 'isFinishedOpen' } as const, false)
+const isOnlyMine = atom({ plugin: 'factory', key: 'isOnlyMine' } as const, false)
 // The model each agent of a job really started on, as the engine reported it at spawn, by job id and role.
 const observed = atom({ plugin: 'factory', key: 'observed' } as const, {} as Record<string, Record<string, { model: string }>>)
 
@@ -90,26 +93,6 @@ const slim = (elements: any, done: number, total: number, px: number, color: str
   return (
     <Box alignSelf="center" flexShrink={0}>
       <Svg source={slimBar({ done, total, width: px, fill: color, track: TRACK })} alt={`${done} of ${total}`} width={px} height={4} />
-    </Box>
-  )
-}
-
-// A summary tile: a rounded SVG where vector art is drawn, a bordered box elsewhere.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const tile = (elements: any, label: string, value: string, color?: string) => {
-  const { Box, Text } = elements
-  const Svg = 'Svg' in elements ? elements.Svg : undefined
-  if (Svg) {
-    return (
-      <Box alignSelf="center" flexShrink={0}>
-        <Svg source={tilePill({ label, value, valueColor: color, bg: '#1b2029', border: TRACK })} alt={`${label} ${value}`} width={118} height={46} />
-      </Box>
-    )
-  }
-  return (
-    <Box flexDirection="column" borderStyle="round" borderColor={TRACK} paddingX={1} minWidth={14}>
-      <Text dimColor>{label}</Text>
-      <Text bold color={color}>{value}</Text>
     </Box>
   )
 }
@@ -230,31 +213,64 @@ export const register: Register = on => {
     const summary = await read($, view)
     if (summary.plans.length === 0) return <Text dimColor>No factory jobs found here.</Text>
     const now = await $.clock.now()
-    const isOpen = await read($, isFinishedOpen)
     const seen = await read($, observed)
+    const onlyMine = await read($, isOnlyMine)
 
-    const jobLine = (job: Job) => {
-      const spent = jobElapsed(job, now)
-      const color = stateColor(job)
-      const now_ = workingNow(job, seen[job.id])
+    // Column widths in cells; a cell centers its content on the row.
+    const W = { title: 30, bar: 11, status: 22, who: 40, time: 8 }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cell = (width: number, node: any) => (
+      <Box width={width} flexShrink={0} alignSelf="center">
+        {node}
+      </Box>
+    )
+
+    const header = (
+      <Box gap={1} alignItems="center">
+        {cell(W.title, <Text dimColor>Task</Text>)}
+        {cell(W.bar, <Text dimColor>Progress</Text>)}
+        {cell(W.status, <Text dimColor>Status</Text>)}
+        {cell(W.who, <Text dimColor>In charge</Text>)}
+        {cell(W.time, <Text dimColor>Time</Text>)}
+        <Text dimColor>Reviews</Text>
+      </Box>
+    )
+
+    const row = (r: TaskRow) => {
+      const st = rowStatus(r)
+      const job = r.job
+      const quiet = st.kind === 'planned' || st.kind === 'landed'
+      const dot = st.kind === 'landed' ? '✓' : st.kind === 'planned' ? '○' : '●'
+      const color = job ? stateColor(job) : '#7d879a'
+      const spent = job ? jobElapsed(job, now) : null
+      const who = job ? workingNow(job, seen[job.id]) : { text: '', mismatch: false }
+      const tier = job ? job.tier : r.planned?.tier ?? ''
       return (
-        <Box flexDirection="column">
-          <Box gap={1} alignItems="center">
-            {mid(Box, <Text color={color}>{stateIcon(job)}</Text>)}
-            {mid(Box, <Text bold={job.stage === 'needs-human' || job.stage === 'waiting-input'}>{job.id}</Text>)}
-            {mid(Box, <Text color={tierColor(job.tier)}>{job.tier}</Text>)}
-            {mid(Box, <Text dimColor>{phaseLabel(job)}{spent === null ? '' : ` · ${formatDuration(spent)}`}</Text>)}
-            {now_.text && mid(Box, <Text color={now_.mismatch ? WAIT : undefined} dimColor={!now_.mismatch}>{now_.text}</Text>)}
-          </Box>
-          <Box gap={1} paddingLeft={2} alignItems="center">
-            {slim(elements, stageStep(job), STAGE_STEPS, 180, tierColor(job.tier), 22)}
-            {job.reviewers.map(r => led(Box, Text, r, job.reviews[r]))}
-          </Box>
+        <Box gap={1} alignItems="center">
+          {cell(
+            W.title,
+            <Box gap={1}>
+              <Text color={color}>{dot}</Text>
+              <Text bold={st.kind === 'waiting'} dimColor={quiet}>{r.n > 0 ? `${r.n}. ` : ''}{r.title}</Text>
+            </Box>,
+          )}
+          {cell(W.bar, job ? slim(elements, stageStep(job), STAGE_STEPS, 70, tierColor(job.tier), 8) : <Text dimColor> </Text>)}
+          {cell(W.status, <Text color={st.kind === 'waiting' ? WAIT : undefined} dimColor={quiet}>{st.label}</Text>)}
+          {cell(
+            W.who,
+            <Box gap={1}>
+              {tier && <Text color={tierColor(tier)}>{tier}</Text>}
+              <Text color={who.mismatch ? WAIT : undefined} dimColor={!who.mismatch}>{st.kind === 'waiting' && !who.text ? 'you' : who.text}</Text>
+            </Box>,
+          )}
+          {cell(W.time, <Text dimColor>{spent === null ? '' : formatDuration(spent)}</Text>)}
+          {job && job.reviewers.map(rv => led(Box, Text, rv, job.reviews[rv]))}
         </Box>
       )
     }
 
     const plan = (p: PlanView) => {
+      const rows = taskRows(p).filter(r => !onlyMine || rowStatus(r).kind === 'waiting')
       const elapsed = planElapsed(p, now)
       return (
         <Box flexDirection="column">
@@ -264,41 +280,21 @@ export const register: Register = on => {
             {mid(Box, <Text bold>{p.done}/{p.total}</Text>)}
             {mid(Box, <Text dimColor>{elapsed === null ? '' : formatDuration(elapsed)}</Text>)}
           </Box>
-          {p.waiting.length > 0 && <Text bold color={WAIT}>Waiting for you · {p.waiting.length}</Text>}
-          {p.waiting.map(jobLine)}
-          {p.running.length > 0 && <Text bold>Running · {p.running.length}</Text>}
-          {p.running.map(jobLine)}
-          {p.finished.length > 0 && (
-            <Button key={`fin-${p.plan}`} label={`${isOpen ? '▾' : '▸'} Finished · ${p.finished.length}`} onPress={() => update($, isFinishedOpen, () => !isOpen)} />
-          )}
-          {isOpen && p.finished.map(jobLine)}
-          {p.planned.length > 0 && <Text bold>Planned · {p.planned.length}</Text>}
-          {p.planned.map(t => (
-            <Box gap={1}>
-              <Text dimColor>○ {t.n}. {t.title}</Text>
-              <Text color={tierColor(t.tier)}>{t.tier}</Text>
-              <Text dimColor>{t.after.length > 0 ? `after ${t.after.join(', ')}` : ''}</Text>
-            </Box>
-          ))}
+          {rows.length > 0 && header}
+          {rows.map(row)}
+          {rows.length === 0 && <Text dimColor>Nothing here needs you.</Text>}
         </Box>
       )
     }
 
-    const lead = activePlans(summary)[0] ?? summary.plans[0]
-    const landed = summary.plans.reduce((n, p) => n + p.done, 0)
-    const total = summary.plans.reduce((n, p) => n + p.total, 0)
-    const leadElapsed = lead ? planElapsed(lead, now) : null
-
     return (
       <Box flexDirection="column" gap={1}>
-        <Box gap={1} alignItems="center">
-          {tile(elements, 'Running', String(summary.running))}
-          {tile(elements, 'Waiting', String(summary.waiting), summary.waiting > 0 ? WAIT : undefined)}
-          {tile(elements, 'Landed', `${landed}/${total}`, OK)}
-          {tile(elements, 'Elapsed', leadElapsed === null ? '-' : formatDuration(leadElapsed))}
+        <Box gap={2} alignItems="center">
+          {mid(Box, <Text bold color={summary.waiting > 0 ? WAIT : undefined}>{situationText(summary)}</Text>)}
+          <Button key="mine" label={`${onlyMine ? '[x]' : '[ ]'} only what needs me`} onPress={() => update($, isOnlyMine, () => !onlyMine)} />
         </Box>
         <Box gap={1}>
-          <Text dimColor>reviewers</Text>
+          <Text dimColor>reviews</Text>
           {led(Box, Text, 'pass', 'PASS')}
           {led(Box, Text, 'changes', 'CHANGES')}
           {led(Box, Text, 'pending', 'pending')}

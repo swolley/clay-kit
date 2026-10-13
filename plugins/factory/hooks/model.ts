@@ -32,6 +32,7 @@ export type PlanView = {
   waiting: Job[]
   finished: Job[]
   planned: PlanTask[]
+  tasks: PlanTask[]
 }
 
 export type Summary = { plans: PlanView[]; waiting: number; running: number }
@@ -127,6 +128,7 @@ export function summarize(runs: Run[], jobs: Job[]): Summary {
       waiting: list.filter(j => NEEDS_USER.includes(j.stage)),
       finished: list.filter(j => LANDED.includes(j.stage)),
       planned: (run?.tasks ?? []).filter(t => !started.has(t.n)),
+      tasks: run?.tasks ?? [],
     })
   }
   return {
@@ -347,4 +349,49 @@ export function workingNow(job: Job, observed: Record<string, { model: string }>
   }
   const text = [...groups].map(([key, who]) => (key ? `${who.join(', ')} · ${key}` : who.join(', '))).join(' · ')
   return { text, mismatch }
+}
+
+export type TaskRow = { n: number; title: string; job: Job | null; planned: PlanTask | null }
+
+// One row per task of the plan, in plan order: the job that carries it, or the task itself while it is only planned.
+// Jobs that no task list explains (an ad hoc task, or a run file without tasks) follow, by id.
+export function taskRows(view: PlanView): TaskRow[] {
+  const jobs = [...view.waiting, ...view.running, ...view.finished]
+  const byTask = new Map<number, Job>()
+  for (const j of jobs) if (j.task > 0 && !byTask.has(j.task)) byTask.set(j.task, j)
+
+  const rows: TaskRow[] = []
+  const used = new Set<string>()
+  for (const t of [...view.tasks].sort((a, b) => a.n - b.n)) {
+    const job = byTask.get(t.n) ?? null
+    if (job) used.add(job.id)
+    rows.push({ n: t.n, title: t.title, job, planned: job ? null : t })
+  }
+  for (const j of jobs.filter(x => !used.has(x.id)).sort((a, b) => a.id.localeCompare(b.id))) {
+    rows.push({ n: j.task, title: j.id, job: j, planned: null })
+  }
+  return rows
+}
+
+// One sentence for the top of the pane: what needs the user first, then what is moving.
+export function situationText(summary: Summary): string {
+  const planned = summary.plans.reduce((n, p) => n + p.planned.length, 0)
+  const landed = summary.plans.reduce((n, p) => n + p.finished.length, 0)
+  const parts = [
+    summary.waiting > 0 ? `${summary.waiting} waiting for you` : '',
+    summary.running > 0 ? `${summary.running} running` : '',
+    planned > 0 ? `${planned} planned` : '',
+    landed > 0 ? `${landed} landed` : '',
+  ].filter(Boolean)
+  return parts.length > 0 ? parts.join(' · ') : 'nothing running'
+}
+
+export function rowStatus(row: TaskRow): { label: string; kind: 'waiting' | 'running' | 'landed' | 'planned' } {
+  if (!row.job) {
+    const after = row.planned?.after ?? []
+    return { label: after.length > 0 ? `planned · after ${after.join(', ')}` : 'planned', kind: 'planned' }
+  }
+  if (LANDED.includes(row.job.stage)) return { label: 'landed', kind: 'landed' }
+  if (NEEDS_USER.includes(row.job.stage)) return { label: phaseLabel(row.job), kind: 'waiting' }
+  return { label: phaseLabel(row.job), kind: 'running' }
 }

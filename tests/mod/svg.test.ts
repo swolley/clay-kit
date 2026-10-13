@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { barWidth, escapeXml, pillBar, slimBar, tilePill } from '../../plugins/factory/hooks/svg.ts'
+import { barWidth, escapeXml, pillBar, slimBar } from '../../plugins/factory/hooks/svg.ts'
 
 const bar = (over: Record<string, unknown> = {}) =>
   pillBar({ label: 'Tasks 1/4', done: 1, total: 4, width: 200, fill: '#2a8f5f', track: '#343a48', ...over })
@@ -35,12 +35,6 @@ test('pillBar fills in proportion, and draws no fill for zero', () => {
 test('barWidth grows with the label and has a floor', () => {
   assert.equal(barWidth('x'), 150)
   assert.ok(barWidth('a much longer label for the bar to hold') > barWidth('short label here'))
-})
-
-test('tilePill draws a rounded tile with its label and value escaped', () => {
-  const s = tilePill({ label: 'Waiting', value: '2 <b>', bg: '#1b2029', border: '#343a48' })
-  assert.ok(s.startsWith('<svg') && s.includes('>Waiting</text>') && s.includes('2 &lt;b&gt;'))
-  assert.match(s, /rx="8"/)
 })
 
 test('pillBar cuts a label that does not fit the width with an ellipsis', () => {

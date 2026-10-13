@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar, reviewerLabel, verdictMark, roleOf, jobIdFromPrompt, shortModel, workingNow } from '../../plugins/factory/hooks/model.ts'
+import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar, reviewerLabel, verdictMark, roleOf, jobIdFromPrompt, shortModel, workingNow, taskRows, situationText, rowStatus } from '../../plugins/factory/hooks/model.ts'
 
 const job = (over: Record<string, unknown> = {}) =>
   parseJob(JSON.stringify({ id: '001-a', plan: 'p1', repo: 'api', tier: 'medium', stage: 'build', round: 0, reviewers: [], reviews: {}, ...over }))!
@@ -302,4 +302,41 @@ test('workingNow shows the observed model and flags a difference from the reques
 test('workingNow still names the role when no model is known', () => {
   assert.equal(workingNow(job({ stage: 'build' })).text, 'builder')
   assert.equal(workingNow(job({ stage: 'waiting-input' })).text, 'builder')
+})
+
+
+const planOf = () => {
+  const run = parseRun(JSON.stringify({ plan: 'p1', total: 4, done: 0, tasks: [1, 2, 3, 4].map(n => ({ n, title: `T${n}`, tier: 'medium', after: n > 1 ? [n - 1] : [] })) }))!
+  return summarize([run], [
+    job({ id: '001-a', task: 1, stage: 'merged' }),
+    job({ id: '002-b', task: 2, stage: 'review', reviewers: ['code'], reviews: { code: 'pending' } }),
+    job({ id: '003-c', task: 3, stage: 'needs-human' }),
+  ]).plans[0]!
+}
+
+test('taskRows lists every task of the plan in order, started or not', () => {
+  const rows = taskRows(planOf())
+  assert.deepEqual(rows.map(r => r.n), [1, 2, 3, 4])
+  assert.deepEqual(rows.map(r => r.job?.id ?? null), ['001-a', '002-b', '003-c', null])
+  assert.equal(rows[3]!.planned?.title, 'T4')
+  assert.equal(rows[0]!.title, 'T1')
+})
+
+test('taskRows keeps jobs that no task list explains, after the listed tasks', () => {
+  const view = summarize([], [job({ id: '002-b', task: 0, stage: 'build' }), job({ id: '001-a', task: 0, stage: 'merged' })]).plans[0]!
+  assert.deepEqual(taskRows(view).map(r => r.title), ['001-a', '002-b'])
+})
+
+test('situationText counts only what exists, with the user first', () => {
+  const s = summarize([], [job({ id: '001-a', stage: 'needs-human' }), job({ id: '002-b', stage: 'build' }), job({ id: '003-c', stage: 'merged' })])
+  assert.equal(situationText(s), '1 waiting for you · 1 running · 1 landed')
+  assert.equal(situationText(summarize([], [])), 'nothing running')
+})
+
+test('rowStatus gives a short label and a kind for each row', () => {
+  const rows = taskRows(planOf())
+  assert.deepEqual(rows.map(r => rowStatus(r).kind), ['landed', 'running', 'waiting', 'planned'])
+  assert.equal(rowStatus(rows[0]!).label, 'landed')
+  assert.equal(rowStatus(rows[1]!).label, 'review r0 0/1')
+  assert.equal(rowStatus(rows[3]!).label, 'planned · after 3')
 })

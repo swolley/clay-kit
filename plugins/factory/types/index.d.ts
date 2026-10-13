@@ -25,6 +25,7 @@ export type FactorySummary = {
     waiting: FactoryJob[]
     finished: FactoryJob[]
     planned: FactoryPlanTask[]
+    tasks: FactoryPlanTask[]
   }[]
   waiting: number
   running: number
@@ -35,7 +36,7 @@ declare module 'claude-code' {
     factory: {
       view: FactorySummary
       isHidden: boolean
-      isFinishedOpen: boolean
+      isOnlyMine: boolean
       observed: Record<string, Record<string, { model: string }>>
     }
   }
