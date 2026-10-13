@@ -245,6 +245,10 @@ The source of truth is a file, never the prompt. A subagent cannot ask the user;
 Say it plainly when a job is waiting: `003-rate-limit: waiting for you, 2 questions (use /factory-answer 003-rate-limit)`.
 At the end of a run, and in `status`, list every job that is waiting for you.
 
+Before choosing what to work on, see what is already open: run `python3 <plugin root>/scripts/plan_status.py` from the repository
+(the user's `/factory-backlog` does the same). It lists plans with steps left and specs that have no plan, so you do not start
+work that exists, or plan work that is already planned. It only reads; never edit a plan or spec because of its output.
+
 ## Completion
 
 When every task is landed, tick the steps of each completed task with `state.py tick-plan` (see Run lock) and commit that on

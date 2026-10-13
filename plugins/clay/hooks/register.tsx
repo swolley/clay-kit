@@ -21,6 +21,8 @@ import {
   stageStep,
   summarize,
   situationText,
+  backlogText,
+  scanBacklog,
   taskRows,
   tierColor,
   verdictMark,
@@ -28,13 +30,14 @@ import {
   waitingLabel,
   workingNow,
 } from './model'
-import type { Fs, Job, Lock, PlanView, Summary, TaskRow } from './model'
+import type { Backlog, Fs, Job, Lock, PlanView, Summary, TaskRow } from './model'
 import { pillBar, slimBar } from './svg'
 
 const PANE = 'factory-agents'
 const POLL_MS = 3000
 
 const view = atom({ plugin: 'clay', key: 'view' } as const, { plans: [], waiting: 0, running: 0 } as Summary)
+const backlog = atom({ plugin: 'clay', key: 'backlog' } as const, { openPlans: 0, unplannedSpecs: 0 } as Backlog)
 const isHidden = atom({ plugin: 'clay', key: 'isHidden' } as const, false)
 // The run locks found on disk: while one is fresh, the plan and its spec must not be edited.
 const locks = atom({ plugin: 'clay', key: 'locks' } as const, [] as Lock[])
@@ -147,6 +150,8 @@ export const register: Register = on => {
         const summary = summarize(found.runs, found.jobs, found.locks)
         await update($, view, () => summary)
         await update($, locks, () => found.locks)
+        const counts = await scanBacklog(fs)
+        await update($, backlog, () => counts)
 
         const now = waitingIds(found.jobs)
         const fresh = [...now].filter(id => !known || !known.has(id))
@@ -234,7 +239,15 @@ export const register: Register = on => {
     const elements = $.ui.resolve(e)
     const { Box, Button, Text } = elements
     const summary = await read($, view)
-    if (summary.plans.length === 0) return <Text dimColor>No factory jobs found here.</Text>
+    const backlogLine = backlogText(await read($, backlog))
+    if (summary.plans.length === 0) {
+      return (
+        <Box flexDirection="column">
+          <Text dimColor>No factory jobs found here.</Text>
+          {backlogLine && <Text dimColor>{backlogLine}</Text>}
+        </Box>
+      )
+    }
     const now = await $.clock.now()
     const seen = await read($, observed)
     const onlyMine = await read($, isOnlyMine)
@@ -336,6 +349,7 @@ export const register: Register = on => {
           {mid(Box, <Text bold color={summary.waiting > 0 ? WAIT : undefined}>{situationText(summary)}</Text>)}
           <Button key="mine" label={`${onlyMine ? '[x]' : '[ ]'} only what needs me`} onPress={() => update($, isOnlyMine, () => !onlyMine)} />
         </Box>
+        {backlogLine && <Text dimColor>{backlogLine}</Text>}
         <Box flexDirection="column">
           <Box gap={1}>
             <Text dimColor>reviews</Text>

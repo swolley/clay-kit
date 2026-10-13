@@ -267,6 +267,58 @@ export async function scan(fs: Fs): Promise<{ runs: Run[]; jobs: Job[]; locks: L
   return { runs, jobs, locks }
 }
 
+export type Doc = { name: string; text: string }
+export type Backlog = { openPlans: number; unplannedSpecs: number }
+
+const CLOSED_STATUS = /^status:\s*["']?(completed|done|shipped|superseded|abandoned|cancelled)\b/im
+
+function planIsOpen(text: string): boolean {
+  const front = /^---\n([\s\S]*?)\n---/.exec(text)
+  if (front && CLOSED_STATUS.test(front[1]!)) return false
+  const open = /^\s*- \[ \]/m.test(text)
+  const marked = /^\s*- \[[ x-]\]/im.test(text)
+  return open || !marked
+}
+
+// Counts for the pane: plans with work left, and specs no plan names. A spec that says `Plan: not required`
+// in its first lines is a reference and does not count; a plan for the same subject (`x-design.md` -> `x.md`) does.
+export function backlogCounts(plans: Doc[], specs: Doc[]): Backlog {
+  const blob = plans.map(p => p.text).join('\n')
+  const names = new Set(plans.map(p => p.name))
+  const unplanned = specs.filter(s => {
+    if (blob.includes(s.name)) return false
+    if (/^plan:\s*not required/im.test(s.text.split('\n').slice(0, 30).join('\n'))) return false
+    return !names.has(s.name.replace(/-(design|review|gate|spec)\.md$/, '.md'))
+  })
+  return { openPlans: plans.filter(p => planIsOpen(p.text)).length, unplannedSpecs: unplanned.length }
+}
+
+export function backlogText(b: Backlog): string {
+  if (b.openPlans === 0 && b.unplannedSpecs === 0) return ''
+  const plans = `${b.openPlans} open plan${b.openPlans === 1 ? '' : 's'}`
+  const specs = `${b.unplannedSpecs} unplanned spec${b.unplannedSpecs === 1 ? '' : 's'}`
+  return `${plans} · ${specs}`
+}
+
+// Reads the plans and specs of the working folder (the usual superpowers locations). Unreadable files are skipped.
+export async function scanBacklog(fs: Fs): Promise<Backlog> {
+  const load = async (dir: string): Promise<Doc[]> => {
+    let entries: { name: string; kind: string }[] = []
+    try {
+      entries = await fs.list(dir)
+    } catch {
+      return []
+    }
+    const docs: Doc[] = []
+    for (const e of entries.filter(x => x.kind !== 'dir' && x.name.endsWith('.md'))) {
+      const text = await fs.read(`${dir}/${e.name}`).catch(() => null)
+      if (text !== null) docs.push({ name: e.name, text })
+    }
+    return docs
+  }
+  return backlogCounts(await load('docs/superpowers/plans'), await load('docs/superpowers/specs'))
+}
+
 export const STAGE_STEPS = 5
 
 // Where a job sits on a five-step track: spec, build, review, approve, landed.

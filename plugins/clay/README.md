@@ -19,6 +19,7 @@ Every command is a skill named `factory-<verb>`, so it is typed `/factory-run` a
 | `/factory-approve [job]` | you only | lands a job that was waiting for you |
 | `/factory-rework [job] <note>` | you only | sends a waiting job back to its builder |
 | `/factory-answer [job] [text]` | you only | answers the questions a job is waiting on, now or later |
+| `/factory-backlog [options]` | you only | open plans, specs without a plan and, on request, code markers; read-only |
 | `/factory-unlock [plan]` | you only | releases the run lock of a plan, for a crashed run or to edit it |
 
 `[job]` may be left out when only one job waits, and may be the id, `002`, the task number or a piece of the id.
@@ -70,6 +71,19 @@ with projects already built with that tool: their plans run here without migrati
 (`Repo`, `Tier`, `Depends`, `Files`, `Constraints`, `Accept`, `Verify`) are optional; missing ones get defaults
 and `/factory-run` tells you which. You do not have to design with this plugin: brainstorm and plan with superpowers or by
 hand, and use `/factory-run` only to execute.
+
+## Backlog outside the plugin
+
+`scripts/plan_status.py` works on its own, with no Claude Code: copy `plan_status.py` and `factory_plan.py` together into one
+folder (the first imports the second) and run it with Python 3; only the standard library is used.
+
+```
+python3 plan_status.py                  # open work under the current folder
+python3 plan_status.py --root ~/work    # a whole workspace: every folder holding plans or specs is a repository
+python3 plan_status.py --all --format html --out backlog.html
+```
+
+It reads `docs/superpowers/plans/` and `docs/superpowers/specs/`, never edits anything, and `--help` lists every option.
 
 ## Requirements
 

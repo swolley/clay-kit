@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar, reviewerLabel, verdictMark, roleOf, jobIdFromPrompt, shortModel, workingNow, taskRows, situationText, rowStatus, formatTokens, parseLock, isStale, protectedBy, lockNote } from '../../plugins/clay/hooks/model.ts'
+import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar, reviewerLabel, verdictMark, roleOf, jobIdFromPrompt, shortModel, workingNow, taskRows, situationText, rowStatus, formatTokens, parseLock, isStale, protectedBy, lockNote, backlogCounts, backlogText } from '../../plugins/clay/hooks/model.ts'
 
 const job = (over: Record<string, unknown> = {}) =>
   parseJob(JSON.stringify({ id: '001-a', plan: 'p1', repo: 'api', tier: 'medium', stage: 'build', round: 0, reviewers: [], reviews: {}, ...over }))!
@@ -432,4 +432,30 @@ test('scan reads the lock files next to the run files', async () => {
   const out = await scan(fs)
   assert.equal(out.locks.length, 1)
   assert.equal(out.locks[0]!.plan, 'p1')
+})
+
+test('backlogCounts counts open plans and specs no plan cites', () => {
+  const plan = (name: string, text: string) => ({ name, text })
+  const plans = [
+    plan('2026-01-a.md', '# A\n- [x] one\n- [ ] two\n'),
+    plan('2026-01-b.md', '# B\n- [x] one\n'),
+    plan('2026-01-c.md', '---\nstatus: superseded\n---\n- [ ] x\n'),
+    plan('2026-01-d.md', '# D\nno boxes yet\n'),
+    plan('2026-01-h.md', '---\nstatus: abandoned\n---\n- [ ] x\n'),
+    plan('2026-01-e.md', '# E\nSpec: docs/superpowers/specs/2026-01-e-design.md\n- [x] done\n'),
+  ]
+  const specs = [
+    plan('2026-01-e-design.md', '# cited'),
+    plan('2026-01-f-design.md', '# nobody cites this'),
+    plan('2026-01-a-design.md', '# sibling plan a exists but never names it'),
+    plan('2026-01-g.md', 'Plan: not required\n# reference'),
+  ]
+  assert.deepEqual(backlogCounts(plans, specs), { openPlans: 2, unplannedSpecs: 1 })
+  assert.deepEqual(backlogCounts([], []), { openPlans: 0, unplannedSpecs: 0 })
+})
+
+test('backlogText is one short line, empty when there is nothing', () => {
+  assert.equal(backlogText({ openPlans: 2, unplannedSpecs: 1 }), '2 open plans · 1 unplanned spec')
+  assert.equal(backlogText({ openPlans: 1, unplannedSpecs: 3 }), '1 open plan · 3 unplanned specs')
+  assert.equal(backlogText({ openPlans: 0, unplannedSpecs: 0 }), '')
 })

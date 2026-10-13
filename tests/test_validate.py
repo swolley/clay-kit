@@ -104,3 +104,9 @@ def test_unlock_skill_must_disable_model_invocation(tmp_path):
     make_scaffold(tmp_path)
     write(tmp_path, "plugins/clay/skills/factory-unlock/SKILL.md", skill("factory-unlock") + "reference/orchestrator.md\n")
     assert any("factory-unlock/SKILL.md" in p and "disable-model-invocation" in p for p in validate(tmp_path))
+
+
+def test_backlog_skill_must_disable_model_invocation(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/skills/factory-backlog/SKILL.md", skill("factory-backlog") + "reference/orchestrator.md\n")
+    assert any("factory-backlog/SKILL.md" in p and "disable-model-invocation" in p for p in validate(tmp_path))

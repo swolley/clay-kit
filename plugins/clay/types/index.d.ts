@@ -41,6 +41,7 @@ declare module 'claude-code' {
   interface PluginState {
     clay: {
       view: FactorySummary
+      backlog: { openPlans: number; unplannedSpecs: number }
       isHidden: boolean
       isOnlyMine: boolean
       observed: Record<string, Record<string, { model: string }>>
