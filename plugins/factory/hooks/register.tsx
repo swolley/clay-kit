@@ -9,10 +9,12 @@ import {
   labeledBar,
   phaseLabel,
   planElapsed,
+  reviewerLabel,
   scan,
   stageStep,
   summarize,
   tierColor,
+  verdictMark,
   waitingIds,
   waitingLabel,
 } from './model'
@@ -25,7 +27,7 @@ const view = atom({ plugin: 'factory', key: 'view' } as const, { plans: [], wait
 const isHidden = atom({ plugin: 'factory', key: 'isHidden' } as const, false)
 const isFinishedOpen = atom({ plugin: 'factory', key: 'isFinishedOpen' } as const, false)
 
-const verdictColor = (verdict: string | undefined) => (verdict === 'PASS' ? 'green' : verdict === 'CHANGES' ? 'red' : undefined)
+const verdictBackground = (verdict: string | undefined) => (verdict === 'PASS' ? '#3fb97c' : verdict === 'CHANGES' ? '#e5675c' : '#4a5163')
 
 // Plans that need the user first, then the ones running, then the rest.
 const byNeed = (a: PlanView, b: PlanView) => b.waiting.length - a.waiting.length || b.running.length - a.running.length
@@ -56,6 +58,12 @@ const stateIcon = (job: Job) => (job.stage === 'merged' || job.stage === 'commit
 
 const stateColor = (job: Job) =>
   job.stage === 'merged' || job.stage === 'committed' ? OK : job.stage === 'needs-human' || job.stage === 'waiting-input' ? WAIT : tierColor(job.tier)
+
+// A reviewer as a small colored badge: the color is the verdict, the mark is the cue besides color.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const badge = (Text: any, name: string, verdict: string | undefined) => (
+  <Text bold color={INK} backgroundColor={verdictBackground(verdict)}>{` ${reviewerLabel(name)}${verdictMark(verdict)} `}</Text>
+)
 
 export const register: Register = on => {
   let timer: { cancel: () => void } | undefined
@@ -157,9 +165,7 @@ export const register: Register = on => {
           </Box>
           <Box gap={1} paddingLeft={2}>
             {labeled(Box, Text, phaseLabel(job), stageStep(job), STAGE_STEPS, 30, color)}
-            {job.reviewers.map(r => (
-              <Text color={verdictColor(job.reviews[r])}>{r}:{job.reviews[r] ?? 'pending'}</Text>
-            ))}
+            {job.reviewers.map(r => badge(Text, r, job.reviews[r]))}
           </Box>
         </Box>
       )
@@ -213,6 +219,12 @@ export const register: Register = on => {
           {tile('Waiting', String(summary.waiting), summary.waiting > 0 ? WAIT : undefined)}
           {tile('Landed', `${landed}/${total}`, OK)}
           {tile('Elapsed', leadElapsed === null ? '-' : formatDuration(leadElapsed))}
+        </Box>
+        <Box gap={1}>
+          <Text dimColor>reviewers</Text>
+          {badge(Text, 'pass', 'PASS')}
+          {badge(Text, 'changes', 'CHANGES')}
+          {badge(Text, 'pending', 'pending')}
         </Box>
         {[...summary.plans].sort(byNeed).map(plan)}
       </Box>

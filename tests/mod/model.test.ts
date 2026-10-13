@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar } from '../../plugins/factory/hooks/model.ts'
+import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar, reviewerLabel, verdictMark } from '../../plugins/factory/hooks/model.ts'
 
 const job = (over: Record<string, unknown> = {}) =>
   parseJob(JSON.stringify({ id: '001-a', plan: 'p1', repo: 'api', tier: 'medium', stage: 'build', round: 0, reviewers: [], reviews: {}, ...over }))!
@@ -233,4 +233,17 @@ test('labeledBar truncates a long label and handles empty and full bars', () => 
   assert.equal(labeledBar('x', 0, 4, 10).filled, '')
   assert.equal(labeledBar('x', 4, 4, 10).empty, '')
   assert.deepEqual(labeledBar('x', 1, 0, 10), { filled: '', empty: ' x'.padEnd(10) })
+})
+
+
+test('reviewerLabel shortens only the long reviewer name', () => {
+  assert.equal(reviewerLabel('security'), 'sec')
+  assert.deepEqual(['code', 'ux', 'ui'].map(reviewerLabel), ['code', 'ux', 'ui'])
+})
+
+test('verdictMark adds a one-character cue so the color is not the only signal', () => {
+  assert.equal(verdictMark('PASS'), '')
+  assert.equal(verdictMark('CHANGES'), '!')
+  assert.equal(verdictMark('pending'), '…')
+  assert.equal(verdictMark(undefined), '…')
 })

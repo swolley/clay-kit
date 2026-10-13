@@ -281,3 +281,12 @@ export function labeledBar(label: string, done: number, total: number, width: nu
   const filled = total <= 0 ? 0 : Math.min(width, Math.max(0, Math.round((width * done) / total)))
   return { filled: text.slice(0, filled), empty: text.slice(filled) }
 }
+
+export function reviewerLabel(name: string): string {
+  return name === 'security' ? 'sec' : name
+}
+
+// A cue besides color for a reviewer badge: `!` for requested changes, `…` while nothing came back yet.
+export function verdictMark(verdict: string | undefined): string {
+  return verdict === 'PASS' ? '' : verdict === 'CHANGES' ? '!' : '…'
+}
