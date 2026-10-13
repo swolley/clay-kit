@@ -56,7 +56,7 @@ and keep the real output. A statement such as "this should work" is not proof.
 ## build.md
 
 ```markdown
-STATUS: READY
+STATUS: READY | NEEDS_INPUT
 
 ## Summary
 What changed and which files.
@@ -75,8 +75,14 @@ What you did. On later rounds: each finding, and your answer to it.
 (current-branch mode only)
 
 ## Open questions
-(only if any)
+1. <question>. Options: <a>, <b>. Recommended: <a>, because <reason>.
+(only with `STATUS: NEEDS_INPUT`)
 ```
 
-Use `STATUS: BLOCKED` as the first line instead, plus a `## Blocked` section, when the task contradicts
-itself, needs a call only a person can make, or the environment is broken.
+Use `STATUS: NEEDS_INPUT` as the first line when you cannot continue without an answer from a person: list
+the questions under `## Open questions`, numbered, each with the options you see and your recommended
+answer, and stop. The orchestrator asks the user, stores the answers in `answers-<k>.md` and restarts you
+with them; do not guess in the meantime.
+
+Use `STATUS: BLOCKED` instead, plus a `## Blocked` section, only for faults no answer can fix: the task
+contradicts itself or the environment is broken.

@@ -1,0 +1,1 @@
+{ "id": "005-pick-cache", "plan": "2026-10-13-api-work", "task": 4, "repo": "api", "mode": "isolated", "tier": "medium", "branch": "factory/api-work/005-pick-cache", "worktree": "/tmp/v", "stage": "waiting-input", "round": 0, "reviewers": [], "reviews": {} }

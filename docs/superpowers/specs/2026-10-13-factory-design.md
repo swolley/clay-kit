@@ -109,7 +109,7 @@ Every command is its own skill, so each one appears in the host's command autoco
 |-------|-----------|-----|
 | `brainstorm` | the user, or the model on its own when the user describes new work | conversational, ends at the user's approval gate |
 | `plan` | the user, or the model on its own after an approved design | conversational, ends at the user's review of the plan |
-| `run`, `task`, `approve`, `rework` | the user only (model invocation disabled) | start autonomous work that spends tokens, creates branches and worktrees and can merge |
+| `run`, `task`, `approve`, `rework`, `answer` | the user only (model invocation disabled) | start autonomous work that spends tokens, creates branches and worktrees and can merge |
 | `status` | the user only | read-only, but kept explicit so it is never run by surprise |
 
 Model invocation is controlled per skill. The orchestration logic shared by `run`, `task`, `approve`, `rework` and `status` (job loop, modes, resume, state) lives in one reference file of the plugin, which these skills read; how a skill points at a shared file is recorded in `docs/hosts.md`. Commands are namespaced by the plugin (`/factory:run`); the exact spelling per host is also in `docs/hosts.md`. The autocompletion behavior (one entry per skill, no sub-arguments) is observed from installed plugins, not yet tested for this tool.
@@ -122,6 +122,7 @@ Model invocation is controlled per skill. The orchestration logic shared by `run
 /factory:status                  list jobs and their stage
 /factory:approve <job-id>        merge a needs-human job into the integration branch
 /factory:rework <job-id> <note>  send a needs-human job back to its builder
+/factory:answer <job-id> [text]  answer the questions a job is waiting on (or see them again)
 ```
 
 `/factory:task` is for small work that does not need a plan. Each command is a separate skill, so free text never collides with a command name.
@@ -186,6 +187,18 @@ When every task is done, the orchestrator ticks the steps of each completed task
 
 Runtime state in `factory/jobs/<job-id>/` of the main checkout, gitignored: `job.json` (written only by the orchestrator), `build.md`, `round-N/review-*.md`, `decision.md`, `rework-K.md`. `job.json` fields: `id`, `plan`, `task`, `repo`, `mode`, `tier`, `branch`, `worktree`, `stage`, `round`, `reviewers`, `reviews`.
 
+### 4.7a Questions from agents
+
+A subagent cannot use the question tool, so it ends with `STATUS: NEEDS_INPUT` and numbered questions (options and a
+recommended answer) in `build.md`. The orchestrator saves them to `questions-<k>.md` and sets stage `waiting-input`
+before it asks, because the source of truth is a file and not the prompt. It asks through the native question tool,
+batching them, and writes `answers-<k>.md` only when answers were actually given. A dismissed prompt, a timeout or
+auto-continue, or an unrelated user message leaves the job waiting: no default and no recommended answer is ever applied,
+and independent jobs continue. `/factory:answer <job-id> [text]` asks the pending questions again, or takes written
+answers, at any later time, also from another session; resuming `run` re-asks them too. With answers the builder is
+restarted without using a review resume. "I do not know" moves the job to `needs-human`. `BLOCKED` is kept for faults no
+answer can fix.
+
 ### 4.8 Resuming an interrupted run
 
 There is no separate resume command: `/factory:run <plan>` is idempotent and resumes by itself.
@@ -198,6 +211,7 @@ At start the orchestrator reads the plan and `factory/jobs/` and classifies each
 | Merged but not ticked | `job.json` stage `merged` (or committed, in current-branch mode) | tick the steps, then skip |
 | Interrupted | `job.json` with stage `spec`, `build`, `review` or `approve` | resume from the recorded stage |
 | `needs-human` | `job.json` stage `needs-human` | do not touch; list it and wait for `/factory:approve` or `/factory:rework` |
+| `waiting-input` | `job.json` stage `waiting-input` | ask the pending questions again from `questions-<k>.md` |
 | Not started | no job | start normally |
 
 Resuming a stage:

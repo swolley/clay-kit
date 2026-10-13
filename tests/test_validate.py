@@ -23,7 +23,7 @@ def make_scaffold(root: Path) -> None:
     write(root, "plugins/factory/.claude-plugin/plugin.json", json.dumps({"name": "factory"}))
     write(root, "plugins/factory/skills/brainstorm/SKILL.md", skill("brainstorm"))
     write(root, "plugins/factory/skills/plan/SKILL.md", skill("plan"))
-    for cmd in ("run", "task", "status", "approve", "rework"):
+    for cmd in ("run", "task", "status", "approve", "rework", "answer"):
         write(root, f"plugins/factory/skills/{cmd}/SKILL.md", skill(cmd, "disable-model-invocation: true\n") + "reference/orchestrator.md\n")
     write(root, "plugins/factory/agents/builder.md", skill("builder"))
 
@@ -86,3 +86,9 @@ def test_notice_requires_shipped_license_texts(tmp_path):
     make_scaffold(tmp_path)
     write(tmp_path, "plugins/factory/NOTICE.md", "derived")
     assert any("NOTICE.md" in p and "licenses" in p for p in validate(tmp_path))
+
+
+def test_answer_skill_must_disable_model_invocation(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/factory/skills/answer/SKILL.md", skill("answer") + "reference/orchestrator.md\n")
+    assert any("answer/SKILL.md" in p and "disable-model-invocation" in p for p in validate(tmp_path))

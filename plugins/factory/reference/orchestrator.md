@@ -20,6 +20,8 @@ runtime sits under `<repo>/factory/jobs/`, which git never tracks:
 | `<job-id>/task.md` | you | the task brief, copied from the plan |
 | `<job-id>/build.md` | builder | what was built and the proof |
 | `<job-id>/rework-<k>.md` | you | a user's rework note, verbatim |
+| `<job-id>/questions-<k>.md` | you | the pending questions from an agent, saved before asking |
+| `<job-id>/answers-<k>.md` | you | the user's answers, saved only once given |
 | `<job-id>/round-<N>/review-<lens>.md` | reviewers | one verdict file per selected lens |
 | `<job-id>/decision.md` | approver (or you, when rounds run out) | the final call |
 
@@ -34,7 +36,7 @@ session got there first, so try the next counter value. `job.json`:
   "reviews": { "code": "PASS", "security": "pending" } }
 ```
 
-`stage` is `spec`, `build`, `review`, `approve`, `merged`, `committed` or `needs-human`. Replace
+`stage` is `spec`, `build`, `waiting-input`, `review`, `approve`, `merged`, `committed` or `needs-human`. Replace
 the file as a whole each time it changes. `reviews` holds the current round; earlier rounds stay in their folders.
 Before the first job, create `factory/jobs/` with a `factory/jobs/.gitignore` containing `*` (it ignores itself, so
 job state never dirties the repo) and copy `<plugin root>/factory/dashboard.html` to `factory/jobs/dashboard.html`.
@@ -79,6 +81,7 @@ failure or escalation you stop and leave the changes in the tree for the user.
 | landed, not ticked | stage `merged` or `committed` | tick its steps, skip |
 | interrupted | stage `spec`, `build`, `review` or `approve` | resume from that stage |
 | needs-human | stage `needs-human` | do not touch; list it |
+| waiting-input | stage `waiting-input` | read the pending `questions-<k>.md` and ask again; see Questions from agents |
 | not started | no job | start |
 
 Resuming: keep the worktree and branch, never recreate. If they are missing or the branch no
@@ -98,7 +101,8 @@ worktree path, the branch, the mode and the base.
    mode the branch and worktree.
 2. **Build.** `stage: "build"`. Spawn the `builder` under the name `builder-<job-id>` with model and effort from the task's
    tier in `<plugin root>/tiers.md`, prompt `<paths> Build round 1.` plus `Port: <5100+10n>` (n = job number).
-   The first line of build.md decides what happens next: `STATUS: READY` moves on, `STATUS: BLOCKED` sends the job to step 8.
+   The first line of build.md decides what happens next: `STATUS: READY` moves on, `STATUS: NEEDS_INPUT` goes to
+   Questions from agents, `STATUS: BLOCKED` sends the job to step 8.
 3. **Route.** Take the changed paths (`git diff --name-only <base>...<branch>`; in current-branch
    mode `git diff --name-only HEAD` plus `git ls-files --others --exclude-standard`), pipe them to `python3 <plugin root>/scripts/route.py` (add `--table <repo>/factory/routing.md`
    if that file exists). Write the result to `reviewers` in `job.json`.
@@ -121,6 +125,24 @@ worktree path, the branch, the mode and the base.
 8. **Needs human.** `stage: "needs-human"`; keep the branch and worktree; name the waiting job for the user, give its worktree path, and quote either decision.md or the
    reason given for BLOCKED.
 
+## Questions from agents
+
+The source of truth is a file, never the prompt. A subagent cannot ask the user; it ends with
+`STATUS: NEEDS_INPUT` and numbered questions in build.md.
+
+1. Copy the questions to `questions-<k>.md` (next unused `k`) and set `stage: "waiting-input"` before asking anything.
+2. Ask the user with the question tool, batching the job's questions, each option labeled and the agent's
+   recommended answer first. Write the answers to `answers-<k>.md` only when the user has actually given them.
+3. Anything that is not an answer leaves the job waiting: a dismissed prompt, a timeout or auto-continue, or an
+   unrelated message from the user. Handle an unrelated message normally, never apply a default or the
+   recommended answer, and do not touch the job. Keep working on the other, independent jobs.
+4. When answers exist, set `stage: "build"` and start a fresh builder (named `builder-<job-id>`) that is told to
+   read `answers-<k>.md` and update build.md. This does not use up the review resumes.
+5. If the user says they do not know, set `needs-human` and quote the open questions.
+
+Say it plainly when a job is waiting: `003-rate-limit: waiting for you, 2 questions (use /factory:answer 003-rate-limit)`.
+At the end of a run, and in `status`, list every job that is waiting for you.
+
 ## Completion
 
 When every task is landed, tick the steps of each completed task in the plan file. Isolated mode then ends
@@ -135,6 +157,9 @@ chosen local action. Current-branch mode has nothing to merge.
 - **rework `<job-id>` `<note>`**: only valid on a job in `needs-human`. Write the note verbatim to `rework-<k>.md`
   (next unused k), set `stage: "build"`, spawn a fresh `builder-<job-id>` told to read that file and update
   build.md; a rework gets a fresh budget of 2 resumes. Continue from Build check.
+- **answer `<job-id>` `[text]`**: only valid on a job in `waiting-input`. Without text, ask the pending questions again
+  from the file. With text, treat it as the answers, check it covers every question (ask again for what is missing), save
+  it to `answers-<k>.md` and continue from step 4 of Questions from agents.
 - **status**: list jobs from `job.json` files: id, plan, stage, round, reviewers with verdicts; say which
   wait for the user. Read-only.
 - **task `<text>`**: build a one-task plan in memory (title from the text, tier medium, one `Accept`
