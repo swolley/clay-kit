@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import { bar, phaseLabel, scan, summarize, waitingIds } from './model'
+import { activePlans, bar, barParts, phaseLabel, scan, summarize, waitingIds, waitingLabel } from './model'
 import type { Fs, Job, PlanView, Summary } from './model'
 
 const PANE = 'factory-agents'
@@ -70,17 +70,21 @@ export const register: Register = on => {
     if (quiet) return next(e)
 
     const { Box, Button, Text } = $.ui.resolve(e)
-    const lead = summary.plans.find(p => p.running.length + p.waiting.length > 0) ?? summary.plans[0]
+    const active = activePlans(summary)
+    const lead = active[0]
     if (!lead) return next(e)
-    const more = summary.plans.length > 1 ? ` +${summary.plans.length - 1} plans` : ''
+    const more = active.length > 1 ? ` +${active.length - 1} plans` : ''
     const phases = [...new Set(lead.running.map(phaseLabel))].join(', ')
+    const parts = barParts(lead.done, lead.total)
 
     return (
       <Box>
         <Text bold>factory </Text>
-        <Text>{bar(lead.done, lead.total)} {lead.done}/{lead.total} </Text>
+        <Text color="green">{parts.filled}</Text>
+        <Text dimColor>{parts.empty}</Text>
+        <Text bold> {lead.done}/{lead.total} </Text>
         <Text dimColor>{lead.plan}{more}{phases ? ` · ${phases}` : ''} </Text>
-        {summary.waiting > 0 && <Text bold color="yellow">· {summary.waiting} waiting for you </Text>}
+        {summary.waiting > 0 && <Text bold color="yellow">· waiting for you: {waitingLabel(summary)} </Text>}
         <Button key="hide" label="Hide" onPress={() => update($, isHidden, () => true)} />
       </Box>
     )

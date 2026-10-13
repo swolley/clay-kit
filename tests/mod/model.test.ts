@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan } from '../../plugins/factory/hooks/model.ts'
+import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel } from '../../plugins/factory/hooks/model.ts'
 
 const job = (over: Record<string, unknown> = {}) =>
   parseJob(JSON.stringify({ id: '001-a', plan: 'p1', repo: 'api', tier: 'medium', stage: 'build', round: 0, reviewers: [], reviews: {}, ...over }))!
@@ -121,4 +121,32 @@ test('scan survives bad files and returns nothing when there is no factory folde
   assert.deepEqual((await scan(bad)).jobs.map(j => j.id), ['002-b'])
   const none = await scan(fakeFs({ 'src/a.ts': 'x' }))
   assert.deepEqual(none, { runs: [], jobs: [] })
+})
+
+
+test('activePlans keeps only plans with running or waiting jobs, in order of need', () => {
+  const s = summarize([], [
+    job({ id: '001-a', plan: 'finished', stage: 'merged' }),
+    job({ id: '002-b', plan: 'busy', stage: 'build' }),
+    job({ id: '003-c', plan: 'stuck', stage: 'needs-human' }),
+  ])
+  assert.deepEqual(activePlans(s).map(p => p.plan), ['stuck', 'busy'])
+})
+
+test('activePlans is empty when everything has landed', () => {
+  assert.deepEqual(activePlans(summarize([], [job({ stage: 'merged' })])), [])
+})
+
+test('barParts splits a bar into its filled and empty halves', () => {
+  assert.deepEqual(barParts(1, 5, 10), { filled: '██', empty: '░░░░░░░░' })
+  assert.deepEqual(barParts(0, 5, 10), { filled: '', empty: '░░░░░░░░░░' })
+  assert.deepEqual(barParts(5, 5, 10), { filled: '██████████', empty: '' })
+  assert.deepEqual(barParts(1, 0, 10), { filled: '', empty: '' })
+})
+
+test('waitingLabel names the jobs that need the user and trims long lists', () => {
+  const mk = (n: number) => summarize([], Array.from({ length: n }, (_, i) => job({ id: `00${i + 1}-x`, stage: i % 2 ? 'waiting-input' : 'needs-human' })))
+  assert.equal(waitingLabel(mk(0)), '')
+  assert.equal(waitingLabel(mk(2)), '001-x, 002-x')
+  assert.equal(waitingLabel(mk(5), 3), '001-x, 002-x, 003-x +2')
 })

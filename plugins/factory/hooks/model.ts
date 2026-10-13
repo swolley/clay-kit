@@ -88,6 +88,26 @@ export function bar(done: number, total: number, width = 10): string {
   return '█'.repeat(filled) + '░'.repeat(width - filled)
 }
 
+// Plans that have something running or waiting, the ones that need the user first.
+export function activePlans(summary: Summary): PlanView[] {
+  return summary.plans
+    .filter(p => p.running.length + p.waiting.length > 0)
+    .sort((a, b) => b.waiting.length - a.waiting.length)
+}
+
+export function barParts(done: number, total: number, width = 10): { filled: string; empty: string } {
+  if (total <= 0) return { filled: '', empty: '' }
+  const filled = Math.min(width, Math.max(0, Math.round((width * done) / total)))
+  return { filled: '█'.repeat(filled), empty: '░'.repeat(width - filled) }
+}
+
+// The ids of the jobs that need the user, at most `max` of them, then how many more.
+export function waitingLabel(summary: Summary, max = 3): string {
+  const ids = summary.plans.flatMap(p => p.waiting.map(j => j.id)).sort()
+  if (ids.length <= max) return ids.join(', ')
+  return `${ids.slice(0, max).join(', ')} +${ids.length - max}`
+}
+
 export function phaseLabel(job: Job): string {
   if (NEEDS_USER.includes(job.stage)) return job.stage === 'waiting-input' ? 'waiting for you' : 'needs you'
   if (job.stage === 'review') {

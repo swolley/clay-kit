@@ -238,9 +238,10 @@ A Claude Code mod in `plugins/factory/hooks/` draws the progress inside the inte
 files the run command already writes: every few seconds it reads `factory/jobs/*/job.json` and `factory/jobs/_runs/*.json`
 in the working folder and one level below it (a workspace root with several repos).
 
-- **Band above the prompt** while any job is running or waiting: a bar of tasks done over total for the active plan,
-  its name, the phases of the running jobs (`build`, `review r1 2/3`, `approve`) and, highlighted, how many jobs
-  are waiting for the user. A Hide button, and the `factory-progress` command, toggle it.
+- **Band above the prompt** while any job is running or waiting: a bar of tasks done over total (filled part in green, empty part dimmed)
+  for the plan that needs the user most, its name, `+N plans` for the other plans that have work running or waiting
+  (finished plans are not counted), the phases of the running jobs (`build`, `review r1 2/3`, `approve`) and,
+  highlighted, the ids of the jobs waiting for the user (three at most, then `+N`). A Hide button, and the `factory-progress` command, toggle it.
 - **Toast** when a job starts waiting for the user (`needs-human` or `waiting-input`), and once at start-up if
   some already are.
 - **Pane** with the plans, their jobs and each job's reviewer verdicts, opened by the `factory-agents` command.
