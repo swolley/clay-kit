@@ -38,8 +38,8 @@ const WAIT = '#f2c230'
 
 const INK = '#0c0f15'
 // Round ends for bars and badges. If the font draws them badly, set both to '' to get square ends.
-const CAP_L = '◖'
-const CAP_R = '◗'
+const CAP_L = ''
+const CAP_R = ''
 const SOFT = '#d8dde8'
 
 // A solid bar with its label written inside it: the part under the fill and the part past it are two
