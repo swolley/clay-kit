@@ -11,7 +11,9 @@ export type FactoryJob = {
   round: number
   reviewers: string[]
   reviews: Record<string, string>
-  agents: Record<string, { model: string; effort: string }>
+  agents: Record<string, { model: string; effort: string; tokens: number; ms: number; runs: number }>
+  tokens: number
+  agentMs: number
 }
 
 export type FactoryPlanTask = { n: number; title: string; tier: string; after: number[] }
@@ -27,6 +29,8 @@ export type FactorySummary = {
     finished: FactoryJob[]
     planned: FactoryPlanTask[]
     tasks: FactoryPlanTask[]
+    tokens: number
+    agentMs: number
   }[]
   waiting: number
   running: number

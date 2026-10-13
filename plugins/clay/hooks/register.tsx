@@ -5,6 +5,7 @@ import {
   STAGE_STEPS,
   activePlans,
   formatDuration,
+  formatTokens,
   jobIdFromPrompt,
   jobElapsed,
   labeledBar,
@@ -274,6 +275,7 @@ export const register: Register = on => {
           <Box gap={1} paddingLeft={2} alignItems="center">
             {job && <Text dimColor>{job.id}</Text>}
             {tier && <Text color={tierColor(tier)}>{tier}</Text>}
+            {job && job.tokens > 0 && <Text dimColor>{formatTokens(job.tokens)} tok · {formatDuration(job.agentMs)} working</Text>}
             {owner && <Text color={who.mismatch ? WAIT : undefined} dimColor={!who.mismatch}>{owner}</Text>}
             {job && job.reviewers.map(rv => led(Box, Text, rv, job.reviews[rv]))}
             {job && job.stage === 'needs-human' && act('approve', `/factory-approve ${job.id}`)}
@@ -294,6 +296,7 @@ export const register: Register = on => {
             {slim(elements, p.done, p.total, 140, OK, 16)}
             {mid(Box, <Text bold>{p.done}/{p.total}</Text>)}
             {mid(Box, <Text dimColor>{elapsed === null ? '' : formatDuration(elapsed)}</Text>)}
+            {p.tokens > 0 && mid(Box, <Text dimColor>{formatTokens(p.tokens)} tok · {formatDuration(p.agentMs)} agents</Text>)}
             {p.path && act('run', `/factory-run ${p.path}`)}
           </Box>
           {rows.length > 0 && header}

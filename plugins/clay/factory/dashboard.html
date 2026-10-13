@@ -50,6 +50,9 @@ button.copy:hover { color: var(--text); border-color: var(--accent); }
 pre { margin: 0; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, monospace;
       background: var(--page); border: 1px solid var(--rule); border-radius: 6px; }
 .none { padding: 22px 0; color: var(--soft); }
+table.agents { border-collapse: collapse; font-size: 12px; }
+table.agents th, table.agents td { padding: 2px 10px 2px 0; text-align: left; border-bottom: 1px solid var(--rule); }
+.phases { display: flex; flex-wrap: wrap; gap: 6px; }
 </style>
 </head>
 <body>
@@ -114,6 +117,10 @@ function groupBy(list, key) {
   return out
 }
 
+const fmtMs = ms => { const t = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(t / 3600); const m = Math.floor((t % 3600) / 60); const s = String(t % 60).padStart(2, '0'); return h ? h + ':' + String(m).padStart(2, '0') + ':' + s : m + ':' + s }
+const fmtTok = n => n < 1000 ? String(n) : n < 10000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : n < 1e6 ? Math.round(n / 1000) + 'k' : (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'
+const usage = job => Object.values(job.agents || {}).reduce((u, a) => ({ tokens: u.tokens + (a.tokens || 0), ms: u.ms + (a.ms || 0) }), { tokens: 0, ms: 0 })
+
 // A small button that copies `text`; it never opens the detail panel.
 function copyButton(text) {
   const b = make('button', 'copy', 'copy')
@@ -146,6 +153,8 @@ function cardFor(job) {
     const verdict = (job.reviews && job.reviews[lens]) || 'pending'
     lenses.append(make('span', 'lens ' + verdict, lens + ' ' + verdict))
   }
+  const u = usage(job)
+  if (u.tokens > 0) facts.append(make('span', 'pill', fmtTok(u.tokens) + ' tok'), make('span', 'pill', fmtMs(u.ms) + ' working'))
   card.append(head, facts, lenses)
   if (job.stage === 'needs-human') card.append(commandRow('/factory-approve ' + job.id), commandRow('/factory-rework ' + job.id + ' <note>'))
   if (job.stage === 'waiting-input') card.append(commandRow('/factory-answer ' + job.id))
@@ -177,6 +186,27 @@ async function showJob(job) {
   close.addEventListener('click', () => $detail.classList.remove('shown'))
   $detail.replaceChildren(close, make('h2', '', job.id))
   $detail.classList.add('shown')
+  const rows = Object.entries(job.agents || {})
+  if (rows.length) {
+    const table = make('table', 'agents')
+    const head = make('tr')
+    for (const h of ['agent', 'model', 'tokens', 'time', 'runs']) head.append(make('th', '', h))
+    table.append(head)
+    for (const [role, a] of rows) {
+      const tr = make('tr')
+      for (const c of [role, a.model || '', fmtTok(a.tokens || 0), fmtMs(a.ms || 0), String(a.runs || 1)]) tr.append(make('td', '', c))
+      table.append(tr)
+    }
+    $detail.append(make('div', 'fname', 'agents (usage as the host reported it; your own session is not included)'), table)
+  }
+  if ((job.phases || []).length) {
+    const log = make('div', 'phases')
+    for (const p of job.phases) {
+      const end = p.end ? Date.parse(p.end) : Date.now()
+      log.append(make('span', 'pill', p.stage + ' ' + fmtMs(end - Date.parse(p.start))))
+    }
+    $detail.append(make('div', 'fname', 'time in each phase (includes waiting for you)'), log)
+  }
   const dir = ROOT + job.id + '/'
   const names = []
   for (const entry of await entries(dir)) {

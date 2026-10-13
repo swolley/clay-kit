@@ -3,7 +3,7 @@
 export type Stage = 'spec' | 'build' | 'waiting-input' | 'review' | 'approve' | 'merged' | 'committed' | 'needs-human'
 
 // What the orchestrator asked for when it spawned an agent of the job.
-export type AgentInfo = { model: string; effort: string }
+export type AgentInfo = { model: string; effort: string; tokens: number; ms: number; runs: number }
 
 export type PlanTask = { n: number; title: string; tier: string; after: number[] }
 
@@ -20,6 +20,8 @@ export type Job = {
   reviewers: string[]
   reviews: Record<string, string>
   agents: Record<string, AgentInfo>
+  tokens: number
+  agentMs: number
 }
 
 export type Run = { plan: string; path: string; total: number; done: number; tasks: PlanTask[] }
@@ -34,6 +36,8 @@ export type PlanView = {
   finished: Job[]
   planned: PlanTask[]
   tasks: PlanTask[]
+  tokens: number
+  agentMs: number
 }
 
 export type Summary = { plans: PlanView[]; waiting: number; running: number }
@@ -55,7 +59,8 @@ function parseAgents(raw: unknown): Record<string, AgentInfo> {
   if (!isRecord(raw)) return out
   for (const [role, info] of Object.entries(raw)) {
     if (isRecord(info) && typeof info.model === 'string') {
-      out[role] = { model: info.model, effort: typeof info.effort === 'string' ? info.effort : '' }
+      const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+      out[role] = { model: info.model, effort: typeof info.effort === 'string' ? info.effort : '', tokens: num(info.tokens), ms: num(info.ms), runs: num(info.runs) }
     }
   }
   return out
@@ -70,6 +75,7 @@ export function parseJob(text: string): Job | null {
   }
   if (!isRecord(raw) || typeof raw.id !== 'string' || typeof raw.plan !== 'string' || typeof raw.stage !== 'string') return null
   if (!STAGES.includes(raw.stage)) return null
+  const agents = parseAgents(raw.agents)
   const reviews = isRecord(raw.reviews) ? Object.fromEntries(Object.entries(raw.reviews).map(([k, v]) => [k, String(v)])) : {}
   return {
     id: raw.id,
@@ -83,7 +89,9 @@ export function parseJob(text: string): Job | null {
     round: typeof raw.round === 'number' ? raw.round : 0,
     reviewers: Array.isArray(raw.reviewers) ? raw.reviewers.map(String) : [],
     reviews,
-    agents: parseAgents(raw.agents),
+    agents,
+    tokens: Object.values(agents).reduce((n, a) => n + a.tokens, 0),
+    agentMs: Object.values(agents).reduce((n, a) => n + a.ms, 0),
   }
 }
 
@@ -137,6 +145,8 @@ export function summarize(runs: Run[], jobs: Job[]): Summary {
       finished: list.filter(j => LANDED.includes(j.stage)),
       planned: (run?.tasks ?? []).filter(t => !started.has(t.n)),
       tasks: run?.tasks ?? [],
+      tokens: list.reduce((n, j) => n + j.tokens, 0),
+      agentMs: list.reduce((n, j) => n + j.agentMs, 0),
     })
   }
   return {
@@ -402,4 +412,12 @@ export function rowStatus(row: TaskRow): { label: string; kind: 'waiting' | 'run
   if (LANDED.includes(row.job.stage)) return { label: 'landed', kind: 'landed' }
   if (NEEDS_USER.includes(row.job.stage)) return { label: phaseLabel(row.job), kind: 'waiting' }
   return { label: phaseLabel(row.job), kind: 'running' }
+}
+
+// `950`, `9.5k`, `14k`, `1.3M`: short enough for a row of the pane.
+export function formatTokens(n: number): string {
+  if (n < 1000) return String(Math.max(0, Math.round(n)))
+  if (n < 10_000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`
+  if (n < 1_000_000) return `${Math.round(n / 1000)}k`
+  return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
 }

@@ -71,6 +71,13 @@ Use a task whose brief leaves a real choice open (for example "add a cache" with
 - [ ] The pane buttons (`approve`, `rework`, `answer`, `run`) write the right command in the prompt.
 - [ ] In the dashboard the ids and commands can be selected and copied, and a selection survives the refresh.
 
+## I. Speed and usage
+
+- [ ] A `light` task with a small change takes the short path: no reviewer runs, `reviewers` is empty, and the approver's decision mentions it reviewed the diff.
+- [ ] Builders of `light` and `medium` tasks run on the faster model, `careful` and `heavy` on the stronger one (`agents` in `job.json`).
+- [ ] After each agent, `job.json` has its `tokens`, `ms`, `tools` and `runs`; the pane shows `<tokens> tok · <time> working` on the task line and totals on the plan.
+- [ ] The dashboard detail of a job lists each agent with model, tokens, time and runs, and the time spent in each phase.
+
 ## G. Progress mod (Claude Code)
 
 - [ ] With the plugin loaded and jobs present, the band above the prompt shows the plan, the bar and the running phases.

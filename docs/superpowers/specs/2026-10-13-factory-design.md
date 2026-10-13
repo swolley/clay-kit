@@ -222,6 +222,22 @@ only its file is, and a reviewer that wrote no file gets one more try; the host'
 apply the model only, `agents` records an empty effort, and a resumed agent is addressed by the id the spawn returned; and the plans listed by
 `resolve.py plans` count a task as done when a job landed it, because plan steps are ticked only at the end of a run.
 
+### 4.7d Speed and cost
+
+The first real run (three trivial tasks, 18 agent runs) took about 6.5 minutes of agent time and 260 thousand subagent tokens, 60 to 80 seconds and 40 to
+60 thousand tokens per one-line task, and most of the wall time was orchestration and waiting. What was done about it:
+
+- **Models by tier.** With the host's spawn tool unable to pass an effort, one model for every tier made the tier meaningless, so `light` and `medium` run on
+  the faster model and `careful` and `heavy` on the stronger one (`tiers.md`). The approver uses the stronger model only when the job is risky (a sensitive
+  path was routed to security, or a `careful`, `heavy` or `fable` tier).
+- **Short path.** A `light` task whose change touches at most 3 files and 30 lines, with only the `code` lens selected, runs no separate reviewer: the approver
+  reads the diff itself (`Lite: yes`).
+- **A script for the mechanical parts.** `scripts/state.py` creates jobs and their brief, keeps the stages and a phase log with times, records each agent's usage,
+  routes the reviewers, checks the verdict files and lands a job, so the orchestrator makes fewer, shorter turns and cannot skip a check.
+- **Measuring.** The usage a spawn returns (tokens, tool calls, duration) is stored per agent in `job.json` and shown in the pane (per task and per plan) and in the
+  dashboard (per agent, and the time spent in each phase). The orchestrator's own session usage is not available and is not included; no dollar cost is computed,
+  because the host reports one total per agent, not input and output.
+
 ### 4.8 Resuming an interrupted run
 
 There is no separate resume command: `/factory-run <plan>` is idempotent and resumes by itself.

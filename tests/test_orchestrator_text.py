@@ -158,3 +158,34 @@ def test_spawn_limits_of_the_host_are_stated():
     t = read("reference/orchestrator.md")
     assert "does not accept an effort" in t and "leave `effort` empty" in t
     assert "agent id" in t
+
+
+def test_light_and_medium_tiers_run_on_the_faster_model():
+    t = read("tiers.md")
+    assert "| light |" in t and "| medium |" in t
+    rows = {line.split("|")[1].strip(): line for line in t.splitlines() if line.startswith("| ") and "|" in line[2:]}
+    assert "sonnet" in rows["light"] and "sonnet" in rows["medium"]
+    assert "opus" in rows["careful"] and "opus" in rows["heavy"]
+
+
+def test_approver_model_depends_on_risk():
+    t = read("tiers.md")
+    assert "approver" in t and "sensitive" in t
+
+
+def test_run_uses_the_state_script_for_bookkeeping():
+    t = read("reference/orchestrator.md")
+    for cmd in ("state.py new-job", "state.py route", "state.py verdicts", "state.py agent", "state.py land", "state.py stage"):
+        assert cmd in t, cmd
+
+
+def test_short_path_is_described_for_light_tasks():
+    t = read("reference/orchestrator.md")
+    assert "short path" in t and "`lite`" in t
+    assert "Lite" in read("agents/approver.md")
+
+
+def test_agent_usage_is_recorded_after_every_spawn():
+    t = read("reference/orchestrator.md")
+    assert "subagent_tokens" in t or "usage" in t
+    assert "state.py agent" in t

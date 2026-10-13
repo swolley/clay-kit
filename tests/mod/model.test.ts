@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar, reviewerLabel, verdictMark, roleOf, jobIdFromPrompt, shortModel, workingNow, taskRows, situationText, rowStatus } from '../../plugins/clay/hooks/model.ts'
+import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar, reviewerLabel, verdictMark, roleOf, jobIdFromPrompt, shortModel, workingNow, taskRows, situationText, rowStatus, formatTokens } from '../../plugins/clay/hooks/model.ts'
 
 const job = (over: Record<string, unknown> = {}) =>
   parseJob(JSON.stringify({ id: '001-a', plan: 'p1', repo: 'api', tier: 'medium', stage: 'build', round: 0, reviewers: [], reviews: {}, ...over }))!
@@ -251,7 +251,10 @@ test('verdictMark adds a one-character cue so the color is not the only signal',
 
 test('parseJob reads the agents recorded by the orchestrator', () => {
   const j = job({ agents: { builder: { model: 'opus', effort: 'medium' }, ux: { model: 'sonnet' }, junk: 5 } })
-  assert.deepEqual(j.agents, { builder: { model: 'opus', effort: 'medium' }, ux: { model: 'sonnet', effort: '' } })
+  assert.deepEqual(j.agents, {
+    builder: { model: 'opus', effort: 'medium', tokens: 0, ms: 0, runs: 0 },
+    ux: { model: 'sonnet', effort: '', tokens: 0, ms: 0, runs: 0 },
+  })
   assert.deepEqual(job().agents, {})
 })
 
@@ -347,4 +350,38 @@ test('parseRun reads the plan path and summarize carries it to the plan view', (
   assert.equal(run.path, 'docs/superpowers/plans/p1.md')
   assert.equal(summarize([run], []).plans[0]!.path, 'docs/superpowers/plans/p1.md')
   assert.equal(summarize([], [job()]).plans[0]!.path, '')
+})
+
+
+test('parseJob reads the usage of each agent and sums it per job', () => {
+  const j = job({
+    agents: {
+      builder: { model: 'opus', effort: '', tokens: 14171, ms: 27161, tools: 6, runs: 1 },
+      code: { model: 'sonnet', tokens: 12191, ms: 12164 },
+      junk: { model: 'x', tokens: 'many' },
+    },
+  })
+  assert.equal(j.agents.builder!.tokens, 14171)
+  assert.equal(j.agents.code!.ms, 12164)
+  assert.equal(j.agents.junk!.tokens, 0)
+  assert.equal(j.tokens, 26362)
+  assert.equal(j.agentMs, 39325)
+  assert.equal(job().tokens, 0)
+})
+
+test('summarize totals the tokens and agent time of a plan', () => {
+  const a = job({ id: '001-a', stage: 'merged', agents: { builder: { model: 'opus', tokens: 1000, ms: 2000 } } })
+  const b = job({ id: '002-b', stage: 'build', agents: { builder: { model: 'opus', tokens: 500, ms: 1000 } } })
+  const p = summarize([], [a, b]).plans[0]!
+  assert.equal(p.tokens, 1500)
+  assert.equal(p.agentMs, 3000)
+})
+
+test('formatTokens keeps the number short and readable', () => {
+  assert.equal(formatTokens(0), '0')
+  assert.equal(formatTokens(950), '950')
+  assert.equal(formatTokens(9500), '9.5k')
+  assert.equal(formatTokens(14171), '14k')
+  assert.equal(formatTokens(260000), '260k')
+  assert.equal(formatTokens(1_250_000), '1.3M')
 })

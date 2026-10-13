@@ -14,6 +14,14 @@ The prompt gives the job folder, worktree, branch, mode, base and final round. S
 In current-branch mode the change is the working tree: `git diff HEAD` plus untracked files from
 `git status --porcelain`.
 
+## Lite jobs
+
+When your prompt says `Lite: yes` the job took the short path: no separate reviewer ran, because the change is small, of a light task and
+touches no sensitive path. Then the review is yours. Read the diff with the questions of a code reviewer (does it meet every criterion and
+nothing more, can it break something nearby, is the test about behavior and was it seen failing, is anything left behind) before the three
+gates; gate 2 then reads "there is nothing in your review of the diff that you would block on". Escalate whenever you doubt it: a person
+can always send the job back.
+
 ## Three gates, all required for APPROVE
 
 1. **Evidence.** The task has at least one acceptance criterion (an empty Accept list means ESCALATE, since
