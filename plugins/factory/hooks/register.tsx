@@ -19,7 +19,7 @@ import {
   waitingLabel,
 } from './model'
 import type { Fs, Job, PlanView, Summary } from './model'
-import { pillBar, tierFill, tilePill } from './svg'
+import { pillBar, slimBar, tilePill } from './svg'
 
 const PANE = 'factory-agents'
 const POLL_MS = 3000
@@ -36,7 +36,6 @@ const byNeed = (a: PlanView, b: PlanView) => b.waiting.length - a.waiting.length
 const TRACK = '#343a48'
 const OK = '#3fb97c'
 const OK_FILL = '#2a8f5f'
-const WAIT_FILL = '#a87415'
 const WAIT = '#f2c230'
 
 const INK = '#0c0f15'
@@ -58,11 +57,10 @@ const labeled = (Box: any, Text: any, label: string, done: number, total: number
 
 const stateIcon = (job: Job) => (job.stage === 'merged' || job.stage === 'committed' ? '✓' : '●')
 
+// The color of a job's status dot says its state and nothing else; the tier has its own color.
 const stateColor = (job: Job) =>
-  job.stage === 'merged' || job.stage === 'committed' ? OK : job.stage === 'needs-human' || job.stage === 'waiting-input' ? WAIT : tierColor(job.tier)
+  job.stage === 'merged' || job.stage === 'committed' ? OK : job.stage === 'needs-human' || job.stage === 'waiting-input' ? WAIT : '#c9d1e0'
 
-const fillFor = (job: Job) =>
-  job.stage === 'merged' || job.stage === 'committed' ? OK_FILL : job.stage === 'needs-human' || job.stage === 'waiting-input' ? WAIT_FILL : tierFill(job.tier)
 
 // A progress bar with its label inside. On surfaces that draw vector art it is a rounded SVG pill; elsewhere the
 // bar is built from colored text cells (`cols` wide). `elements` is what `$.ui.resolve` returned.
@@ -74,6 +72,19 @@ const bar = (elements: any, label: string, done: number, total: number, px: numb
   return (
     <Box alignSelf="center" flexShrink={0}>
       <Svg source={pillBar({ label, done, total, width: px, fill, track: TRACK })} alt={label} width={px} height={20} />
+    </Box>
+  )
+}
+
+// A thin bar with no text; what it shows is written beside it. Vector art where the surface has it, text cells otherwise.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const slim = (elements: any, done: number, total: number, px: number, color: string, cols: number) => {
+  const { Box, Text } = elements
+  const Svg = 'Svg' in elements ? elements.Svg : undefined
+  if (!Svg) return labeled(Box, Text, '', done, total, cols, color)
+  return (
+    <Box alignSelf="center" flexShrink={0}>
+      <Svg source={slimBar({ done, total, width: px, fill: color, track: TRACK })} alt={`${done} of ${total}`} width={px} height={4} />
     </Box>
   )
 }
@@ -214,10 +225,10 @@ export const register: Register = on => {
             {mid(Box, <Text color={color}>{stateIcon(job)}</Text>)}
             {mid(Box, <Text bold={job.stage === 'needs-human' || job.stage === 'waiting-input'}>{job.id}</Text>)}
             {mid(Box, <Text color={tierColor(job.tier)}>{job.tier}</Text>)}
-            {mid(Box, <Text dimColor>{spent === null ? '' : formatDuration(spent)}</Text>)}
+            {mid(Box, <Text dimColor>{phaseLabel(job)}{spent === null ? '' : ` · ${formatDuration(spent)}`}</Text>)}
           </Box>
           <Box gap={1} paddingLeft={2} alignItems="center">
-            {bar(elements, phaseLabel(job), stageStep(job), STAGE_STEPS, 220, fillFor(job), color, 30)}
+            {slim(elements, stageStep(job), STAGE_STEPS, 180, tierColor(job.tier), 22)}
             {job.reviewers.map(r => led(Box, Text, r, job.reviews[r]))}
           </Box>
         </Box>
@@ -230,7 +241,8 @@ export const register: Register = on => {
         <Box flexDirection="column">
           <Box gap={1} alignItems="center">
             {mid(Box, <Text bold>{p.plan}</Text>)}
-            {bar(elements, `Tasks ${p.done}/${p.total}`, p.done, p.total, 220, OK_FILL, OK, 30)}
+            {slim(elements, p.done, p.total, 140, OK, 16)}
+            {mid(Box, <Text bold>{p.done}/{p.total}</Text>)}
             {mid(Box, <Text dimColor>{elapsed === null ? '' : formatDuration(elapsed)}</Text>)}
           </Box>
           {p.waiting.length > 0 && <Text bold color={WAIT}>Waiting for you · {p.waiting.length}</Text>}

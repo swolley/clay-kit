@@ -249,9 +249,9 @@ in the working folder and one level below it (a workspace root with several repo
 - **Toast** when a job starts waiting for the user (`needs-human` or `waiting-input`), and once at start-up if
   some already are.
 - **Pane** (`factory-agents`) with, per plan, the same bar with the elapsed time and these sections: Waiting for
-  you, Running, Finished (collapsible) and Planned (task title, tier, `after` dependencies). Each job is a two-line card: status icon,
-  id, tier in a color and elapsed time, then a bar on a five-step track (spec, build, review, approve, landed) with the
-  phase written inside it, and the reviewers as LEDs: a colored dot (green `PASS`, red `CHANGES`, gray pending) with the name beside it
+  you, Running, Finished (collapsible) and Planned (task title, tier, `after` dependencies). Each job is a two-line card: a status dot
+  (state only: yellow waiting, light running, green landed), id, tier in its own color, the phase and elapsed time, then a
+  thin bar on a five-step track (spec, build, review, approve, landed) whose color is the tier and nothing else, and the reviewers as LEDs: a colored dot (green `PASS`, red `CHANGES`, gray pending) with the name beside it
   (`security` shortened to `sec`; a `!` or `…` after the name is a cue besides color), with a legend under the tiles. The top of the pane has summary tiles (running, waiting, landed,
   elapsed).
 - Commands are `factory-progress` and `factory-agents`. A mod command name may only hold letters, digits, `_` and `-`:
