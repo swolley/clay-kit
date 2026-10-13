@@ -112,7 +112,7 @@ Every command is its own skill, so each one appears in the host's command autoco
 | `factory-run`, `factory-task`, `factory-approve`, `factory-rework`, `factory-answer` | the user only (model invocation disabled) | start autonomous work that spends tokens, creates branches and worktrees and can merge |
 | `factory-status` | the user only | read-only, but kept explicit so it is never run by surprise |
 
-Model invocation is controlled per skill. The orchestration logic shared by `factory-run`, `factory-task`, `factory-approve`, `factory-rework`, `factory-answer` and `factory-status` (job loop, modes, resume, state) lives in one reference file of the plugin, which these skills read; how a skill points at a shared file is recorded in `docs/hosts.md`. Commands are namespaced by the plugin (`/factory-run`); the exact spelling per host is also in `docs/hosts.md`. The autocompletion behavior (one entry per skill, no sub-arguments) is observed from installed plugins, not yet tested for this tool.
+Model invocation is controlled per skill. The orchestration logic shared by `factory-run`, `factory-task`, `factory-approve`, `factory-rework`, `factory-answer` and `factory-status` (job loop, modes, resume, state) lives in one reference file of the plugin, which these skills read; how a skill points at a shared file is recorded in `docs/hosts.md`. The exact spelling per host is recorded in `docs/hosts.md`. The autocompletion behavior (one entry per skill, no sub-arguments) is observed from installed plugins, not yet tested for this tool.
 
 ### 4.1 Commands
 
