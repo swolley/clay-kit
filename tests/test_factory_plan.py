@@ -50,3 +50,15 @@ def test_checkbox_in_code_fence_ignored():
 def test_phase_headings_are_tasks():
     plan = load("plan-legacy.md")
     assert [t.number for t in plan.tasks] == [1, 2] and plan.tasks[1].done is True
+
+
+def test_plan_skill_template_parses():
+    import re
+
+    skill = (HERE.parent / "plugins/factory/skills/plan/SKILL.md").read_text()
+    m = re.search(r"## Task template\n+```markdown\n(.*?)\n```", skill, re.S)
+    assert m, "plan skill must contain a '## Task template' markdown block"
+    plan = parse_plan(m.group(1), default_repo="x")
+    t = plan.tasks[0]
+    assert t.defaults_applied == [] and t.tier == "careful" and t.depends == [1]
+    assert len(t.steps) >= 2 and all(s.state == "open" for s in t.steps)

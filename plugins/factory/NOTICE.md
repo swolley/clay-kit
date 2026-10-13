@@ -5,7 +5,7 @@ license texts are in `licenses/` at the repository root.
 
 | Source | Copyright | Derived files |
 |--------|-----------|---------------|
-| obra/superpowers v6.4.2 | (c) 2025 Jesse Vincent | `skills/brainstorm/SKILL.md` (from `brainstorming`) |
+| obra/superpowers v6.4.2 | (c) 2025 Jesse Vincent | `skills/brainstorm/SKILL.md` (from `brainstorming`), `skills/plan/SKILL.md` (from `writing-plans`) |
 | JohnnyVizz/claude-kit, commit 272a877 | (c) 2026 johnnyvizz | (added as files are written) |
 
 The general pattern of a spec, build, review and approve loop was inspired by
