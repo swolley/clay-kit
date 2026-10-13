@@ -100,12 +100,24 @@ Two human gates only: design (spec or short chat design) and plan. After the pla
 
 At start the orchestrator checks that the plan exists and has checkbox tasks with the fields above. If not, it stops and points to `brainstorming` and `writing-plans`. It checks that the target repo is a git repository with a clean main checkout.
 
-### 4.3 Branches and worktrees
+### 4.3 Isolation mode: branches and worktrees
 
+At the start of `/factory plan` the orchestrator proposes a mode through the native question tool, with isolation as the recommended option, and records the choice in the plan's run state.
+
+**Isolated (recommended, default).**
 - One integration branch per plan and repo: `factory/<plan-slug>`, created from the repo's main branch.
-- One worktree and one branch per job: `factory/<plan-slug>/<task-id>`, created from the integration branch. Worktrees live next to the repo, as in the original factory.
+- One worktree and one branch per job: `factory/<plan-slug>/<task-id>`, created from the integration branch. Worktrees live next to the repo.
 - Tasks run in sequence by default. Tasks whose `depends` are satisfied and whose `files` do not overlap may run in parallel.
-- The main checkout is never touched except by the final merge the user chooses.
+- The user's checkout is never touched except by the final merge the user chooses.
+
+**Current branch (user opt-in).**
+- The user confirms working directly on the branch they are on. No integration branch, no worktrees, no merge step: each approved job is committed on the current branch.
+- Jobs run strictly in sequence, since they share one working tree. Parallel execution is disabled in this mode.
+- Preconditions: clean working tree at start, and the orchestrator names the branch it will commit to and waits for confirmation. If the branch is `main` or the repo's default branch, the confirmation says so explicitly.
+- A job that fails review or escalates stops the run, leaving earlier approved jobs committed and the failing job's changes in the working tree for the user to inspect, with no automatic reset.
+- The user can keep working in other worktrees of the same repo in parallel; the factory only owns the checkout it was started in.
+
+The mode applies per run. `job.json` records it (`mode: "isolated" | "current-branch"`).
 
 ### 4.4 Job loop
 
@@ -122,7 +134,7 @@ task -> builder -> [routed reviewers] -> WAIT FOR ALL
 - **Builder** runs at the task's tier. It carries, as short sections of its own prompt, test-first development, systematic debugging, and verification before claiming done (commands run, results recorded). It updates `filemap.md` when it adds or moves files.
 - **Reviewer routing** is decided after the build from the real diff, using `routing.md` (path pattern to reviewer). `reviewer-code` and `approver` always run. `reviewer-ui`, `reviewer-ux`, `reviewer-security` run only when a changed path matches. The routing result is written to `job.json` and the round waits only for the selected reviewers.
 - **Reviews are adversarial:** the builder's report is a claim to verify against the diff, not a fact.
-- **Approver** merges only when all acceptance criteria are met with evidence, all selected reviews pass, and there are no conflicts. It escalates on: licensing or ownership boundaries stated in the repo's instructions, money, auth or permissions, migrations, CI or deploy config, new dependencies, and spec assumptions that are product decisions.
+- **Approver** merges (isolated mode) or commits (current-branch mode) only when all acceptance criteria are met with evidence, all selected reviews pass, and there are no conflicts. It escalates on: licensing or ownership boundaries stated in the repo's instructions, money, auth or permissions, migrations, CI or deploy config, new dependencies, and spec assumptions that are product decisions.
 
 ### 4.5 Tiers
 
@@ -138,11 +150,11 @@ Rule: the cheapest tier that gets the task right the first time; when unsure, th
 
 ### 4.6 Completion
 
-When every task is merged, the orchestrator ticks the plan's checkboxes (so any plan-status tooling stays accurate), then hands over to the finish step: the user chooses how the integration branch reaches main. The plugin never pushes.
+When every task is done, the orchestrator ticks the plan's checkboxes (so any plan-status tooling stays accurate). In isolated mode it then hands over to the finish step: the user chooses how the integration branch reaches main. In current-branch mode the commits are already on the branch and there is nothing to merge. The plugin never pushes.
 
 ### 4.7 State
 
-Runtime state in `factory/jobs/<job-id>/` of the main checkout, gitignored: `job.json` (written only by the orchestrator), `build.md`, `round-N/review-*.md`, `decision.md`, `rework-K.md`. `job.json` fields: `id`, `plan`, `task`, `repo`, `tier`, `branch`, `worktree`, `stage`, `round`, `reviewers`, `reviews`.
+Runtime state in `factory/jobs/<job-id>/` of the main checkout, gitignored: `job.json` (written only by the orchestrator), `build.md`, `round-N/review-*.md`, `decision.md`, `rework-K.md`. `job.json` fields: `id`, `plan`, `task`, `repo`, `mode`, `tier`, `branch`, `worktree`, `stage`, `round`, `reviewers`, `reviews`.
 
 ## 5. Dashboard
 
