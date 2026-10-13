@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Factory board</title>
+<style>
+:root { --bg:#f6f7f9; --card:#fff; --ink:#1c2230; --mute:#667085; --line:#dfe3ea; --pass:#1a7f4b; --chg:#b42318; --pend:#8a94a6; --wait:#b54708; --act:#2b5fd9; }
+@media (prefers-color-scheme: dark) { :root { --bg:#12151b; --card:#1b2029; --ink:#e7eaf0; --mute:#97a0b2; --line:#2a313e; --pass:#4ac083; --chg:#f2766b; --pend:#7c8699; --wait:#f0a04b; --act:#7ea3ff; } }
+* { box-sizing: border-box; }
+body { margin:0; font:14px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+header { padding:14px 16px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; }
+h1 { font-size:16px; margin:0; }
+#meta { color:var(--mute); font-size:12px; }
+main { padding:16px; max-width:1100px; margin:0 auto; }
+.plan { margin-bottom:28px; }
+.plan > h2 { font-size:13px; margin:0 0 8px; color:var(--mute); text-transform:uppercase; letter-spacing:.04em; }
+.repo { margin:0 0 14px; }
+.repo > h3 { font-size:13px; margin:0 0 6px; font-weight:600; }
+.cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:8px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; cursor:pointer; text-align:left; font:inherit; color:inherit; }
+.card:hover { border-color:var(--act); }
+.card.needs-human { border-color:var(--wait); box-shadow:0 0 0 2px color-mix(in srgb, var(--wait) 25%, transparent); }
+.row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.id { font-weight:600; }
+.badge { font-size:11px; padding:1px 7px; border-radius:99px; border:1px solid var(--line); color:var(--mute); }
+.badge.stage-needs-human { color:var(--wait); border-color:var(--wait); }
+.badge.stage-merged, .badge.stage-committed { color:var(--pass); border-color:var(--pass); }
+.chips { margin-top:6px; display:flex; gap:5px; flex-wrap:wrap; }
+.chip { font-size:11px; padding:1px 7px; border-radius:4px; border:1px solid currentColor; }
+.chip.PASS { color:var(--pass); } .chip.CHANGES { color:var(--chg); } .chip.pending { color:var(--pend); }
+#panel { position:fixed; inset:0 0 0 auto; width:min(560px, 100%); background:var(--card); border-left:1px solid var(--line); padding:14px 16px; overflow:auto; display:none; }
+#panel.open { display:block; }
+#panel button.close { float:right; }
+#panel h2 { margin:0 0 8px; font-size:15px; }
+.file { margin:12px 0 4px; font-weight:600; font-size:12px; color:var(--mute); }
+pre { white-space:pre-wrap; word-break:break-word; margin:0; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:12px/1.5 ui-monospace, monospace; }
+.empty { color:var(--mute); padding:24px 0; }
+</style>
+</head>
+<body>
+<header><h1>Factory board</h1><span id="meta">loading</span></header>
+<main id="board"></main>
+<aside id="panel" aria-live="polite"></aside>
+<script>
+const POLL_MS = 2000
+const board = document.getElementById('board')
+const panel = document.getElementById('panel')
+const meta = document.getElementById('meta')
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag)
+  if (cls) n.className = cls
+  if (text !== undefined) n.textContent = text
+  return n
+}
+
+async function getText(url) {
+  const r = await fetch(url, { cache: 'no-store' })
+  if (!r.ok) throw new Error(url + ' ' + r.status)
+  return r.text()
+}
+
+async function links(dir) {
+  const doc = new DOMParser().parseFromString(await getText(dir), 'text/html')
+  return [...doc.querySelectorAll('a')].map(a => a.getAttribute('href')).filter(h => h && !h.startsWith('?') && !h.startsWith('/') && !h.startsWith('..'))
+}
+
+async function loadJobs() {
+  const ids = (await links('jobs/')).map(h => h.replace(/\/$/, '')).filter(h => /^\d{3}-/.test(h))
+  const jobs = await Promise.all(ids.map(async id => {
+    try { return JSON.parse(await getText('jobs/' + id + '/job.json')) } catch { return null }
+  }))
+  return jobs.filter(Boolean)
+}
+
+function card(job) {
+  const b = el('button', 'card ' + job.stage)
+  b.type = 'button'
+  const top = el('div', 'row')
+  top.append(el('span', 'id', job.id), el('span', 'badge stage-' + job.stage, job.stage))
+  const sub = el('div', 'row')
+  sub.append(el('span', 'badge', job.tier || 'medium'))
+  if (job.round) sub.append(el('span', 'badge', 'round ' + job.round))
+  if (job.mode) sub.append(el('span', 'badge', job.mode))
+  const chips = el('div', 'chips')
+  for (const r of job.reviewers || []) chips.append(el('span', 'chip ' + (job.reviews?.[r] || 'pending'), r + ' ' + (job.reviews?.[r] || 'pending')))
+  b.append(top, sub, chips)
+  b.addEventListener('click', () => openJob(job))
+  return b
+}
+
+function render(jobs) {
+  board.replaceChildren()
+  if (!jobs.length) { board.append(el('div', 'empty', 'No jobs yet. Start one with the run command.')); return }
+  const plans = Map.groupBy(jobs, j => j.plan || 'adhoc')
+  for (const [plan, pj] of plans) {
+    const sec = el('section', 'plan')
+    sec.append(el('h2', '', plan))
+    for (const [repo, rj] of Map.groupBy(pj, j => j.repo || 'repo')) {
+      const r = el('div', 'repo')
+      r.append(el('h3', '', repo))
+      const cards = el('div', 'cards')
+      for (const j of rj.sort((a, b) => a.id.localeCompare(b.id))) cards.append(card(j))
+      r.append(cards)
+      sec.append(r)
+    }
+    board.append(sec)
+  }
+}
+
+async function openJob(job) {
+  panel.replaceChildren()
+  const close = el('button', 'close', 'Close')
+  close.addEventListener('click', () => panel.classList.remove('open'))
+  panel.append(close, el('h2', '', job.id))
+  panel.classList.add('open')
+  const base = 'jobs/' + job.id + '/'
+  const files = []
+  for (const h of await links(base)) {
+    if (h.endsWith('.md')) files.push(h)
+    else if (/^round-\d+\/$/.test(h)) for (const f of await links(base + h)) if (f.endsWith('.md')) files.push(h + f)
+  }
+  if (!files.length) panel.append(el('div', 'empty', 'No files yet.'))
+  for (const f of files.sort()) {
+    panel.append(el('div', 'file', f))
+    try { panel.append(el('pre', '', await getText(base + f))) } catch { panel.append(el('pre', '', '(unreadable)')) }
+  }
+}
+
+async function tick() {
+  try {
+    const jobs = await loadJobs()
+    render(jobs)
+    const waiting = jobs.filter(j => j.stage === 'needs-human').length
+    meta.textContent = jobs.length + ' jobs' + (waiting ? ', ' + waiting + ' waiting for you' : '')
+  } catch (e) {
+    meta.textContent = 'cannot read jobs/ (serve this folder with a static server)'
+  }
+}
+tick()
+setInterval(tick, POLL_MS)
+</script>
+</body>
+</html>

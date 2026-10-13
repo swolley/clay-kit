@@ -1,0 +1,1 @@
+{ "id": "003-rate-limit", "plan": "2026-10-13-api-work", "task": 3, "repo": "api", "mode": "isolated", "tier": "heavy", "branch": "factory/api-work/003-rate-limit", "worktree": "/tmp/z", "stage": "needs-human", "round": 1, "reviewers": ["code", "security"], "reviews": { "code": "PASS", "security": "PASS" } }
