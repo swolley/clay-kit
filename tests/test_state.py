@@ -299,3 +299,30 @@ def test_cli_lock_acquire_exits_3_when_another_run_holds_the_plan(locked_repo, c
     capsys.readouterr()
     assert state.main(["lock", "acquire", "--root", str(locked_repo), "--plan-file", PLAN_FILE, "--run-id", "run-b"]) == 3
     assert json.loads(capsys.readouterr().out)["held_by"] == "run-a"
+
+
+def test_tick_plan_closes_the_header_when_every_task_is_done(locked_repo):
+    for n in (1, 2):
+        j = new(locked_repo, n)
+        state.land_job(locked_repo, j["id"], "committed", head="abc")
+    out = state.tick_plan(locked_repo, PLAN_FILE)
+    text = (locked_repo / PLAN_FILE).read_text()
+    assert out["closed"] is True
+    assert text.startswith("---\nstatus: completed\nverified_on: 20")
+    assert text.count("- [ ]") == 0
+    assert state.tick_plan(locked_repo, PLAN_FILE)["closed"] is False  # already closed: not written twice
+    assert (locked_repo / PLAN_FILE).read_text().count("status:") == 1
+
+
+def test_tick_plan_replaces_an_existing_status_and_leaves_unfinished_plans_open(locked_repo):
+    path = locked_repo / PLAN_FILE
+    path.write_text("---\ntitle: x\nstatus: open\n---\n" + path.read_text())
+    j = new(locked_repo, 1)
+    state.land_job(locked_repo, j["id"], "committed", head="abc")
+    assert state.tick_plan(locked_repo, PLAN_FILE)["closed"] is False
+    assert "status: open" in path.read_text()
+    j = new(locked_repo, 2)
+    state.land_job(locked_repo, j["id"], "committed", head="abc")
+    assert state.tick_plan(locked_repo, PLAN_FILE)["closed"] is True
+    text = path.read_text()
+    assert text.count("status:") == 1 and "status: completed" in text and "title: x" in text

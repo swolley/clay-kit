@@ -360,13 +360,31 @@ def tick_plan(root, plan_file: str) -> dict:
             line = line.replace("[ ]", "[x]", 1)
             ticked += 1
         out.append(line)
+    text = "".join(out)
+    after = parse_plan(text)
+    stepped = [t for t in after.tasks if t.steps]
+    closed = bool(stepped) and all(t.done for t in stepped) and after.status not in ("completed", "done", "shipped")
+    if closed:
+        text = close_header(text)
     mode = stat.S_IMODE(path.stat().st_mode)
     path.chmod(mode | 0o200)
     try:
-        path.write_text("".join(out))
+        path.write_text(text)
     finally:
         path.chmod(mode)
-    return {"ok": True, "ticked": ticked}
+    return {"ok": True, "ticked": ticked, "closed": closed}
+
+
+def close_header(text: str) -> str:
+    """Declare the plan completed in its YAML front matter, creating the block when the plan has none."""
+    fields = f"status: completed\nverified_on: {datetime.now(timezone.utc).date().isoformat()}\nverified_by: clay run\n"
+    lines = text.splitlines(keepends=True)
+    if lines and lines[0].strip() == "---":
+        end = next((i for i, l in enumerate(lines[1:], 1) if l.strip() == "---"), None)
+        if end is not None:
+            kept = [l for l in lines[1:end] if not re.match(r"^(status|verified_on|verified_by):", l)]
+            return "".join(["---\n", *kept, fields, *lines[end:]])
+    return f"---\n{fields}---\n" + text
 
 
 def main(argv: list[str]) -> int:

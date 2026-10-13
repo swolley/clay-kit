@@ -249,7 +249,8 @@ At the end of a run, and in `status`, list every job that is waiting for you.
 
 When every task is landed, tick the steps of each completed task with `state.py tick-plan` (see Run lock) and commit that on
 the branch the jobs landed on: in current-branch mode in the repo (message "Mark the plan steps done"), in isolated mode in the integration
-worktree (pass the plan's path inside that worktree as `--plan-file`). Then release the lock. Isolated mode then ends
+worktree (pass the plan's path inside that worktree as `--plan-file`). When every task of the plan is done, `tick-plan` also writes
+`status: completed` and `verified_on` in the plan's front matter (`closed: true` in its output) and the same commit carries it. Then release the lock. Isolated mode then ends
 with the finish step: ask the user, with the question tool, how the integration branch reaches the repo's
 main branch: merge it, prepare a pull request without pushing, keep the branch, or discard it. Do only the
 chosen local action. Current-branch mode has nothing to merge.
