@@ -30,7 +30,7 @@ Every command is a skill named `factory-<verb>`, so it is typed `/factory-run` a
 3. `/factory-run`: for each task a builder works at the task's tier, up to four reviewers check the real diff
    (code always; ui, ux and security only when the changed paths call for them, see `routing.md`), then an
    approver lands it or escalates it. Reviewer findings are checked, not applied blindly; a builder is
-   resumed at most twice. A small `light` task takes a short path with no separate reviewer. `/factory-run <plan> inline` builds light tasks in your session instead of in a subagent; the approver and the reviewers stay independent.
+   resumed at most twice. A small `light` task takes a short path with no separate reviewer. When a plan is finished its header says `status: completed` and an `## Execution record` table keeps the run's history in the plan; the local job folders are then removed. `/factory-run <plan> inline` builds light tasks in your session instead of in a subagent; the approver and the reviewers stay independent.
 4. When all tasks have landed, you choose how the work reaches your main branch. Nothing is ever pushed.
 
 **Pace.** The run is guided: after each task it asks whether to go on, stop, or run the rest without asking. When a task needs a decision

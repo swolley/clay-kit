@@ -326,3 +326,31 @@ def test_tick_plan_replaces_an_existing_status_and_leaves_unfinished_plans_open(
     assert state.tick_plan(locked_repo, PLAN_FILE)["closed"] is True
     text = path.read_text()
     assert text.count("status:") == 1 and "status: completed" in text and "title: x" in text
+
+
+def test_closing_writes_an_execution_record_without_checkboxes(locked_repo):
+    for n in (1, 2):
+        j = new(locked_repo, n)
+        state.record_agent(locked_repo, j["id"], "builder", model="sonnet", tokens=1000, ms=5000, tools=3)
+        if n == 1:
+            (locked_repo / "factory/jobs" / j["id"] / "rework-1.md").write_text("again")
+        state.land_job(locked_repo, j["id"], "committed", head="abc")
+    state.tick_plan(locked_repo, PLAN_FILE)
+    text = (locked_repo / PLAN_FILE).read_text()
+    assert "## Execution record" in text and "| Task | Tier |" in text
+    assert "reworked 1x" in text and "Total: 2000 tokens, 10s" in text
+    tail = text.split("## Execution record")[1]
+    assert "- [ ]" not in tail and "- [x]" not in tail and "### Task" not in tail
+    state.tick_plan(locked_repo, PLAN_FILE)
+    assert (locked_repo / PLAN_FILE).read_text().count("## Execution record") == 1
+
+
+def test_clean_removes_landed_jobs_but_refuses_while_one_is_unfinished(locked_repo):
+    a, b = new(locked_repo, 1), new(locked_repo, 2)
+    state.land_job(locked_repo, a["id"], "committed", head="abc")
+    state.set_stage(locked_repo, b["id"], "needs-human")
+    out = state.clean_jobs(locked_repo, "2026-01-01-demo")
+    assert out["ok"] is False and (locked_repo / "factory/jobs" / a["id"]).exists()
+    state.land_job(locked_repo, b["id"], "merged", head="def")
+    out = state.clean_jobs(locked_repo, "2026-01-01-demo")
+    assert out["ok"] is True and not (locked_repo / "factory/jobs" / a["id"]).exists()

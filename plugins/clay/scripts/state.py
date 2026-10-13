@@ -366,6 +366,8 @@ def tick_plan(root, plan_file: str) -> dict:
     closed = bool(stepped) and all(t.done for t in stepped) and after.status not in ("completed", "done", "shipped")
     if closed:
         text = close_header(text)
+        if RECORD_TITLE not in text:
+            text = text.rstrip("\n") + "\n\n" + execution_record(root, path.stem)
     mode = stat.S_IMODE(path.stat().st_mode)
     path.chmod(mode | 0o200)
     try:
@@ -373,6 +375,55 @@ def tick_plan(root, plan_file: str) -> dict:
     finally:
         path.chmod(mode)
     return {"ok": True, "ticked": ticked, "closed": closed}
+
+
+RECORD_TITLE = "## Execution record"
+
+
+def _plan_jobs(root, plan_stem: str) -> list[dict]:
+    jobs = []
+    for f in sorted(jobs_dir(root).glob("*/job.json")):
+        j = json.loads(f.read_text())
+        if j.get("plan") == plan_stem:
+            jobs.append(j)
+    return jobs
+
+
+def execution_record(root, plan_stem: str) -> str:
+    """What the run did, as a table without checkboxes so plan tools do not read it as work. Kept in the plan, which
+    travels with the repo, since the job folders are local and are removed once the plan is closed."""
+    rows, tokens, ms = [], 0, 0
+    for j in _plan_jobs(root, plan_stem):
+        folder = jobs_dir(root) / j["id"]
+        agents = j.get("agents", {})
+        t = sum(a.get("tokens", 0) for a in agents.values())
+        m = sum(a.get("ms", 0) for a in agents.values())
+        tokens, ms = tokens + t, ms + m
+        verdicts = ", ".join(f"{k} {v}" for k, v in j.get("reviews", {}).items()) or "short path"
+        decision = ""
+        if (folder / "decision.md").exists():
+            decision = (folder / "decision.md").read_text().splitlines()[0].strip()
+        notes = []
+        if n := len(list(folder.glob("rework-*.md"))):
+            notes.append(f"reworked {n}x")
+        if n := len(list(folder.glob("answers-*.md"))):
+            notes.append(f"{n} answered question(s)")
+        models = "/".join(sorted({a.get("model", "") for a in agents.values() if a.get("model")}))
+        rows.append(f"| {j.get('task')} | {j.get('tier', '')} | {models} | {j.get('round', 1)} | {verdicts} | {decision} | {'; '.join(notes)} | {t} | {m // 1000}s |")
+    head = "| Task | Tier | Models | Rounds | Reviews | Decision | Notes | Tokens | Agent time |\n|---|---|---|---|---|---|---|---|---|\n"
+    return f"{RECORD_TITLE}\n\n{head}" + "\n".join(rows) + f"\n\nTotal: {tokens} tokens, {ms // 1000}s of agent time.\n"
+
+
+def clean_jobs(root, plan_stem: str) -> dict:
+    """Remove the local job folders and run state of a finished plan. Refuses while any job of the plan is not landed."""
+    jobs = _plan_jobs(root, plan_stem)
+    waiting = [j["id"] for j in jobs if j.get("stage") not in TERMINAL]
+    if waiting:
+        return {"ok": False, "reason": "jobs not landed: " + ", ".join(waiting), "removed": []}
+    for j in jobs:
+        shutil.rmtree(jobs_dir(root) / j["id"], ignore_errors=True)
+    run_path(root, plan_stem).unlink(missing_ok=True)  # the lock is released by `lock release`, which restores the plan's permissions
+    return {"ok": True, "removed": [j["id"] for j in jobs]}
 
 
 def close_header(text: str) -> str:
@@ -401,6 +452,9 @@ def main(argv: list[str]) -> int:
     tp = sub.add_parser("tick-plan")
     tp.add_argument("--root", default=".")
     tp.add_argument("--plan-file", required=True)
+    cl = sub.add_parser("clean")
+    cl.add_argument("--root", default=".")
+    cl.add_argument("--plan", required=True)
     for name in ("setup", "run", "new-job", "stage", "agent", "route", "verdicts", "land"):
         sp = sub.add_parser(name)
         sp.add_argument("--root", default=".")
@@ -433,6 +487,10 @@ def main(argv: list[str]) -> int:
             sp.add_argument("--stage", dest="to_stage", default="committed")
             sp.add_argument("--head", required=True)
     a = ap.parse_args(argv)
+    if a.cmd == "clean":
+        out = clean_jobs(a.root, a.plan)
+        print(json.dumps(out, indent=2))
+        return 0 if out["ok"] else 1
     if a.cmd == "tick-plan":
         print(json.dumps(tick_plan(a.root, a.plan_file), indent=2))
         return 0

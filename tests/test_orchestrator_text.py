@@ -223,3 +223,8 @@ def test_brainstorm_has_the_spec_reviewer_and_the_excuses_table():
     assert "reviewer-spec" in t and "Thoughts that mean stop" in t
     assert "reviewer-spec" in read("tiers.md")
     assert "Write" not in read("agents/reviewer-spec.md").split("---")[1]
+
+
+def test_completion_records_the_run_in_the_plan_and_cleans_the_local_jobs():
+    t = read("reference/orchestrator.md")
+    assert "Execution record" in t and "state.py clean" in t and "does not\nremove worktrees" in t
