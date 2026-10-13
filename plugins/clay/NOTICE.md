@@ -5,7 +5,7 @@ license texts ship with the plugin in `licenses/`.
 
 | Source | Copyright | License text | Derived files |
 |--------|-----------|--------------|---------------|
-| obra/superpowers v6.4.2 | (c) 2025 Jesse Vincent | `licenses/superpowers-LICENSE.txt` | `skills/brainstorm/SKILL.md` (from `brainstorming`), `skills/plan/SKILL.md` (from `writing-plans`) |
+| obra/superpowers v6.4.2 | (c) 2025 Jesse Vincent | `licenses/superpowers-LICENSE.txt` | `skills/factory-brainstorm/SKILL.md` (from `brainstorming`), `skills/factory-plan/SKILL.md` (from `writing-plans`) |
 | JohnnyVizz/claude-kit, commit 272a877 | (c) 2026 johnnyvizz | `licenses/claude-kit-LICENSE.txt` | `tiers.md` (tier model, from `savvy-flow`) |
 
 The idea of a spec, build, review and approve loop was inspired by zazencodes
