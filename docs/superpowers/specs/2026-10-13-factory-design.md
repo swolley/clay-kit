@@ -233,11 +233,13 @@ plugins/
     .codex-plugin/plugin.json
     skills/{brainstorm,plan,run,task,status,approve,rework}/SKILL.md
     reference/orchestrator.md       shared logic read by run, task, status, approve, rework
+    scripts/{factory_plan,route}.py plan parser and reviewer routing (stdlib only)
     agents/{builder,reviewer-code,reviewer-ui,reviewer-ux,reviewer-security,approver}.md
     factory/dashboard.html
     STYLE.md  routing.md  tiers.md
     NOTICE.md                       MIT notices for superpowers and claude-kit (zazencodes: credit only, see Sources and licensing)
   <future tools>/
+scripts/validate.py                 repo-level validator (development only, not installed)
 shared/                             optional: content reused by several tools (for example STYLE.md)
 docs/superpowers/specs/             design record for the whole repo
 LICENSE                             MIT (own work), covers the repo; per-tool NOTICE.md for MIT-derived work
