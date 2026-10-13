@@ -64,6 +64,8 @@ Changed:
 
 ### 3.2 `writing-plans` and the plan format
 
+**Why superpowers conventions are kept.** The folder layout (`docs/superpowers/{specs,plans}/`), the file name patterns and the plan syntax deliberately match those of superpowers. The reason is compatibility: projects already built with superpowers keep their specs and plans where tools expect them, can be executed by the factory without migration, and can still be read by superpowers or by tooling written for it. A change to these conventions is a compatibility break and must be recorded in this spec.
+
 Plans live in `docs/superpowers/plans/YYYY-MM-DD-<feature>.md` of the repo that owns the work (the same place and name pattern as superpowers). The format is a **compatible superset** of the superpowers plan format, so existing plans, and tooling that reads them such as a `plan-status` script, keep working.
 
 Kept from the superpowers format: the `# Title` heading, `Goal`, `Architecture`, `Spec` header lines, a `### Task N: <title>` heading per task, and `- [ ]` / `- [x]` / `- [-]` (open, done, cancelled) checkbox steps under each task. Tooling in the user's workspace treats a heading starting with Task, Phase, Step, Milestone or Wave as a task and each checkbox under it as a step, so the factory keeps exactly that structure.
