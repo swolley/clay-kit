@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, percent, stageStep, tierColor, formatDuration, jobElapsed, planElapsed } from '../../plugins/factory/hooks/model.ts'
+import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, percent, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar } from '../../plugins/factory/hooks/model.ts'
 
 const job = (over: Record<string, unknown> = {}) =>
   parseJob(JSON.stringify({ id: '001-a', plan: 'p1', repo: 'api', tier: 'medium', stage: 'build', round: 0, reviewers: [], reviews: {}, ...over }))!
@@ -222,4 +222,22 @@ test('planElapsed spans from the first start to now, or to the last landing when
   assert.equal(planElapsed(summarize([], [a, b]).plans[0]!, T0 + 120_000), 120_000)
   assert.equal(planElapsed(summarize([], [a]).plans[0]!, T0 + 999_000), 60_000)
   assert.equal(planElapsed(summarize([], [job()]).plans[0]!, T0), null)
+})
+
+
+test('labeledBar writes the label across the bar and splits it where the fill ends', () => {
+  const p = labeledBar('1/5 build', 1, 5, 20)
+  assert.equal(p.filled.length + p.empty.length, 20)
+  assert.equal(p.filled.length, 4)
+  assert.equal((p.filled + p.empty).trim(), '1/5 build')
+  assert.ok((p.filled + p.empty).startsWith(' 1/5'))
+})
+
+test('labeledBar truncates a long label and handles empty and full bars', () => {
+  const long = labeledBar('a very long label that cannot fit', 2, 4, 12)
+  assert.equal(long.filled.length + long.empty.length, 12)
+  assert.ok((long.filled + long.empty).endsWith('… '))
+  assert.equal(labeledBar('x', 0, 4, 10).filled, '')
+  assert.equal(labeledBar('x', 4, 4, 10).empty, '')
+  assert.deepEqual(labeledBar('x', 1, 0, 10), { filled: '', empty: ' x'.padEnd(10) })
 })

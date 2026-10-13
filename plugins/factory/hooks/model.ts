@@ -276,3 +276,13 @@ export function planElapsed(view: PlanView, now: number): number | null {
   const end = allLanded && ends.length > 0 ? Math.max(...ends) : now
   return Math.max(0, end - first)
 }
+
+// A bar whose label is written across it: the part under the fill and the part past it,
+// so the label reads as text inside the bar. A label that does not fit is cut with an ellipsis.
+export function labeledBar(label: string, done: number, total: number, width: number): { filled: string; empty: string } {
+  let text = ` ${label} `
+  if (text.length > width) text = `${text.slice(0, Math.max(0, width - 2))}… `
+  text = text.padEnd(width).slice(0, width)
+  const filled = total <= 0 ? 0 : Math.min(width, Math.max(0, Math.round((width * done) / total)))
+  return { filled: text.slice(0, filled), empty: text.slice(filled) }
+}

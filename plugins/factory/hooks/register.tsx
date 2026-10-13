@@ -4,9 +4,9 @@ import type { Register } from 'claude-code'
 import {
   STAGE_STEPS,
   activePlans,
-  barParts,
   formatDuration,
   jobElapsed,
+  labeledBar,
   percent,
   phaseLabel,
   planElapsed,
@@ -36,18 +36,29 @@ const TILE = '#232834'
 const OK = '#3fb97c'
 const WAIT = '#f2c230'
 
-// A solid bar made of two filled boxes, so it draws as one smooth strip on every surface.
-// `Box` is the surface's own element, resolved by the caller.
+const INK = '#0c0f15'
+const SOFT = '#d8dde8'
+
+// A solid bar with its label written inside it: the part under the fill and the part past it are two
+// text runs with a background color each, so it draws as one strip on every surface.
+// `Box` and `Text` are the surface's own elements, resolved by the caller.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const meter = (Box: any, done: number, total: number, width: number, color: string) => {
-  const parts = barParts(done, total, width)
+const labeled = (Box: any, Text: any, label: string, done: number, total: number, width: number, color: string) => {
+  const parts = labeledBar(label, done, total, width)
   return (
-    <Box width={width} height={1} flexShrink={0}>
-      {parts.filled.length > 0 && <Box width={parts.filled.length} height={1} backgroundColor={color} />}
-      {parts.empty.length > 0 && <Box width={parts.empty.length} height={1} backgroundColor={TRACK} />}
+    <Box flexShrink={0}>
+      {parts.filled.length > 0 && <Text bold color={INK} backgroundColor={color}>{parts.filled}</Text>}
+      {parts.empty.length > 0 && <Text color={SOFT} backgroundColor={TRACK}>{parts.empty}</Text>}
     </Box>
   )
 }
+
+// A small factory drawn for the surfaces that can show vector art.
+const ICON =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="2" y="11" width="20" height="10" rx="1" fill="#8b93a5"/>' +
+  '<path d="M2 11 7 7v4m0 0 5-4v4m0 0 5-4v4" fill="#8b93a5"/><rect x="16" y="3" width="3" height="8" fill="#8b93a5"/>' +
+  '<rect x="5" y="14" width="3" height="3" fill="#3fb97c"/><rect x="10.5" y="14" width="3" height="3" fill="#3fb97c"/>' +
+  '<rect x="16" y="14" width="3" height="3" fill="#3fb97c"/></svg>'
 
 const stateIcon = (job: Job) => (job.stage === 'merged' || job.stage === 'committed' ? '✓' : '●')
 
@@ -111,31 +122,27 @@ export const register: Register = on => {
     const quiet = e.props.hasSurvey || (await read($, isHidden)) || (summary.running === 0 && summary.waiting === 0)
     if (quiet) return next(e)
 
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const elements = $.ui.resolve(e)
+    const { Box, Button, Text } = elements
+    const Svg = 'Svg' in elements ? elements.Svg : undefined
     const active = activePlans(summary)
     const lead = active[0]
     if (!lead) return next(e)
-    const now = await $.clock.now()
     const more = active.length > 1 ? ` +${active.length - 1}` : ''
     const phases = [...new Set(lead.running.map(phaseLabel))].join(', ')
-    const elapsed = planElapsed(lead, now)
-    const detail = [lead.plan.slice(0, 22) + more, elapsed === null ? '' : formatDuration(elapsed), phases].filter(Boolean).join(' · ')
+    const label = `Tasks ${lead.done}/${lead.total}${phases ? ` · ${phases}` : ''}`
+    const dot = summary.waiting > 0 ? WAIT : OK
 
-    // One row, never wrapped: the long parts truncate instead.
+    // One row, never wrapped. The time stays in the pane.
     return (
       <Box flexWrap="nowrap" gap={1}>
-        <Text bold>factory</Text>
-        {meter(Box, lead.done, lead.total, 12, OK)}
-        <Text bold>{lead.done}/{lead.total}</Text>
-        <Text>{percent(lead.done, lead.total)}%</Text>
-        <Box flexShrink={1}>
-          <Text dimColor wrap="truncate-end">{detail}</Text>
-        </Box>
-        {summary.waiting > 0 && (
-          <Box flexShrink={0}>
-            <Text bold color={WAIT}>waiting: {waitingLabel(summary, 1)}</Text>
-          </Box>
-        )}
+        {Svg && <Svg source={ICON} alt="factory" width={18} height={18} />}
+        <Text bold color={dot}>●</Text>
+        <Text bold>{lead.plan.slice(0, 20)}{more}</Text>
+        {labeled(Box, Text, label, lead.done, lead.total, 46, OK)}
+        <Text bold>{percent(lead.done, lead.total)}%</Text>
+        {summary.waiting > 0 && <Text bold color={WAIT}>waiting: {waitingLabel(summary, 1)}</Text>}
+        <Text dimColor>×{summary.running}</Text>
         <Button key="hide" label="×" onPress={() => update($, isHidden, () => true)} />
       </Box>
     )
@@ -152,15 +159,19 @@ export const register: Register = on => {
       const spent = jobElapsed(job, now)
       const color = stateColor(job)
       return (
-        <Box gap={1}>
-          <Text color={color}>{stateIcon(job)}</Text>
-          <Text bold={job.stage === 'needs-human' || job.stage === 'waiting-input'}>{job.id}</Text>
-          <Text color={tierColor(job.tier)}>{job.tier}</Text>
-          {meter(Box, stageStep(job), STAGE_STEPS, 8, color)}
-          <Text dimColor>{phaseLabel(job)}{spent === null ? '' : ` · ${formatDuration(spent)}`}</Text>
-          {job.reviewers.map(r => (
-            <Text color={verdictColor(job.reviews[r])}>{r}:{job.reviews[r] ?? 'pending'}</Text>
-          ))}
+        <Box flexDirection="column">
+          <Box gap={1}>
+            <Text color={color}>{stateIcon(job)}</Text>
+            <Text bold={job.stage === 'needs-human' || job.stage === 'waiting-input'}>{job.id}</Text>
+            <Text color={tierColor(job.tier)}>{job.tier}</Text>
+            <Text dimColor>{spent === null ? '' : formatDuration(spent)}</Text>
+          </Box>
+          <Box gap={1} paddingLeft={2}>
+            {labeled(Box, Text, phaseLabel(job), stageStep(job), STAGE_STEPS, 30, color)}
+            {job.reviewers.map(r => (
+              <Text color={verdictColor(job.reviews[r])}>{r}:{job.reviews[r] ?? 'pending'}</Text>
+            ))}
+          </Box>
         </Box>
       )
     }
@@ -178,8 +189,7 @@ export const register: Register = on => {
         <Box flexDirection="column">
           <Box gap={1}>
             <Text bold>{p.plan}</Text>
-            {meter(Box, p.done, p.total, 16, OK)}
-            <Text bold>{p.done}/{p.total}</Text>
+            {labeled(Box, Text, `Tasks ${p.done}/${p.total}`, p.done, p.total, 30, OK)}
             <Text>{percent(p.done, p.total)}%</Text>
             <Text dimColor>{elapsed === null ? '' : formatDuration(elapsed)}</Text>
           </Box>
