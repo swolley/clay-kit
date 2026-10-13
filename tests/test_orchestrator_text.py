@@ -1,6 +1,6 @@
 from pathlib import Path
 
-PLUGIN = Path(__file__).resolve().parent.parent / "plugins/factory"
+PLUGIN = Path(__file__).resolve().parent.parent / "plugins/clay"
 
 
 def read(rel: str) -> str:
@@ -79,3 +79,14 @@ def test_progress_mod_is_wired_into_the_plugin():
     assert "factory-progress" in reg and "factory-agents" in reg
     assert "factory:progress" not in reg and "factory:agents" not in reg
     assert (PLUGIN / "types/index.d.ts").exists()
+
+
+def test_job_state_carries_times_and_run_state_carries_the_task_list():
+    t = read("reference/orchestrator.md")
+    assert "`started`" in t and "`updated`" in t and "ISO 8601" in t
+    assert "`tasks`" in t and "`after`" in t
+
+
+def test_orchestrator_records_the_model_and_effort_of_each_agent():
+    t = read("reference/orchestrator.md")
+    assert "`agents` records" in t and "effort` you passed" in t

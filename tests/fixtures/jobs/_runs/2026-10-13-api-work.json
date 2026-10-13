@@ -1,0 +1,47 @@
+{
+  "plan": "2026-10-13-api-work",
+  "mode": "isolated",
+  "total": 5,
+  "done": 1,
+  "tasks": [
+    {
+      "n": 1,
+      "title": "Add endpoint",
+      "tier": "careful",
+      "after": []
+    },
+    {
+      "n": 2,
+      "title": "Login form",
+      "tier": "medium",
+      "after": [
+        1
+      ]
+    },
+    {
+      "n": 3,
+      "title": "Rate limit",
+      "tier": "heavy",
+      "after": [
+        1
+      ]
+    },
+    {
+      "n": 4,
+      "title": "Pick cache",
+      "tier": "medium",
+      "after": []
+    },
+    {
+      "n": 5,
+      "title": "Review the whole kit",
+      "tier": "heavy",
+      "after": [
+        1,
+        2,
+        3,
+        4
+      ]
+    }
+  ]
+}

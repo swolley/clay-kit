@@ -1,11 +1,13 @@
-# factory
+# clay
+
+The plugin is called `clay`; the workflow it contains is the *factory*: brainstorm, plan, run.
 
 Take an idea to reviewed, merged code. You design and plan with the model in a conversation, then
 run the plan: each task is built, reviewed by the lenses its change needs, and approved or handed back to you.
 
 ## Commands
 
-Every command is a skill named `factory-<verb>`, so it is typed `/factory-run` and listed together in the autocomplete under `/factory-`. The namespaced form `/factory:factory-run` also works. The exact spelling per host is in [docs/hosts.md](../../docs/hosts.md).
+Every command is a skill named `factory-<verb>`, so it is typed `/factory-run` and listed together in the autocomplete under `/factory-`. The namespaced form `/clay:factory-run` also works. The exact spelling per host is in [docs/hosts.md](../../docs/hosts.md).
 
 | Command | Started by | What it does |
 |---------|-----------|--------------|
@@ -35,8 +37,9 @@ committed after approval.
 ## Progress in the terminal (Claude Code)
 
 The plugin includes a mod that shows progress inside the interface, with no setup: a band above the prompt
-(tasks done over total, running phases, how many jobs wait for you), a toast when a job needs you, and a pane
-with the jobs. `/factory-progress` shows or hides the band and `/factory-agents` opens the pane. They use a hyphen because Claude Code
+(tasks done over total, running phases, the jobs that wait for you), a toast when a job needs you,
+and a pane for whoever follows the work: one sentence of the situation, and a table with a row per task in plan order
+(status, a progress bar colored by tier, who is in charge and on which model, elapsed time, reviewer verdicts). `/factory-progress` shows or hides the band and `/factory-agents` opens the pane. They use a hyphen because Claude Code
 refuses a colon in a mod command name (the skills are named the same way, so everything sits under `/factory-`). It only reads the
 files in `factory/jobs/`.
 

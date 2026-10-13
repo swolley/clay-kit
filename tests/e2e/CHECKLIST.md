@@ -1,6 +1,6 @@
 # End-to-end checklist
 
-Needs a Claude Code session with the swolley-kit marketplace and the `factory` plugin installed.
+Needs a Claude Code session with the clay-kit marketplace and the `clay` plugin installed.
 
 Setup, once per scenario (use a fresh directory each time):
 

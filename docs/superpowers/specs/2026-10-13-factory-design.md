@@ -1,6 +1,6 @@
-# Factory tool: design (swolley-kit)
+# Factory tool: design (clay-kit)
 
-Status: draft for review. Tool name: `factory` (placeholder, see Open items), first package of a personal multi-tool repository (section 7).
+Status: draft for review. Plugin name: `clay` (the workflow it contains is called the factory), first package of a personal multi-tool repository (section 7).
 
 ## 1. Purpose
 
@@ -103,7 +103,7 @@ Two human gates only: design (spec or short chat design) and plan. After the pla
 
 ### 4.0 Skills, names and invocation
 
-Every command is its own skill, so each one appears in the host's command autocompletion and nothing has to be remembered. Every skill is named `factory-<verb>`, so the commands are typed `/factory-run` and so on and sit together under `/factory-` in the autocomplete; the namespaced form `/factory:factory-run` also works. Names read as one pipeline: `factory-brainstorm` (idea to design), `factory-plan` (design to plan), `factory-run` (plan to code).
+Every command is its own skill, so each one appears in the host's command autocompletion and nothing has to be remembered. Every skill is named `factory-<verb>`, so the commands are typed `/factory-run` and so on and sit together under `/factory-` in the autocomplete; the namespaced form `/clay:factory-run` also works. Names read as one pipeline: `factory-brainstorm` (idea to design), `factory-plan` (design to plan), `factory-run` (plan to code).
 
 | Skill | Started by | Why |
 |-------|-----------|-----|
@@ -232,22 +232,44 @@ Single static `dashboard.html`, no build step, served by a plain static server, 
 
 ## 6. Progress in the terminal
 
-### 6.1 Progress mod (Claude Code only, part of the factory plugin)
+### 6.1 Progress mod (Claude Code only, part of the clay plugin)
 
-A Claude Code mod in `plugins/factory/hooks/` draws the progress inside the interface. It depends on nothing but the
+A Claude Code mod in `plugins/clay/hooks/` draws the progress inside the interface. It depends on nothing but the
 files the run command already writes: every few seconds it reads `factory/jobs/*/job.json` and `factory/jobs/_runs/*.json`
 in the working folder and one level below it (a workspace root with several repos).
 
-- **Band above the prompt** while any job is running or waiting: a bar of tasks done over total for the active plan,
-  its name, the phases of the running jobs (`build`, `review r1 2/3`, `approve`) and, highlighted, how many jobs
-  are waiting for the user. A Hide button, and the `factory-progress` command, toggle it.
+- **Rounded shapes.** Where the surface draws vector art (desktop, editor, mobile) the bars and the summary tiles are SVG
+  documents with truly rounded ends, built by `hooks/svg.ts` (every label is XML-escaped and truncated to fit); where it does
+  not (terminal) they fall back to colored text cells and a box-drawing border. Half-circle glyphs as caps were tried and
+  rejected: they render as stray dots.
+- **Band above the prompt**, on a single row, while any job is running or waiting: a status dot, the plan that needs the user most (`+N` for other active plans), one solid
+  bar with its label written inside it (`Tasks 1/5 · build, review r1 1/3`: the done part green, the rest dark), the
+  first waiting job id highlighted (`+N` for more), `×N` for the running jobs, and a `×` button to
+  hide it. Elapsed time is not shown here, only in the pane.
 - **Toast** when a job starts waiting for the user (`needs-human` or `waiting-input`), and once at start-up if
   some already are.
-- **Pane** with the plans, their jobs and each job's reviewer verdicts, opened by the `factory-agents` command.
+- **Pane** (`factory-agents`), written for someone who follows the work or decides what to run. At the top one sentence of
+  the situation, what needs the user first (`2 waiting for you · 2 running · 1 planned · 1 landed`), a toggle `only what needs
+  me`, and the reviewer legend. Then each plan in its own rounded frame (a `Box` with a round border, which the desktop draws as a real rounded border): its thin bar with `done/total` and elapsed time, and a **table with one row per
+  task in plan order**, each task on two lines so it fits the pane's width (read from the viewport, in cells). First line:
+  status dot and task title, a thin bar on a five-step track (spec, build, review, approve, landed) colored by tier, the status
+  (`review r1 1/3`, `waiting for you`, `planned · after 1, 2`, `landed`) and elapsed time. Second line, indented: the level (the
+  tier), who is in charge (the roles that have the task now with their model and effort; `you` when it waits on the user) and
+  the reviewers as LEDs (a colored dot, green `PASS`, red `CHANGES`, gray pending, with the name beside it; `security` shortened
+  to `sec`, a `!` or `…` as a cue besides color). A legend names the five levels, easy to hard, and the three verdicts. Planned
+  tasks appear as rows too, so the order of the plan can be read in one place. A dot says the state only (yellow waiting, light
+  running, green landed); a bar color says the level only.
+- **Who is working, and on which model.** The "in charge" column writes the roles that have the task now (the builder; the
+  reviewers whose verdict is still pending; the approver). The data comes from two places: `job.json` `agents`, the model and
+  effort the orchestrator passed at spawn, and the mod's own observation of `agent.spawn` events, which carry the model the
+  engine resolved (not the effort). When the observed model differs from the one asked for, the pane shows the observed one
+  with `(asked X)` highlighted. Observation covers only agents started in the session that loaded the mod.
 - Commands are `factory-progress` and `factory-agents`. A mod command name may only hold letters, digits, `_` and `-`:
   the engine refused `factory:progress` in a live session (verified 2026-10-13), so the colon form that skills get from
   their plugin namespace is not available to mod commands.
-- The run file carries `total` and `done` so the mod never parses plans. The pure logic (parsing, summary, bar,
+- The run file carries `total`, `done` and the planned `tasks`, and each `job.json` carries `started` and `updated`
+  timestamps, so the mod never parses plans and can show elapsed time. Cost and tokens are not shown: the factory
+  does not record them. The pure logic (parsing, summary, bar,
   scan of the folders with an injected file system) is in `hooks/model.ts` and tested with Node's runner.
 - Hosts without mods ignore the folder; nothing else depends on it.
 
@@ -261,7 +283,7 @@ absent. With the mod above this is redundant, and kept only for people who run t
 
 The repository is a personal toolkit that will hold several installable tools (plugins, skills, mods) for IDEs
 and agent hosts, not only this one. It follows the marketplace layout used by claude-kit: a manifest at the
-root and one folder per tool under `plugins/`. The factory is the first tool, `plugins/factory/`.
+root and one folder per tool under `plugins/`. The factory is the first tool, `plugins/clay/`.
 
 ```
 .claude-plugin/marketplace.json     name, owner, plugins[] (name, source, version, category)
@@ -301,7 +323,7 @@ No session-start hook in the factory. Skills trigger by `description`. If a hook
 
 ## 9. Open items
 
-1. Plugin name (`factory` is a placeholder).
+1. Plugin name: decided, `clay` (commands keep the `factory-` prefix; the namespaced form is `clay:factory-run`).
 2. Native question tool name per host (Codex and others): verify from each host's documentation before writing `STYLE.md`.
 3. Whether `fable` maps to a real model on the user's setup; otherwise `tiers.md` points it elsewhere.
 4. Parallel tasks: confirm the file-overlap rule is enough or whether the plan should mark parallel groups explicitly.

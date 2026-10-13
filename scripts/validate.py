@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the structure of the swolley-kit marketplace and its plugins."""
+"""Validate the structure of the clay-kit marketplace and its plugins."""
 import json
 import re
 import sys

@@ -1,0 +1,63 @@
+// Pure builders for the vector pieces of the progress UI: rounded bars and tiles.
+// The strings are SVG documents; every piece of text that comes from a file is escaped.
+
+const FONT = 'system-ui, -apple-system, Segoe UI, sans-serif'
+
+export function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
+// A width in CSS pixels that fits the label at the bar's font size.
+export function barWidth(label: string, min = 150): number {
+  return Math.max(min, Math.ceil(label.length * 7 + 24))
+}
+
+export type PillBar = {
+  label: string
+  done: number
+  total: number
+  width: number
+  height?: number
+  fill: string
+  track: string
+}
+
+// A fully rounded bar: a track, a fill clipped to the track's shape, and the label as white text on top.
+export function pillBar(o: PillBar): string {
+  const h = o.height ?? 20
+  const room = Math.max(1, Math.floor((o.width - h) / 6.8))
+  const label = o.label.length > room ? `${o.label.slice(0, Math.max(0, room - 1))}…` : o.label
+  const r = h / 2
+  const filled = o.total <= 0 ? 0 : Math.min(o.width, Math.max(0, Math.round((o.width * o.done) / o.total)))
+  const fill =
+    filled > 0 ? `<rect class="fill" x="0" y="0" width="${filled}" height="${h}" fill="${o.fill}" clip-path="url(#shape)"/>` : ''
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${o.width}" height="${h}" viewBox="0 0 ${o.width} ${h}">` +
+    `<defs><clipPath id="shape"><rect width="${o.width}" height="${h}" rx="${r}"/></clipPath></defs>` +
+    `<rect width="${o.width}" height="${h}" rx="${r}" fill="${o.track}"/>${fill}` +
+    `<text x="${r}" y="${r + 0.5}" dominant-baseline="central" font-family="${FONT}" font-size="12" font-weight="600" fill="#ffffff">${escapeXml(label)}</text>` +
+    `</svg>`
+  )
+}
+
+export type SlimBar = { done: number; total: number; width: number; height?: number; fill: string; track: string }
+
+// A thin, fully rounded bar with no text: its meaning is written beside it, and its color says one thing only.
+export function slimBar(o: SlimBar): string {
+  const h = o.height ?? 4
+  const r = h / 2
+  const filled = o.total <= 0 ? 0 : Math.min(o.width, Math.max(0, Math.round((o.width * o.done) / o.total)))
+  const fill =
+    filled > 0 ? `<rect class="fill" x="0" y="0" width="${filled}" height="${h}" fill="${o.fill}" clip-path="url(#shape)"/>` : ''
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${o.width}" height="${h}" viewBox="0 0 ${o.width} ${h}">` +
+    `<defs><clipPath id="shape"><rect width="${o.width}" height="${h}" rx="${r}"/></clipPath></defs>` +
+    `<rect width="${o.width}" height="${h}" rx="${r}" fill="${o.track}"/>${fill}` +
+    `</svg>`
+  )
+}

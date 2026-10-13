@@ -1,1 +1,26 @@
-{ "id": "004-docs-pass", "plan": "2026-10-12-docs", "task": 1, "repo": "docs", "mode": "current-branch", "tier": "light", "branch": "main", "worktree": "/tmp/w", "stage": "committed", "round": 1, "reviewers": ["code"], "reviews": { "code": "PASS" } }
+{
+  "id": "004-docs-pass",
+  "plan": "2026-10-12-docs",
+  "task": 1,
+  "repo": "docs",
+  "mode": "current-branch",
+  "tier": "light",
+  "branch": "main",
+  "worktree": "/tmp/w",
+  "stage": "committed",
+  "round": 1,
+  "reviewers": [
+    "code"
+  ],
+  "reviews": {
+    "code": "PASS"
+  },
+  "started": "2026-10-13T10:00:00Z",
+  "updated": "2026-10-13T10:04:00Z",
+  "agents": {
+    "builder": {
+      "model": "opus",
+      "effort": "low"
+    }
+  }
+}

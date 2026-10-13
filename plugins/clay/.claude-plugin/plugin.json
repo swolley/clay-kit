@@ -1,0 +1,10 @@
+{
+  "name": "clay",
+  "description": "The factory workflow: brainstorm a design, write a plan, then run each task through build, routed review and approval, with a progress band and pane.",
+  "version": "0.1.0",
+  "author": {
+    "name": "swolley"
+  },
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}
