@@ -78,6 +78,15 @@ Use a task whose brief leaves a real choice open (for example "add a cache" with
 - [ ] After each agent, `job.json` has its `tokens`, `ms`, `tools` and `runs`; the pane shows `<tokens> tok · <time> working` on the task line and totals on the plan.
 - [ ] The dashboard detail of a job lists each agent with model, tokens, time and runs, and the time spent in each phase.
 
+## J. Run lock and protected files
+
+- [ ] While a run is going, the plan file and the spec its header names are read-only (`ls -l`), and trying to edit them fails.
+- [ ] In a second chat, `/factory-run` on the same plan is refused with who holds it and since when; a different plan runs.
+- [ ] The plan editing attempt through Claude Code's `Edit` or `Write` is refused by the plugin with the explanation, before the permission error.
+- [ ] After the run completes the lock is gone, the permissions are back, and the plan steps were ticked and committed.
+- [ ] Closing the session mid-run and starting `/factory-run` again after 30 minutes offers to take over the stale lock; `/factory-unlock` releases it and restores the files.
+- [ ] The pane and the dashboard show the lock on the plan and the command to release it.
+
 ## G. Progress mod (Claude Code)
 
 - [ ] With the plugin loaded and jobs present, the band above the prompt shows the plan, the bar and the running phases.
