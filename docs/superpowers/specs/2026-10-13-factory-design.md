@@ -29,7 +29,7 @@ Rules that follow:
 
 ### Success criteria
 
-- A user can go from `brainstorming` to a merged integration branch with one approval for the design and one for the plan, and no further prompts unless a job escalates.
+- A user can go from `brainstorm` to a merged integration branch with one approval for the design and one for the plan, and no further prompts unless a job escalates.
 - No agent or skill output is longer than the task needs. Explanations are understandable without being stripped of technical context.
 - Questions to the user use the host's native structured-question tool; plain text is only a fallback.
 - Only the agents a job needs are run.
@@ -52,7 +52,7 @@ Every skill and agent file references `STYLE.md` instead of restating it, so a s
 
 ## 3. Design phase
 
-### 3.1 `brainstorming`
+### 3.1 `brainstorm`
 
 Derived from superpowers `brainstorming`, kept: path classification (spike, bounded, architectural), hard gate before implementation, written spec for architectural work.
 
@@ -62,7 +62,7 @@ Changed:
 - No mandatory restatement of the request, no per-section approvals unless the design has more than one real decision.
 - Spec location follows the repo's own convention (read from `AGENTS.md`), defaulting to `docs/superpowers/specs/`.
 
-### 3.2 `writing-plans` and the plan format
+### 3.2 `plan` and the plan format
 
 **Why superpowers conventions are kept.** The folder layout (`docs/superpowers/{specs,plans}/`), the file name patterns and the plan syntax deliberately match those of superpowers. The reason is compatibility: projects already built with superpowers keep their specs and plans where tools expect them, can be executed by the factory without migration, and can still be read by superpowers or by tooling written for it. A change to these conventions is a compatibility break and must be recorded in this spec.
 
@@ -100,6 +100,18 @@ Two human gates only: design (spec or short chat design) and plan. After the pla
 
 ## 4. Execution phase
 
+### 4.0 Skills, names and invocation
+
+The tool exposes three skills. Their names read as one pipeline: `brainstorm` (idea to design), `plan` (design to plan), `factory run` (plan to code). They differ in how they may be started.
+
+| Skill | Started by | Why |
+|-------|-----------|-----|
+| `brainstorm` | the user, or the model on its own when the user describes new work | conversational, ends at the user's approval gate |
+| `plan` | the user, or the model on its own after an approved design | conversational, ends at the user's review of the plan |
+| `factory` (`run`, `task`, `status`, `approve`, `rework`) | the user only (model invocation disabled) | starts autonomous work that spends tokens, creates branches and worktrees and can merge |
+
+Model invocation is controlled per skill, not per subcommand, which is why `factory` is a separate skill. The exact way a host spells these commands (for example `/factory:plan` or `/factory plan`) is recorded in `docs/hosts.md`; only the Claude Code behavior of the invocation flag has been observed (in claude-kit's `savvy-flow`).
+
 ### 4.1 Commands
 
 ```
@@ -114,7 +126,7 @@ Two human gates only: design (spec or short chat design) and plan. After the pla
 
 ### 4.2 Preconditions
 
-At start the orchestrator checks that the plan exists and has checkbox tasks with the fields above. If not, it stops and points to `brainstorming` and `writing-plans`. It checks that the target repo is a git repository with a clean main checkout.
+At start the orchestrator checks that the plan exists and has checkbox tasks with the fields above. If not, it stops and points to `brainstorm` and `plan`. It checks that the target repo is a git repository with a clean main checkout.
 
 ### 4.3 Isolation mode: branches and worktrees
 
@@ -218,7 +230,7 @@ plugins/
   factory/                          this spec
     .claude-plugin/plugin.json
     .codex-plugin/plugin.json
-    skills/{brainstorming,writing-plans,factory}/SKILL.md
+    skills/{brainstorm,plan,factory}/SKILL.md
     agents/{builder,reviewer-code,reviewer-ui,reviewer-ux,reviewer-security,approver}.md
     factory/dashboard.html
     STYLE.md  routing.md  tiers.md
