@@ -32,6 +32,14 @@ Isolation: `run` recommends a development branch per plan with one worktree per 
 is untouched. You can instead confirm working on the current branch; jobs then run one at a time and are
 committed after approval.
 
+## Progress in the terminal (Claude Code)
+
+The plugin includes a mod that shows progress inside the interface, with no setup: a band above the prompt
+(tasks done over total, running phases, how many jobs wait for you), a toast when a job needs you, and a pane
+with the jobs. `/factory:progress` shows or hides the band and `/factory:agents` opens the pane. It only reads the
+files in `factory/jobs/`. If your Claude Code does not accept a colon in a mod command, the names are
+`/factory-progress` and `/factory-agents`.
+
 State lives in `factory/jobs/` (add it to `.gitignore`). A static dashboard shows it:
 `run` copies the page to `factory/jobs/dashboard.html`; serve that folder with
 `cd factory/jobs && python3 -m http.server` and open `/dashboard.html`.

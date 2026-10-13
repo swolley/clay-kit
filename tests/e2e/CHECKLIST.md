@@ -60,3 +60,12 @@ Use a task whose brief leaves a real choice open (for example "add a cache" with
 - [ ] `/factory:status` and the end of the run list the job as waiting for you.
 - [ ] `/factory:answer <job-id>` asks the same questions again; answering writes `answers-1.md` and a fresh builder continues without using a review resume.
 - [ ] Answering "I do not know" moves the job to `needs-human`.
+
+## G. Progress mod (Claude Code)
+
+- [ ] With the plugin loaded and jobs present, the band above the prompt shows the plan, the bar and the running phases.
+- [ ] `/factory:progress` hides and shows the band (or `/factory-progress` if the colon name is not accepted; update the docs then).
+- [ ] `/factory:agents` opens the pane with the jobs and their reviewer verdicts.
+- [ ] A job moving to `needs-human` or `waiting-input` raises a toast and the band shows "waiting for you".
+- [ ] With no `factory/jobs` folder, nothing is drawn and no error appears in the transcript.
+- [ ] Started from a workspace root with the jobs in `<repo>/factory/jobs`, the band still appears.

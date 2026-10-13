@@ -15,7 +15,7 @@ runtime sits under `<repo>/factory/jobs/`, which git never tracks:
 
 | Path under `factory/jobs/` | Written by | Holds |
 |---|---|---|
-| `_runs/<plan-slug>.json` | you | the mode chosen for the run, the integration branch, the plan path |
+| `_runs/<plan-slug>.json` | you | the mode chosen for the run, the integration branch, the plan path, and the task counts `total` and `done` (set at the start, `done` raised each time a job lands); the progress band reads them |
 | `<job-id>/job.json` | you, only you | the job's state; the dashboard reads it |
 | `<job-id>/task.md` | you | the task brief, copied from the plan |
 | `<job-id>/build.md` | builder | what was built and the proof |

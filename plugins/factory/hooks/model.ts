@@ -1,0 +1,161 @@
+// Pure helpers for the progress band and pane. No imports from the host, so they can be tested with plain Node.
+
+export type Stage = 'spec' | 'build' | 'waiting-input' | 'review' | 'approve' | 'merged' | 'committed' | 'needs-human'
+
+export type Job = {
+  id: string
+  plan: string
+  repo: string
+  tier: string
+  stage: Stage
+  round: number
+  reviewers: string[]
+  reviews: Record<string, string>
+}
+
+export type Run = { plan: string; total: number; done: number }
+
+export type PlanView = { plan: string; total: number; done: number; running: Job[]; waiting: Job[] }
+
+export type Summary = { plans: PlanView[]; waiting: number; running: number }
+
+const STAGES: readonly string[] = ['spec', 'build', 'waiting-input', 'review', 'approve', 'merged', 'committed', 'needs-human']
+const LANDED: readonly string[] = ['merged', 'committed']
+const NEEDS_USER: readonly string[] = ['needs-human', 'waiting-input']
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+export function parseJob(text: string): Job | null {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!isRecord(raw) || typeof raw.id !== 'string' || typeof raw.plan !== 'string' || typeof raw.stage !== 'string') return null
+  if (!STAGES.includes(raw.stage)) return null
+  const reviews = isRecord(raw.reviews) ? Object.fromEntries(Object.entries(raw.reviews).map(([k, v]) => [k, String(v)])) : {}
+  return {
+    id: raw.id,
+    plan: raw.plan,
+    repo: typeof raw.repo === 'string' ? raw.repo : '',
+    tier: typeof raw.tier === 'string' ? raw.tier : 'medium',
+    stage: raw.stage as Stage,
+    round: typeof raw.round === 'number' ? raw.round : 0,
+    reviewers: Array.isArray(raw.reviewers) ? raw.reviewers.map(String) : [],
+    reviews,
+  }
+}
+
+export function parseRun(text: string): Run | null {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!isRecord(raw) || typeof raw.plan !== 'string') return null
+  return { plan: raw.plan, total: typeof raw.total === 'number' ? raw.total : 0, done: typeof raw.done === 'number' ? raw.done : 0 }
+}
+
+export function summarize(runs: Run[], jobs: Job[]): Summary {
+  const plans = new Map<string, Job[]>()
+  for (const job of jobs) plans.set(job.plan, [...(plans.get(job.plan) ?? []), job])
+  for (const run of runs) if (!plans.has(run.plan)) plans.set(run.plan, [])
+
+  const views: PlanView[] = []
+  for (const [plan, list] of plans) {
+    const run = runs.find(r => r.plan === plan)
+    const landed = list.filter(j => LANDED.includes(j.stage)).length
+    views.push({
+      plan,
+      total: run && run.total > 0 ? run.total : list.length,
+      done: Math.max(run?.done ?? 0, landed),
+      running: list.filter(j => !LANDED.includes(j.stage) && !NEEDS_USER.includes(j.stage)),
+      waiting: list.filter(j => NEEDS_USER.includes(j.stage)),
+    })
+  }
+  return {
+    plans: views,
+    waiting: views.reduce((n, v) => n + v.waiting.length, 0),
+    running: views.reduce((n, v) => n + v.running.length, 0),
+  }
+}
+
+export function bar(done: number, total: number, width = 10): string {
+  if (total <= 0) return ''
+  const filled = Math.min(width, Math.max(0, Math.round((width * done) / total)))
+  return '█'.repeat(filled) + '░'.repeat(width - filled)
+}
+
+export function phaseLabel(job: Job): string {
+  if (NEEDS_USER.includes(job.stage)) return job.stage === 'waiting-input' ? 'waiting for you' : 'needs you'
+  if (job.stage === 'review') {
+    const passed = job.reviewers.filter(r => job.reviews[r] === 'PASS').length
+    return `review r${job.round} ${passed}/${job.reviewers.length}`
+  }
+  return job.stage
+}
+
+export function waitingIds(jobs: Job[]): Set<string> {
+  return new Set(jobs.filter(j => NEEDS_USER.includes(j.stage)).map(j => j.id))
+}
+
+export type Fs = {
+  list(path?: string): Promise<{ name: string; kind: string }[]>
+  read(path: string): Promise<string>
+  exists(path: string): Promise<boolean>
+}
+
+const SKIP_DIRS = new Set(['node_modules', 'vendor', 'dist', 'build'])
+const MAX_JOBS = 300
+
+async function jobsFolders(fs: Fs): Promise<string[]> {
+  const folders: string[] = []
+  if (await fs.exists('factory/jobs')) folders.push('factory/jobs')
+  let here: { name: string; kind: string }[] = []
+  try {
+    here = await fs.list('.')
+  } catch {
+    return folders
+  }
+  for (const entry of here) {
+    if (entry.kind !== 'dir' || entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue
+    if (await fs.exists(`${entry.name}/factory/jobs`)) folders.push(`${entry.name}/factory/jobs`)
+  }
+  return folders
+}
+
+// Reads the state the run command writes: job.json per job and _runs/<plan>.json per plan.
+// Looks in the working folder and one level below it. A file that cannot be read or parsed is skipped.
+export async function scan(fs: Fs): Promise<{ runs: Run[]; jobs: Job[] }> {
+  const runs: Run[] = []
+  const jobs: Job[] = []
+  for (const base of await jobsFolders(fs)) {
+    let entries: { name: string; kind: string }[] = []
+    try {
+      entries = await fs.list(base)
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      if (entry.kind !== 'dir') continue
+      if (entry.name === '_runs') {
+        let files: { name: string; kind: string }[] = []
+        try {
+          files = await fs.list(`${base}/_runs`)
+        } catch {
+          continue
+        }
+        for (const f of files.filter(x => x.name.endsWith('.json'))) {
+          const run = await fs.read(`${base}/_runs/${f.name}`).then(parseRun, () => null)
+          if (run) runs.push(run)
+        }
+      } else if (/^\d{3}-/.test(entry.name) && jobs.length < MAX_JOBS) {
+        const job = await fs.read(`${base}/${entry.name}/job.json`).then(parseJob, () => null)
+        if (job) jobs.push(job)
+      }
+    }
+  }
+  return { runs, jobs }
+}

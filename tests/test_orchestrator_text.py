@@ -63,3 +63,18 @@ def test_answer_command_exists_and_points_to_reference():
 
 def test_dashboard_marks_waiting_input():
     assert "waiting-input" in read("factory/dashboard.html")
+
+
+def test_run_state_carries_task_counts_for_the_progress_band():
+    t = read("reference/orchestrator.md")
+    assert "`total`" in t and "`done`" in t and "each time a job lands" in t
+
+
+def test_progress_mod_is_wired_into_the_plugin():
+    import json
+
+    assert json.loads(read("hooks/hooks.json"))["modules"] == ["./register.tsx"]
+    assert json.loads(read(".claude-plugin/plugin.json"))["types"] == "./types/index.d.ts"
+    reg = read("hooks/register.tsx")
+    assert "factory:progress" in reg and "factory:agents" in reg
+    assert (PLUGIN / "types/index.d.ts").exists()

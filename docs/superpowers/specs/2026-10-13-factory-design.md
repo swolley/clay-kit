@@ -230,9 +230,31 @@ Safety:
 
 Single static `dashboard.html`, no build step, served by a plain static server, polling `job.json` files. Groups jobs by plan and repo, shows tier and only the selected reviewers per job, highlights `needs-human`. Same approach as the original factory.
 
-## 6. Optional progress bar
+## 6. Progress in the terminal
 
-If the tools `mcp__savvy-progress__progress` and `mcp__savvy-progress__step` are available, the orchestrator and builders call them (task titles identical to the Agent `description`, as that plugin requires). If absent, calls are skipped silently. No dependency.
+### 6.1 Progress mod (Claude Code only, part of the factory plugin)
+
+A Claude Code mod in `plugins/factory/hooks/` draws the progress inside the interface. It depends on nothing but the
+files the run command already writes: every few seconds it reads `factory/jobs/*/job.json` and `factory/jobs/_runs/*.json`
+in the working folder and one level below it (a workspace root with several repos).
+
+- **Band above the prompt** while any job is running or waiting: a bar of tasks done over total for the active plan,
+  its name, the phases of the running jobs (`build`, `review r1 2/3`, `approve`) and, highlighted, how many jobs
+  are waiting for the user. A Hide button, and the `progress` command, toggle it.
+- **Toast** when a job starts waiting for the user (`needs-human` or `waiting-input`), and once at start-up if
+  some already are.
+- **Pane** with the plans, their jobs and each job's reviewer verdicts, opened by the `agents` command.
+- Commands are `factory:progress` and `factory:agents`. Whether the engine keeps a colon in a mod command name at
+  run time is to be confirmed in a live session; the fallback is `factory-progress` and `factory-agents`.
+- The run file carries `total` and `done` so the mod never parses plans. The pure logic (parsing, summary, bar,
+  scan of the folders with an injected file system) is in `hooks/model.ts` and tested with Node's runner.
+- Hosts without mods ignore the folder; nothing else depends on it.
+
+### 6.2 Optional savvy-progress hook
+
+If the tools `mcp__savvy-progress__progress` and `mcp__savvy-progress__step` exist, the orchestrator also reports to them
+(task titles identical to the Agent `description`). Only the orchestrator does; builders do not. Skipped silently if
+absent. With the mod above this is redundant, and kept only for people who run that plugin.
 
 ## 7. Repository and plugin layout
 
@@ -249,6 +271,7 @@ plugins/
     skills/{brainstorm,plan,run,task,status,approve,rework}/SKILL.md
     reference/orchestrator.md       shared logic read by run, task, status, approve, rework
     scripts/{factory_plan,route}.py plan parser and reviewer routing (stdlib only)
+    hooks/{hooks.json,register.tsx,model.ts}  progress mod (Claude Code); types/index.d.ts is its state contract
     agents/{builder,reviewer-code,reviewer-ui,reviewer-ux,reviewer-security,approver}.md
     factory/dashboard.html
     STYLE.md  routing.md  tiers.md
