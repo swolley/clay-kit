@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "scripts"))
+sys.path.insert(0, str(HERE.parent / "plugins/factory/scripts"))
 from route import Rule, load_rules, route  # noqa: E402
 
 RULES = [

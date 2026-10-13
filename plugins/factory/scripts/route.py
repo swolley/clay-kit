@@ -59,7 +59,7 @@ def route(paths: list[str], rules: list[Rule]) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    table = Path(argv[argv.index("--table") + 1]) if "--table" in argv else Path(__file__).resolve().parent.parent / "plugins/factory/routing.md"
+    table = Path(argv[argv.index("--table") + 1]) if "--table" in argv else Path(__file__).resolve().parent.parent / "routing.md"
     paths = [ln.strip() for ln in sys.stdin if ln.strip()]
     print(json.dumps(route(paths, load_rules(table))))
     return 0
