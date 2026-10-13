@@ -216,8 +216,10 @@ export const register: Register = on => {
     const seen = await read($, observed)
     const onlyMine = await read($, isOnlyMine)
 
-    // Column widths in cells; a cell centers its content on the row.
-    const W = { title: 30, bar: 11, status: 22, who: 40, time: 8 }
+    // The width the pane really has, in cells; the title takes what the fixed columns leave.
+    const columns = e.viewport?.columns ?? 90
+    const W = { bar: 11, status: 24, time: 8 }
+    const titleW = Math.max(18, columns - 8 - W.bar - W.status - W.time - 3)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const cell = (width: number, node: any) => (
       <Box width={width} flexShrink={0} alignSelf="center">
@@ -226,16 +228,20 @@ export const register: Register = on => {
     )
 
     const header = (
-      <Box gap={1} alignItems="center">
-        {cell(W.title, <Text dimColor>Task</Text>)}
-        {cell(W.bar, <Text dimColor>Progress</Text>)}
-        {cell(W.status, <Text dimColor>Status</Text>)}
-        {cell(W.who, <Text dimColor>In charge</Text>)}
-        {cell(W.time, <Text dimColor>Time</Text>)}
-        <Text dimColor>Reviews</Text>
+      <Box flexDirection="column">
+        <Box gap={1} alignItems="center">
+          {cell(titleW, <Text dimColor>Task</Text>)}
+          {cell(W.bar, <Text dimColor>Progress</Text>)}
+          {cell(W.status, <Text dimColor>Status</Text>)}
+          {cell(W.time, <Text dimColor>Time</Text>)}
+        </Box>
+        <Box paddingLeft={2}>
+          <Text dimColor>level · in charge · reviews</Text>
+        </Box>
       </Box>
     )
 
+    // A task is two lines: what and how far, then the level, who has it and the reviews.
     const row = (r: TaskRow) => {
       const st = rowStatus(r)
       const job = r.job
@@ -245,26 +251,26 @@ export const register: Register = on => {
       const spent = job ? jobElapsed(job, now) : null
       const who = job ? workingNow(job, seen[job.id]) : { text: '', mismatch: false }
       const tier = job ? job.tier : r.planned?.tier ?? ''
+      const owner = st.kind === 'waiting' && !who.text ? 'you' : who.text
       return (
-        <Box gap={1} alignItems="center">
-          {cell(
-            W.title,
-            <Box gap={1}>
-              <Text color={color}>{dot}</Text>
-              <Text bold={st.kind === 'waiting'} dimColor={quiet}>{r.n > 0 ? `${r.n}. ` : ''}{r.title}</Text>
-            </Box>,
-          )}
-          {cell(W.bar, job ? slim(elements, stageStep(job), STAGE_STEPS, 70, tierColor(job.tier), 8) : <Text dimColor> </Text>)}
-          {cell(W.status, <Text color={st.kind === 'waiting' ? WAIT : undefined} dimColor={quiet}>{st.label}</Text>)}
-          {cell(
-            W.who,
-            <Box gap={1}>
-              {tier && <Text color={tierColor(tier)}>{tier}</Text>}
-              <Text color={who.mismatch ? WAIT : undefined} dimColor={!who.mismatch}>{st.kind === 'waiting' && !who.text ? 'you' : who.text}</Text>
-            </Box>,
-          )}
-          {cell(W.time, <Text dimColor>{spent === null ? '' : formatDuration(spent)}</Text>)}
-          {job && job.reviewers.map(rv => led(Box, Text, rv, job.reviews[rv]))}
+        <Box flexDirection="column">
+          <Box gap={1} alignItems="center">
+            {cell(
+              titleW,
+              <Box gap={1}>
+                <Text color={color}>{dot}</Text>
+                <Text bold={st.kind === 'waiting'} dimColor={quiet} wrap="truncate-end">{r.n > 0 ? `${r.n}. ` : ''}{r.title}</Text>
+              </Box>,
+            )}
+            {cell(W.bar, job ? slim(elements, stageStep(job), STAGE_STEPS, 70, tierColor(job.tier), 8) : <Text dimColor> </Text>)}
+            {cell(W.status, <Text color={st.kind === 'waiting' ? WAIT : undefined} dimColor={quiet} wrap="truncate-end">{st.label}</Text>)}
+            {cell(W.time, <Text dimColor>{spent === null ? '' : formatDuration(spent)}</Text>)}
+          </Box>
+          <Box gap={1} paddingLeft={2} alignItems="center">
+            {tier && <Text color={tierColor(tier)}>{tier}</Text>}
+            {owner && <Text color={who.mismatch ? WAIT : undefined} dimColor={!who.mismatch}>{owner}</Text>}
+            {job && job.reviewers.map(rv => led(Box, Text, rv, job.reviews[rv]))}
+          </Box>
         </Box>
       )
     }
@@ -293,11 +299,20 @@ export const register: Register = on => {
           {mid(Box, <Text bold color={summary.waiting > 0 ? WAIT : undefined}>{situationText(summary)}</Text>)}
           <Button key="mine" label={`${onlyMine ? '[x]' : '[ ]'} only what needs me`} onPress={() => update($, isOnlyMine, () => !onlyMine)} />
         </Box>
-        <Box gap={1}>
-          <Text dimColor>reviews</Text>
-          {led(Box, Text, 'pass', 'PASS')}
-          {led(Box, Text, 'changes', 'CHANGES')}
-          {led(Box, Text, 'pending', 'pending')}
+        <Box flexDirection="column">
+          <Box gap={1}>
+            <Text dimColor>reviews</Text>
+            {led(Box, Text, 'pass', 'PASS')}
+            {led(Box, Text, 'changes', 'CHANGES')}
+            {led(Box, Text, 'pending', 'pending')}
+          </Box>
+          <Box gap={1}>
+            <Text dimColor>level</Text>
+            {['light', 'medium', 'careful', 'heavy', 'fable'].map(t => (
+              <Text color={tierColor(t)}>{t}</Text>
+            ))}
+            <Text dimColor>(easy to hard: the task's difficulty, which sets the builder's model)</Text>
+          </Box>
         </Box>
         {[...summary.plans].sort(byNeed).map(plan)}
       </Box>

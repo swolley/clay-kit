@@ -16,7 +16,7 @@
   "agents": {
     "builder": {
       "model": "opus",
-      "effort": "medium"
+      "effort": "high"
     }
   }
 }
