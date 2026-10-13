@@ -20,11 +20,11 @@ the pages read do not say it; nothing here is inferred. Read on 2026-10-13.
 | Question tool | `AskUserQuestion`, multiple choice with an "Other" free-text row. **Not available inside subagents** | tools-reference.md, sub-agents.md |
 | Manifest | `plugin.json`: only `name` required. `marketplace.json`: `name`, `owner.name`, `plugins[]` with `name` and `source`; `category` is free-form | plugins/manifest-reference.md, plugins/marketplace-reference.md |
 
-Command names: skills are named `factory-<verb>` so they are typed `/factory-<verb>` (the bare form of a skill name is documented to work when no other command uses it; the namespaced `/factory:factory-<verb>` also works), and the mod commands are `factory-progress` and `factory-agents`, because a mod command name may only hold letters, digits, `_` and `-` (verified live on 2026-10-13).
+Command names: skills are named `factory-<verb>` so they are typed `/factory-<verb>` (the bare form of a skill name is documented to work when no other command uses it; the namespaced `/clay:factory-<verb>` also works), and the mod commands are `factory-progress` and `factory-agents`, because a mod command name may only hold letters, digits, `_` and `-` (verified live on 2026-10-13).
 
 Consequences for this tool:
 - Any question to the user is asked by a skill in the main session. Agents never ask; they write open questions into their own file and the orchestrator asks.
-- Shared logic is read from `${CLAUDE_PLUGIN_ROOT}/reference/orchestrator.md`, and helper scripts live in `plugins/factory/scripts/`, so an installed plugin never reads outside its folder.
+- Shared logic is read from `${CLAUDE_PLUGIN_ROOT}/reference/orchestrator.md`, and helper scripts live in `plugins/clay/scripts/`, so an installed plugin never reads outside its folder.
 - `${CLAUDE_PLUGIN_ROOT}` is substituted in skill and agent text, not in files read later, so each command skill states the plugin root at its top and `reference/orchestrator.md` refers to `<plugin root>`. The validator enforces both.
 - Tiers pass `model` at spawn, and `effort` when the host accepts it; otherwise the agent's frontmatter default applies.
 

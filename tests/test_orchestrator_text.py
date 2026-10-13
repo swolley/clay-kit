@@ -1,6 +1,6 @@
 from pathlib import Path
 
-PLUGIN = Path(__file__).resolve().parent.parent / "plugins/factory"
+PLUGIN = Path(__file__).resolve().parent.parent / "plugins/clay"
 
 
 def read(rel: str) -> str:

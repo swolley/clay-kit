@@ -20,12 +20,12 @@ def skill(name: str, extra: str = "") -> str:
 
 def make_scaffold(root: Path) -> None:
     write(root, ".claude-plugin/marketplace.json", json.dumps({"name": "k", "plugins": []}))
-    write(root, "plugins/factory/.claude-plugin/plugin.json", json.dumps({"name": "factory"}))
-    write(root, "plugins/factory/skills/factory-brainstorm/SKILL.md", skill("factory-brainstorm"))
-    write(root, "plugins/factory/skills/factory-plan/SKILL.md", skill("factory-plan"))
+    write(root, "plugins/clay/.claude-plugin/plugin.json", json.dumps({"name": "clay"}))
+    write(root, "plugins/clay/skills/factory-brainstorm/SKILL.md", skill("factory-brainstorm"))
+    write(root, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan"))
     for cmd in ("factory-run", "factory-task", "factory-status", "factory-approve", "factory-rework", "factory-answer"):
-        write(root, f"plugins/factory/skills/{cmd}/SKILL.md", skill(cmd, "disable-model-invocation: true\n") + "reference/orchestrator.md\n")
-    write(root, "plugins/factory/agents/builder.md", skill("builder"))
+        write(root, f"plugins/clay/skills/{cmd}/SKILL.md", skill(cmd, "disable-model-invocation: true\n") + "reference/orchestrator.md\n")
+    write(root, "plugins/clay/agents/builder.md", skill("builder"))
 
 
 def test_valid_scaffold_passes(tmp_path):
@@ -42,59 +42,59 @@ def test_bad_json_fails_and_names_file(tmp_path):
 
 def test_skill_without_description_fails(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/factory/skills/factory-plan/SKILL.md", "---\nname: plan\n---\nSTYLE.md\n")
+    write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", "---\nname: plan\n---\nSTYLE.md\n")
     assert any("factory-plan/SKILL.md" in p and "description" in p for p in validate(tmp_path))
 
 
 def test_superpowers_reference_fails(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/factory/agents/builder.md", skill("builder") + "Use superpowers:tdd\n")
+    write(tmp_path, "plugins/clay/agents/builder.md", skill("builder") + "Use superpowers:tdd\n")
     assert any("builder.md" in p and "superpowers:" in p for p in validate(tmp_path))
 
 
 def test_missing_style_reference_fails(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/factory/agents/builder.md", "---\nname: builder\ndescription: d\n---\nno ref\n")
+    write(tmp_path, "plugins/clay/agents/builder.md", "---\nname: builder\ndescription: d\n---\nno ref\n")
     assert any("builder.md" in p and "STYLE.md" in p for p in validate(tmp_path))
 
 
 def test_command_skills_must_disable_model_invocation(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/factory/skills/factory-run/SKILL.md", skill("factory-run"))
+    write(tmp_path, "plugins/clay/skills/factory-run/SKILL.md", skill("factory-run"))
     assert any("factory-run/SKILL.md" in p and "disable-model-invocation" in p for p in validate(tmp_path))
 
 
 def test_brainstorm_and_plan_must_allow_model_invocation(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/factory/skills/factory-plan/SKILL.md", skill("factory-plan", "disable-model-invocation: true\n"))
+    write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan", "disable-model-invocation: true\n"))
     assert any("factory-plan/SKILL.md" in p and "disable-model-invocation" in p for p in validate(tmp_path))
 
 
 def test_command_skill_must_read_orchestrator_reference(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/factory/skills/factory-run/SKILL.md", skill("factory-run", "disable-model-invocation: true\n"))
+    write(tmp_path, "plugins/clay/skills/factory-run/SKILL.md", skill("factory-run", "disable-model-invocation: true\n"))
     assert any("factory-run/SKILL.md" in p and "orchestrator.md" in p for p in validate(tmp_path))
 
 
 def test_orchestrator_reference_must_not_use_plugin_root_variable(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/factory/reference/orchestrator.md", "uses ${CLAUDE_PLUGIN_ROOT}/x\n")
+    write(tmp_path, "plugins/clay/reference/orchestrator.md", "uses ${CLAUDE_PLUGIN_ROOT}/x\n")
     assert any("orchestrator.md" in p and "CLAUDE_PLUGIN_ROOT" in p for p in validate(tmp_path))
 
 
 def test_notice_requires_shipped_license_texts(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/factory/NOTICE.md", "derived")
+    write(tmp_path, "plugins/clay/NOTICE.md", "derived")
     assert any("NOTICE.md" in p and "licenses" in p for p in validate(tmp_path))
 
 
 def test_answer_skill_must_disable_model_invocation(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/factory/skills/factory-answer/SKILL.md", skill("factory-answer") + "reference/orchestrator.md\n")
+    write(tmp_path, "plugins/clay/skills/factory-answer/SKILL.md", skill("factory-answer") + "reference/orchestrator.md\n")
     assert any("factory-answer/SKILL.md" in p and "disable-model-invocation" in p for p in validate(tmp_path))
 
 
 def test_skill_name_must_match_its_folder(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/factory/skills/factory-plan/SKILL.md", skill("plan"))
+    write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", skill("plan"))
     assert any("factory-plan/SKILL.md" in p and "name" in p and "folder" in p for p in validate(tmp_path))

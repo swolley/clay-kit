@@ -1,11 +1,13 @@
-# factory
+# clay
+
+The plugin is called `clay`; the workflow it contains is the *factory*: brainstorm, plan, run.
 
 Take an idea to reviewed, merged code. You design and plan with the model in a conversation, then
 run the plan: each task is built, reviewed by the lenses its change needs, and approved or handed back to you.
 
 ## Commands
 
-Every command is a skill named `factory-<verb>`, so it is typed `/factory-run` and listed together in the autocomplete under `/factory-`. The namespaced form `/factory:factory-run` also works. The exact spelling per host is in [docs/hosts.md](../../docs/hosts.md).
+Every command is a skill named `factory-<verb>`, so it is typed `/factory-run` and listed together in the autocomplete under `/factory-`. The namespaced form `/clay:factory-run` also works. The exact spelling per host is in [docs/hosts.md](../../docs/hosts.md).
 
 | Command | Started by | What it does |
 |---------|-----------|--------------|

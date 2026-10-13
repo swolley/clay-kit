@@ -29,7 +29,7 @@ def files(root: Path):
 
 def main(argv: list[str]) -> int:
     other = Path(argv[0])
-    mine = Path(argv[1]) if len(argv) > 1 else Path(__file__).resolve().parent.parent / "plugins/factory"
+    mine = Path(argv[1]) if len(argv) > 1 else Path(__file__).resolve().parent.parent / "plugins/clay"
     theirs: set[tuple[str, ...]] = set()
     for p in files(other):
         theirs |= grams(p.read_text(errors="ignore"))

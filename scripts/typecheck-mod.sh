@@ -4,7 +4,7 @@
 # The engine lays those types the first time a session loads the mod, and re-lays them on every reload, so keep a copy of
 # the `.claude-plugin/types` folder somewhere stable. Needs network for `npx typescript`.
 set -euo pipefail
-src="$(cd "$(dirname "$0")/../plugins/factory" && pwd)"
+src="$(cd "$(dirname "$0")/../plugins/clay" && pwd)"
 loaded="${1:?path to a loaded copy of the mod}"
 tmp="$(mktemp -d)"
 cp -r "$src/hooks" "$src/types" "$tmp/"

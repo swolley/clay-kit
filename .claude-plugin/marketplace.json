@@ -1,12 +1,16 @@
 {
   "name": "swolley-kit",
-  "owner": { "name": "swolley" },
-  "metadata": { "description": "swolley's Claude Code skills, agents and mods." },
+  "owner": {
+    "name": "swolley"
+  },
+  "metadata": {
+    "description": "swolley's Claude Code skills, agents and mods."
+  },
   "plugins": [
     {
-      "name": "factory",
-      "source": "./plugins/factory",
-      "description": "Skills and agents to go from an idea to reviewed, merged code: brainstorm, plan, run.",
+      "name": "clay",
+      "source": "./plugins/clay",
+      "description": "Brainstorm, plan, run: the factory workflow that takes an idea to reviewed, merged code, with a progress band and pane.",
       "version": "0.1.0",
       "category": "skill"
     }

@@ -4,7 +4,7 @@ Personal marketplace of plugins, skills and tools for Claude Code, Codex and oth
 
 | Tool | What it does |
 |------|--------------|
-| [factory](plugins/factory) | From an idea to merged code: `/factory-brainstorm`, `/factory-plan`, then `/factory-run`, with routed review and approval. |
+| [clay](plugins/clay) | From an idea to merged code: `/factory-brainstorm`, `/factory-plan`, then `/factory-run`, with routed review and approval. |
 
 ## Install (Claude Code)
 
@@ -12,10 +12,10 @@ In Claude Code:
 
 ```
 /plugin marketplace add swolley/swolley-kit
-/plugin install factory@swolley-kit
+/plugin install clay@swolley-kit
 ```
 
-Restart the session afterwards. Commands are named `factory-<verb>`, for example `/factory-run`; the namespaced form `/factory:factory-run` also works.
+Restart the session afterwards. Commands are named `factory-<verb>`, for example `/factory-run`; the namespaced form `/clay:factory-run` also works.
 
 ## Development
 

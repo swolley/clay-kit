@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { barWidth, escapeXml, pillBar, slimBar } from '../../plugins/factory/hooks/svg.ts'
+import { barWidth, escapeXml, pillBar, slimBar } from '../../plugins/clay/hooks/svg.ts'
 
 const bar = (over: Record<string, unknown> = {}) =>
   pillBar({ label: 'Tasks 1/4', done: 1, total: 4, width: 200, fill: '#2a8f5f', track: '#343a48', ...over })

@@ -33,7 +33,7 @@ export type FactorySummary = {
 
 declare module 'claude-code' {
   interface PluginState {
-    factory: {
+    clay: {
       view: FactorySummary
       isHidden: boolean
       isOnlyMine: boolean

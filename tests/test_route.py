@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "plugins/factory/scripts"))
+sys.path.insert(0, str(HERE.parent / "plugins/clay/scripts"))
 from route import Rule, load_rules, route  # noqa: E402
 
 RULES = [
@@ -46,7 +46,7 @@ def test_load_rules_ignores_header_and_blank_lines(tmp_path):
     assert load_rules(f) == [Rule("**/*.vue", "ui"), Rule("composer.lock", "security")]
 
 
-REAL = load_rules(HERE.parent / "plugins/factory/routing.md")
+REAL = load_rules(HERE.parent / "plugins/clay/routing.md")
 
 
 def test_nested_manifests_and_env_route_to_security():

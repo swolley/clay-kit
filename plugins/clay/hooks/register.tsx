@@ -30,11 +30,11 @@ import { pillBar, slimBar } from './svg'
 const PANE = 'factory-agents'
 const POLL_MS = 3000
 
-const view = atom({ plugin: 'factory', key: 'view' } as const, { plans: [], waiting: 0, running: 0 } as Summary)
-const isHidden = atom({ plugin: 'factory', key: 'isHidden' } as const, false)
-const isOnlyMine = atom({ plugin: 'factory', key: 'isOnlyMine' } as const, false)
+const view = atom({ plugin: 'clay', key: 'view' } as const, { plans: [], waiting: 0, running: 0 } as Summary)
+const isHidden = atom({ plugin: 'clay', key: 'isHidden' } as const, false)
+const isOnlyMine = atom({ plugin: 'clay', key: 'isOnlyMine' } as const, false)
 // The model each agent of a job really started on, as the engine reported it at spawn, by job id and role.
-const observed = atom({ plugin: 'factory', key: 'observed' } as const, {} as Record<string, Record<string, { model: string }>>)
+const observed = atom({ plugin: 'clay', key: 'observed' } as const, {} as Record<string, Record<string, { model: string }>>)
 
 const ledColor = (verdict: string | undefined) => (verdict === 'PASS' ? '#3fb97c' : verdict === 'CHANGES' ? '#e5675c' : '#7d879a')
 

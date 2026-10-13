@@ -309,7 +309,7 @@ export function verdictMark(verdict: string | undefined): string {
   return verdict === 'PASS' ? '' : verdict === 'CHANGES' ? '!' : '…'
 }
 
-// `factory:reviewer-ux` -> `ux`, `factory:builder` -> `builder`.
+// `clay:reviewer-ux` -> `ux`, `clay:builder` -> `builder`.
 export function roleOf(subagentType: string): string {
   return subagentType.slice(subagentType.lastIndexOf(':') + 1).replace(/^reviewer-/, '')
 }

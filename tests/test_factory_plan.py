@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "plugins/factory/scripts"))
+sys.path.insert(0, str(HERE.parent / "plugins/clay/scripts"))
 from factory_plan import parse_plan  # noqa: E402
 
 
@@ -55,7 +55,7 @@ def test_phase_headings_are_tasks():
 def test_plan_skill_template_parses():
     import re
 
-    skill = (HERE.parent / "plugins/factory/skills/factory-plan/SKILL.md").read_text()
+    skill = (HERE.parent / "plugins/clay/skills/factory-plan/SKILL.md").read_text()
     m = re.search(r"## Task template\n+```markdown\n(.*?)\n```", skill, re.S)
     assert m, "plan skill must contain a '## Task template' markdown block"
     plan = parse_plan(m.group(1), default_repo="x")

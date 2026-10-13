@@ -1,6 +1,6 @@
 # Factory tool: design (swolley-kit)
 
-Status: draft for review. Tool name: `factory` (placeholder, see Open items), first package of a personal multi-tool repository (section 7).
+Status: draft for review. Plugin name: `clay` (the workflow it contains is called the factory), first package of a personal multi-tool repository (section 7).
 
 ## 1. Purpose
 
@@ -103,7 +103,7 @@ Two human gates only: design (spec or short chat design) and plan. After the pla
 
 ### 4.0 Skills, names and invocation
 
-Every command is its own skill, so each one appears in the host's command autocompletion and nothing has to be remembered. Every skill is named `factory-<verb>`, so the commands are typed `/factory-run` and so on and sit together under `/factory-` in the autocomplete; the namespaced form `/factory:factory-run` also works. Names read as one pipeline: `factory-brainstorm` (idea to design), `factory-plan` (design to plan), `factory-run` (plan to code).
+Every command is its own skill, so each one appears in the host's command autocompletion and nothing has to be remembered. Every skill is named `factory-<verb>`, so the commands are typed `/factory-run` and so on and sit together under `/factory-` in the autocomplete; the namespaced form `/clay:factory-run` also works. Names read as one pipeline: `factory-brainstorm` (idea to design), `factory-plan` (design to plan), `factory-run` (plan to code).
 
 | Skill | Started by | Why |
 |-------|-----------|-----|
@@ -232,9 +232,9 @@ Single static `dashboard.html`, no build step, served by a plain static server, 
 
 ## 6. Progress in the terminal
 
-### 6.1 Progress mod (Claude Code only, part of the factory plugin)
+### 6.1 Progress mod (Claude Code only, part of the clay plugin)
 
-A Claude Code mod in `plugins/factory/hooks/` draws the progress inside the interface. It depends on nothing but the
+A Claude Code mod in `plugins/clay/hooks/` draws the progress inside the interface. It depends on nothing but the
 files the run command already writes: every few seconds it reads `factory/jobs/*/job.json` and `factory/jobs/_runs/*.json`
 in the working folder and one level below it (a workspace root with several repos).
 
@@ -283,7 +283,7 @@ absent. With the mod above this is redundant, and kept only for people who run t
 
 The repository is a personal toolkit that will hold several installable tools (plugins, skills, mods) for IDEs
 and agent hosts, not only this one. It follows the marketplace layout used by claude-kit: a manifest at the
-root and one folder per tool under `plugins/`. The factory is the first tool, `plugins/factory/`.
+root and one folder per tool under `plugins/`. The factory is the first tool, `plugins/clay/`.
 
 ```
 .claude-plugin/marketplace.json     name, owner, plugins[] (name, source, version, category)
@@ -323,7 +323,7 @@ No session-start hook in the factory. Skills trigger by `description`. If a hook
 
 ## 9. Open items
 
-1. Plugin name (`factory` is a placeholder).
+1. Plugin name: decided, `clay` (commands keep the `factory-` prefix; the namespaced form is `clay:factory-run`).
 2. Native question tool name per host (Codex and others): verify from each host's documentation before writing `STYLE.md`.
 3. Whether `fable` maps to a real model on the user's setup; otherwise `tiers.md` points it elsewhere.
 4. Parallel tasks: confirm the file-overlap rule is enough or whether the plan should mark parallel groups explicitly.

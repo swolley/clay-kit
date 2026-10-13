@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar, reviewerLabel, verdictMark, roleOf, jobIdFromPrompt, shortModel, workingNow, taskRows, situationText, rowStatus } from '../../plugins/factory/hooks/model.ts'
+import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar, reviewerLabel, verdictMark, roleOf, jobIdFromPrompt, shortModel, workingNow, taskRows, situationText, rowStatus } from '../../plugins/clay/hooks/model.ts'
 
 const job = (over: Record<string, unknown> = {}) =>
   parseJob(JSON.stringify({ id: '001-a', plan: 'p1', repo: 'api', tier: 'medium', stage: 'build', round: 0, reviewers: [], reviews: {}, ...over }))!
@@ -256,10 +256,10 @@ test('parseJob reads the agents recorded by the orchestrator', () => {
 })
 
 test('roleOf turns an agent type into the role the job uses', () => {
-  assert.equal(roleOf('factory:builder'), 'builder')
-  assert.equal(roleOf('factory:reviewer-ux'), 'ux')
+  assert.equal(roleOf('clay:builder'), 'builder')
+  assert.equal(roleOf('clay:reviewer-ux'), 'ux')
   assert.equal(roleOf('reviewer-security'), 'security')
-  assert.equal(roleOf('factory:approver'), 'approver')
+  assert.equal(roleOf('clay:approver'), 'approver')
   assert.equal(roleOf('general-purpose'), 'general-purpose')
 })
 
