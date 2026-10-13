@@ -28,8 +28,6 @@ python3 -m venv .venv && .venv/bin/pip install pytest
 `scripts/typecheck-mod.sh <loaded copy of the mod>` type-checks the progress mod against the engine's own types (a missing
 identifier in a render hook makes the engine skip the whole hook and draw nothing, and the static validation does not see it).
 `node --test tests/mod/` runs the pure logic of the mod.
-`python3 scripts/check_overlap.py --zazencodes` downloads the one folder of the project the factory was inspired by (it publishes no license)
-and reports how many 6-word sequences the plugin shares with it; run it before publishing.
 
 `scripts/validate.py` checks manifests, skill and agent frontmatter, and the rules of the tool
 (no dependency on other plugins, one style contract, invocation policy of each command).

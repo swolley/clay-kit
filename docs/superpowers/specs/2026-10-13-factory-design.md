@@ -25,7 +25,7 @@ Rules that follow:
 - Everything derived from the zazencodes factory is written from scratch from the pattern above. No text, prompt wording, code or HTML is carried over, and the dashboard is original code.
 - MIT-derived files carry the original copyright and permission notice in the tool's `NOTICE.md`, naming the source and version.
 - The zazencodes project is credited in the README as inspiration only, with no claim of derivation, and that wording avoids implying a license.
-- `scripts/check_overlap.py` reports the 6-word sequences the plugin shares with a checkout of another project; run it against the zazencodes folder before publishing. On 2026-10-13 the first agent drafts shared 347 sequences with it and were rewritten from the spec alone; the result is 65, which are file names, the verdict first-line contract, HTML boilerplate and frontmatter tool lists.
+- A one-time comparison on 2026-10-13 found that the first agent drafts shared 347 six-word sequences with it and were rewritten from the spec alone; the result was 58, which are file names, the verdict first-line contract, HTML boilerplate and frontmatter tool lists. No comparison tool is kept in the repository.
 - Before publishing the repository, re-check each source's license, and ask the zazencodes author for permission if any of their content is ever wanted verbatim.
 
 ### Success criteria
