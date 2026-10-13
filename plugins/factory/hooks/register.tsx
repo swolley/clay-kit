@@ -273,7 +273,7 @@ export const register: Register = on => {
       const rows = taskRows(p).filter(r => !onlyMine || rowStatus(r).kind === 'waiting')
       const elapsed = planElapsed(p, now)
       return (
-        <Box flexDirection="column">
+        <Box flexDirection="column" borderStyle="round" borderColor={TRACK} paddingX={1}>
           <Box gap={1} alignItems="center">
             {mid(Box, <Text bold>{p.plan}</Text>)}
             {slim(elements, p.done, p.total, 140, OK, 16)}

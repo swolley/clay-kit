@@ -250,7 +250,7 @@ in the working folder and one level below it (a workspace root with several repo
   some already are.
 - **Pane** (`factory-agents`), written for someone who follows the work or decides what to run. At the top one sentence of
   the situation, what needs the user first (`2 waiting for you · 2 running · 1 planned · 1 landed`), a toggle `only what needs
-  me`, and the reviewer legend. Then, per plan, its thin bar with `done/total` and elapsed time, and a **table with one row per
+  me`, and the reviewer legend. Then each plan in its own rounded frame (a `Box` with a round border, which the desktop draws as a real rounded border): its thin bar with `done/total` and elapsed time, and a **table with one row per
   task in plan order**: status dot and task title, a thin bar on a five-step track (spec, build, review, approve, landed) colored
   by tier, the status (`review r1 1/3`, `waiting for you`, `planned · after 1, 2`, `landed`), who is in charge (the tier, and the
   roles that have the task now with their model and effort), elapsed time, and the reviewers as LEDs (a colored dot, green
