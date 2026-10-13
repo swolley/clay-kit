@@ -58,8 +58,11 @@ approves only what was actually shown. Reading the project is always allowed.
 
 - Save to the place the repo's instructions name for specs; default
   `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`. Commit it.
-- Check it once: no placeholders, no contradictions, one plan's worth of scope,
+- Check it once yourself: no placeholders, no contradictions, one plan's worth of scope,
   no requirement that can be read two ways. Fix inline.
+- Spawn the `reviewer-spec` agent (model and effort in `tiers.md`) with the spec path. Its reply starts with
+  `VERDICT: PASS` or `VERDICT: CHANGES`. Fix every issue it raises in the spec and say what you changed; one
+  round is enough, do not loop.
 - Ask the user to review the written spec. Wait for approval.
 
 ## 6. Hand over
@@ -67,3 +70,14 @@ approves only what was actually shown. Reading the project is always allowed.
 Architectural: invoke the `factory-plan` skill of this tool. Nothing else.
 Bounded: after the user says yes, implement through the repo's normal workflow.
 Spike: the report is the end.
+
+## Thoughts that mean stop
+
+| Thought | Reality |
+|---------|---------|
+| "Too simple to need a design" | Pick the path by the repo: a bounded change gets a short design in chat, an architectural one a spec. |
+| "I will call it bounded and skip the spec" | Reaching for a label to skip work is itself the doubt: take the heavier path. |
+| "The design is obvious, I will start while they read it" | The gate is the approval, not the length. Present, then stop until the user says yes. |
+| "I know this kind of app, so it is bounded" | Bounded measures the repo. With no existing flow to change, it is architectural. |
+| "The spike works, so I will keep the code" | A spike's output is an answer. Keeping the code is a new request: classify it again. |
+| "They approved the idea, so the spec is approved too" | A reply approves only what was shown. Each stage needs its own yes. |

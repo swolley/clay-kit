@@ -2,14 +2,14 @@
 name: factory-run
 description: Run the open tasks of a plan: each task is built, reviewed by the lenses its diff needs, then approved or escalated. Resumes an interrupted run.
 disable-model-invocation: true
-argument-hint: <plan file>
+argument-hint: <plan file> [inline]
 ---
 
 Plugin root: ${CLAUDE_PLUGIN_ROOT}
 Follow ${CLAUDE_PLUGIN_ROOT}/STYLE.md. Read ${CLAUDE_PLUGIN_ROOT}/reference/orchestrator.md first: it holds the
 shared rules (files, modes, resume, job loop, completion). Use the plugin root above wherever it says `<plugin root>`.
 
-Plan file: $ARGUMENTS (may be empty: see "Resolving arguments" in the reference)
+Arguments: $ARGUMENTS (a plan, may be empty: see "Resolving arguments"; the word `inline` asks for the Inline mode in the reference)
 
 1. Resolve the plan, take the run lock ("Run lock": stop if another run holds the plan), then Preconditions, Resume and the mode question (orchestrator reference). The pace is guided unless the user
    chooses otherwise: see "Pace".

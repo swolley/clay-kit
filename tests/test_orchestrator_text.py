@@ -210,3 +210,16 @@ def test_commands_that_act_on_jobs_respect_the_lock():
 def test_unlock_command_exists_and_is_manual_only():
     t = read("skills/factory-unlock/SKILL.md")
     assert "disable-model-invocation: true" in t and "reference/orchestrator.md" in t and "state.py lock" in t
+
+
+def test_inline_mode_keeps_approver_and_reviewers_as_subagents():
+    t = read("reference/orchestrator.md")
+    assert "## Inline" in t and "tier `light`" in t and "stay subagents" in t
+    assert "inline" in read("skills/factory-run/SKILL.md")
+
+
+def test_brainstorm_has_the_spec_reviewer_and_the_excuses_table():
+    t = read("skills/factory-brainstorm/SKILL.md")
+    assert "reviewer-spec" in t and "Thoughts that mean stop" in t
+    assert "reviewer-spec" in read("tiers.md")
+    assert "Write" not in read("agents/reviewer-spec.md").split("---")[1]

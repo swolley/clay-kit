@@ -216,6 +216,17 @@ many there are), and `resolve.py plans --audit` is the second check: a plan decl
 files are not in the repo, or an open plan whose tasks all show them. Run the audit when a plan is chosen and, if it names
 that plan, tell the user in one line and ask before running.
 
+## Inline
+
+`/factory-run <plan> inline` builds in this session instead of in a `builder` subagent, to save the start-up of one agent per task
+(about 12 seconds and 12 thousand tokens). It is allowed only when every runnable task has tier `light`; otherwise say which task
+is not and run normally. Do everything of the Job loop except step 2: set `state.py stage <job> build`, read
+`<plugin root>/agents/builder.md`, and do that agent's work yourself in the job's worktree, writing `build.md` as it says. Record no
+`builder` usage. Then go on at step 3: routing decides as usual, so the short path (approver only) applies when `lite` is true, and a
+task whose diff grew past it gets its reviewers after the fact. The `approver` and every reviewer stay subagents: the change must
+not be judged by the session that wrote it. In `NEEDS_INPUT` and rework you still own the builder's part. Say at the end that the
+run was inline.
+
 ## Questions from agents
 
 The source of truth is a file, never the prompt. A subagent cannot ask the user; it ends with

@@ -11,7 +11,7 @@ Every command is a skill named `factory-<verb>`, so it is typed `/factory-run` a
 
 | Command | Started by | What it does |
 |---------|-----------|--------------|
-| `/factory-brainstorm` | you, or the model when you describe new work | idea to approved design (spec for big work, short chat design for small work) |
+| `/factory-brainstorm` | you, or the model when you describe new work | idea to approved design (spec for big work, checked by an independent spec reviewer; short chat design for small work) |
 | `/factory-plan` | you, or the model after an approved design | design to a plan of tasks and steps |
 | `/factory-run [plan]` | you only | runs the plan's open tasks, asking after each task what to do next; takes the only plan with open steps when you give none |
 | `/factory-task "<text>"` | you only | one ad hoc task, no plan file |
@@ -30,7 +30,7 @@ Every command is a skill named `factory-<verb>`, so it is typed `/factory-run` a
 3. `/factory-run`: for each task a builder works at the task's tier, up to four reviewers check the real diff
    (code always; ui, ux and security only when the changed paths call for them, see `routing.md`), then an
    approver lands it or escalates it. Reviewer findings are checked, not applied blindly; a builder is
-   resumed at most twice. A small `light` task takes a short path with no separate reviewer.
+   resumed at most twice. A small `light` task takes a short path with no separate reviewer. `/factory-run <plan> inline` builds light tasks in your session instead of in a subagent; the approver and the reviewers stay independent.
 4. When all tasks have landed, you choose how the work reaches your main branch. Nothing is ever pushed.
 
 **Pace.** The run is guided: after each task it asks whether to go on, stop, or run the rest without asking. When a task needs a decision

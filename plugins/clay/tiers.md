@@ -27,6 +27,7 @@ Fallback: if the host does not accept `fable`, use `opus` with `xhigh`.
 | reviewer-ui | sonnet | medium |
 | reviewer-ux | sonnet | medium |
 | reviewer-security | opus | high |
+| reviewer-spec | sonnet | medium |
 | approver | sonnet or opus, see below | high |
 
 The approver decides whether a change lands without anyone looking, so it uses `opus` when the job is risky and `sonnet`
