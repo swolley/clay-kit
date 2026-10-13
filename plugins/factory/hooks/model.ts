@@ -218,11 +218,6 @@ export async function scan(fs: Fs): Promise<{ runs: Run[]; jobs: Job[] }> {
   return { runs, jobs }
 }
 
-export function percent(done: number, total: number): number {
-  if (total <= 0) return 0
-  return Math.min(100, Math.max(0, Math.round((100 * done) / total)))
-}
-
 export const STAGE_STEPS = 5
 
 // Where a job sits on a five-step track: spec, build, review, approve, landed.

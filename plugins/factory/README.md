@@ -35,7 +35,7 @@ committed after approval.
 ## Progress in the terminal (Claude Code)
 
 The plugin includes a mod that shows progress inside the interface, with no setup: a band above the prompt
-(tasks done over total with the percentage, running phases, the jobs that wait for you), a toast when a job needs you,
+(tasks done over total, running phases, the jobs that wait for you), a toast when a job needs you,
 and a pane with the jobs by section: waiting for you, running, finished and planned, each job with its tier color,
 a phase track, elapsed time and reviewer verdicts. `/factory-progress` shows or hides the band and `/factory-agents` opens the pane. They use a hyphen because Claude Code
 refuses a colon in a mod command name (the skills are named the same way, so everything sits under `/factory-`). It only reads the

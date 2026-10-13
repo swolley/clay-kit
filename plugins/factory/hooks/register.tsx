@@ -7,7 +7,6 @@ import {
   formatDuration,
   jobElapsed,
   labeledBar,
-  percent,
   phaseLabel,
   planElapsed,
   scan,
@@ -140,7 +139,6 @@ export const register: Register = on => {
         <Text bold color={dot}>●</Text>
         <Text bold>{lead.plan.slice(0, 20)}{more}</Text>
         {labeled(Box, Text, label, lead.done, lead.total, 46, OK)}
-        <Text bold>{percent(lead.done, lead.total)}%</Text>
         {summary.waiting > 0 && <Text bold color={WAIT}>waiting: {waitingLabel(summary, 1)}</Text>}
         <Text dimColor>×{summary.running}</Text>
         <Button key="hide" label="×" onPress={() => update($, isHidden, () => true)} />
@@ -190,7 +188,6 @@ export const register: Register = on => {
           <Box gap={1}>
             <Text bold>{p.plan}</Text>
             {labeled(Box, Text, `Tasks ${p.done}/${p.total}`, p.done, p.total, 30, OK)}
-            <Text>{percent(p.done, p.total)}%</Text>
             <Text dimColor>{elapsed === null ? '' : formatDuration(elapsed)}</Text>
           </Box>
           {p.waiting.length > 0 && <Text bold color={WAIT}>Waiting for you · {p.waiting.length}</Text>}

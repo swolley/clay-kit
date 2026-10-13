@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, percent, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar } from '../../plugins/factory/hooks/model.ts'
+import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar } from '../../plugins/factory/hooks/model.ts'
 
 const job = (over: Record<string, unknown> = {}) =>
   parseJob(JSON.stringify({ id: '001-a', plan: 'p1', repo: 'api', tier: 'medium', stage: 'build', round: 0, reviewers: [], reviews: {}, ...over }))!
@@ -174,13 +174,6 @@ test('summarize puts landed jobs in finished and not-yet-started tasks in planne
   assert.deepEqual(p.finished.map(j => j.id), ['001-a'])
   assert.deepEqual(p.planned.map(t => t.n), [3, 4])
   assert.equal(p.total, 4)
-})
-
-test('percent rounds and guards a zero total', () => {
-  assert.equal(percent(1, 5), 20)
-  assert.equal(percent(1, 3), 33)
-  assert.equal(percent(0, 0), 0)
-  assert.equal(percent(9, 4), 100)
 })
 
 test('stageStep places a job on a five-step track', () => {
