@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""Parse a plan in the superpowers-compatible superset format into tasks and steps."""
+import json
+import re
+import sys
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+
+TASK_HEADING = re.compile(r"^#{2,4}\s+((?:Task|Phase|Step|Milestone|Wave)\b[^\n]*)$", re.I)
+FIELD = re.compile(r"^\*\*(Repo|Tier|Depends|Files|Constraints|Accept|Verify):\*\*\s*(.*)$")
+STEP = re.compile(r"^\s*[-*] \[([ xX-])\]\s*(.*)$")
+STATES = {" ": "open", "x": "done", "X": "done", "-": "cancelled"}
+
+
+@dataclass
+class Step:
+    state: str
+    text: str
+
+
+@dataclass
+class Task:
+    number: int
+    title: str
+    repo: str = ""
+    tier: str = "medium"
+    depends: list[int] = field(default_factory=list)
+    files: list[str] = field(default_factory=list)
+    constraints: str = ""
+    accept: list[str] = field(default_factory=list)
+    verify: str = ""
+    steps: list[Step] = field(default_factory=list)
+    defaults_applied: list[str] = field(default_factory=list)
+    fields_seen: set[str] = field(default_factory=set, repr=False)
+
+    @property
+    def done(self) -> bool:
+        states = [s.state for s in self.steps]
+        return "done" in states and "open" not in states
+
+
+@dataclass
+class Plan:
+    title: str
+    tasks: list[Task]
+
+
+def _clean(text: str) -> str:
+    return re.sub(r"\*\*", "", text).strip().rstrip(":").strip()
+
+
+def _numbered(value: str) -> list[str]:
+    """Split "1. a 2. b" at sequential markers only, so "200. " inside an item stays."""
+    starts, pos, n = [], 0, 1
+    while (m := re.compile(rf"(?:^|\s){n}\.\s+").search(value, pos)):
+        starts.append((m.start(), m.end()))
+        pos, n = m.end(), n + 1
+    if not starts:
+        return [value.strip()] if value.strip() else []
+    return [value[e:(starts[i + 1][0] if i + 1 < len(starts) else len(value))].strip() for i, (_, e) in enumerate(starts)]
+
+
+def _apply_field(task: Task, name: str, value: str) -> None:
+    key = name.lower()
+    task.fields_seen.add(key)
+    if key == "repo":
+        task.repo = value
+    elif key == "tier":
+        task.tier = value.lower()
+    elif key == "depends":
+        task.depends = [int(n) for n in re.findall(r"\d+", value)]
+    elif key == "files":
+        task.files = re.findall(r"`([^`]+)`", value) or [v.strip() for v in value.split(",") if v.strip()]
+    elif key == "constraints":
+        task.constraints = value
+    elif key == "accept":
+        task.accept = _numbered(value)
+    elif key == "verify":
+        task.verify = value
+
+
+def parse_plan(text: str, default_repo: str = "") -> Plan:
+    title = ""
+    tasks: list[Task] = []
+    current: Task | None = None
+    in_fence = False
+    for line in text.splitlines():
+        if re.match(r"^\s*(```|~~~)", line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if not title and (m := re.match(r"^#\s+(.+)$", line)):
+            title = m.group(1).strip()
+            continue
+        if m := TASK_HEADING.match(line):
+            heading = m.group(1)
+            num = re.search(r"\d+", heading)
+            number = int(num.group()) if num else len(tasks) + 1
+            name = _clean(heading.split(":", 1)[1] if ":" in heading else heading)
+            current = Task(number=number, title=name)
+            tasks.append(current)
+            continue
+        if current is None:
+            continue
+        if m := FIELD.match(line):
+            _apply_field(current, m.group(1), m.group(2).strip())
+        elif m := STEP.match(line):
+            current.steps.append(Step(STATES[m.group(1)], _clean(re.sub(r"^Step \d+:\s*", "", _clean(m.group(2))))))
+    for t in tasks:
+        for name in ("tier", "repo", "depends", "accept", "verify"):
+            if name not in t.fields_seen:
+                t.defaults_applied.append(name)
+        if "repo" not in t.fields_seen:
+            t.repo = default_repo
+        if "accept" not in t.fields_seen:
+            t.accept = [s.text for s in t.steps if s.state != "cancelled"]
+    return Plan(title=title, tasks=tasks)
+
+
+def main(argv: list[str]) -> int:
+    if not argv:
+        print("usage: factory_plan.py <plan.md> [--repo NAME]", file=sys.stderr)
+        return 2
+    repo = argv[argv.index("--repo") + 1] if "--repo" in argv else ""
+    plan = parse_plan(Path(argv[0]).read_text(), default_repo=repo)
+    out = {"title": plan.title, "tasks": []}
+    for t in plan.tasks:
+        d = asdict(t)
+        d.pop("fields_seen")
+        d["done"] = t.done
+        out["tasks"].append(d)
+    print(json.dumps(out, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
