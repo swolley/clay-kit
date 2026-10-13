@@ -26,12 +26,12 @@ main { max-width: 1100px; margin: 0 auto; padding: 18px; }
 .card { flex: 1 1 250px; max-width: 340px; padding: 10px 12px; text-align: left; font: inherit; color: inherit;
         background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; cursor: pointer; }
 .card:hover { border-color: var(--accent); }
-.card.needs-human { border-color: var(--attn); outline: 2px solid color-mix(in srgb, var(--attn) 30%, transparent); }
+.card.needs-human, .card.waiting-input { border-color: var(--attn); outline: 2px solid color-mix(in srgb, var(--attn) 30%, transparent); }
 .line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
 .line:first-child { margin-top: 0; }
 .name { font-weight: 600; }
 .pill { padding: 0 7px; font-size: 11px; color: var(--soft); border: 1px solid var(--rule); border-radius: 99px; }
-.pill.stage-needs-human { color: var(--attn); border-color: var(--attn); }
+.pill.stage-needs-human, .pill.stage-waiting-input { color: var(--attn); border-color: var(--attn); }
 .pill.stage-merged, .pill.stage-committed { color: var(--ok); border-color: var(--ok); }
 .lens { padding: 0 7px; font-size: 11px; border: 1px solid currentColor; border-radius: 4px; }
 .lens.PASS { color: var(--ok); } .lens.CHANGES { color: var(--bad); } .lens.pending { color: var(--idle); }
@@ -158,7 +158,7 @@ async function refresh() {
   try {
     const jobs = await readJobs()
     draw(jobs)
-    const waiting = jobs.filter(j => j.stage === 'needs-human').length
+    const waiting = jobs.filter(j => j.stage === 'needs-human' || j.stage === 'waiting-input').length
     $status.textContent = jobs.length + ' jobs' + (waiting ? ', ' + waiting + ' waiting for you' : '')
   } catch {
     $status.textContent = 'cannot read the jobs folder; serve it with a static server'

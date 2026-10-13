@@ -16,6 +16,7 @@ Commands are namespaced by the plugin (`/factory:run`); the exact spelling per h
 | `status` | you only | jobs, stages, verdicts, what waits for you |
 | `approve <job>` | you only | lands a job that was waiting for you |
 | `rework <job> <note>` | you only | sends a waiting job back to its builder |
+| `answer <job> [text]` | you only | answers the questions a job is waiting on, now or later |
 
 ## Workflow
 

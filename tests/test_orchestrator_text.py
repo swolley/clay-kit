@@ -34,3 +34,32 @@ def test_adhoc_task_gets_completion_and_criterion():
 def test_approve_warns_without_decision_and_points_to_rerun():
     t = read("skills/approve/SKILL.md")
     assert "no decision.md" in t and "rerun" in t
+
+
+def test_builder_can_ask_through_the_orchestrator():
+    t = read("agents/builder.md")
+    assert "STATUS: NEEDS_INPUT" in t and "recommended" in t
+
+
+def test_questions_are_persisted_before_asking():
+    t = read("reference/orchestrator.md")
+    assert "questions-<k>.md" in t and "answers-<k>.md" in t and "waiting-input" in t
+
+
+def test_no_answer_is_never_a_default():
+    t = read("reference/orchestrator.md")
+    assert "never apply a default" in t and "unrelated message" in t
+
+
+def test_waiting_jobs_are_reasked_on_resume_and_status():
+    t = read("reference/orchestrator.md")
+    assert "| waiting-input" in t and "waiting for you" in t
+
+
+def test_answer_command_exists_and_points_to_reference():
+    t = read("skills/answer/SKILL.md")
+    assert "disable-model-invocation: true" in t and "reference/orchestrator.md" in t
+
+
+def test_dashboard_marks_waiting_input():
+    assert "waiting-input" in read("factory/dashboard.html")

@@ -49,3 +49,14 @@ For each stage, stop the session at that point, reopen it, and rerun `/factory:r
 
 - [ ] Questions were asked with the question tool, one at a time, with a recommended option first.
 - [ ] Agent files start with their machine-readable first line and contain only findings, no narration.
+
+## F. Questions from agents
+
+Use a task whose brief leaves a real choice open (for example "add a cache" with no store named).
+
+- [ ] The builder ends with `STATUS: NEEDS_INPUT` and numbered questions with a recommended answer; the job shows `waiting-input`.
+- [ ] `questions-1.md` exists before the question is asked, and the dashboard shows the job as waiting for you.
+- [ ] Dismiss the prompt or type an unrelated message: the job stays `waiting-input`, no `answers-1.md` is written, other jobs continue.
+- [ ] `/factory:status` and the end of the run list the job as waiting for you.
+- [ ] `/factory:answer <job-id>` asks the same questions again; answering writes `answers-1.md` and a fresh builder continues without using a review resume.
+- [ ] Answering "I do not know" moves the job to `needs-human`.
