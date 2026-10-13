@@ -11,4 +11,5 @@ shared rules (files, modes, resume, job loop, completion). Use the plugin root a
 
 Arguments: $ARGUMENTS (first word is the job id, the rest is the note).
 
+Resolve the job as in "Resolving arguments" (stages `needs-human`); the argument may be empty, a number or a fragment.
 Follow "The other commands", rework, in the reference. Store the note verbatim.

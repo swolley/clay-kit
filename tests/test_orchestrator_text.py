@@ -117,3 +117,28 @@ def test_style_contract_does_not_point_outside_the_plugin():
 def test_spec_says_the_orchestrator_lands_the_job():
     spec = (PLUGIN.parent.parent / "docs/superpowers/specs/2026-10-13-factory-design.md").read_text()
     assert "clears a job to land" in spec and "**Approver** merges" not in spec
+
+
+def test_arguments_are_resolved_with_the_helper_script():
+    t = read("reference/orchestrator.md")
+    assert "## Resolving arguments" in t and "resolve.py job" in t and "resolve.py plans" in t
+
+
+def test_command_skills_resolve_their_argument():
+    for skill in ("factory-approve", "factory-rework", "factory-answer", "factory-run"):
+        assert "Resolving arguments" in read(f"skills/{skill}/SKILL.md"), skill
+
+
+def test_run_is_guided_by_default_and_can_switch_to_auto():
+    t = read("reference/orchestrator.md")
+    assert "## Pace" in t and "`pace`" in t and "run the rest without asking" in t
+    assert "approve as it stands" in t and "rework with a note" in t
+
+
+def test_auto_pace_stops_with_the_ready_command():
+    t = read("reference/orchestrator.md")
+    assert "stops the run" in t and "/factory-approve <id>" in t
+
+
+def test_skip_is_not_offered_in_current_branch_mode():
+    assert "skip is not offered" in read("reference/orchestrator.md")

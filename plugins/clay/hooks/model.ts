@@ -22,10 +22,11 @@ export type Job = {
   agents: Record<string, AgentInfo>
 }
 
-export type Run = { plan: string; total: number; done: number; tasks: PlanTask[] }
+export type Run = { plan: string; path: string; total: number; done: number; tasks: PlanTask[] }
 
 export type PlanView = {
   plan: string
+  path: string
   total: number
   done: number
   running: Job[]
@@ -107,7 +108,13 @@ export function parseRun(text: string): Run | null {
       }
     }
   }
-  return { plan: raw.plan, total: typeof raw.total === 'number' ? raw.total : 0, done: typeof raw.done === 'number' ? raw.done : 0, tasks }
+  return {
+    plan: raw.plan,
+    path: typeof raw.path === 'string' ? raw.path : '',
+    total: typeof raw.total === 'number' ? raw.total : 0,
+    done: typeof raw.done === 'number' ? raw.done : 0,
+    tasks,
+  }
 }
 
 export function summarize(runs: Run[], jobs: Job[]): Summary {
@@ -122,6 +129,7 @@ export function summarize(runs: Run[], jobs: Job[]): Summary {
     const started = new Set(list.map(j => j.task))
     views.push({
       plan,
+      path: run?.path ?? '',
       total: run && run.total > 0 ? run.total : run && run.tasks.length > 0 ? run.tasks.length : list.length,
       done: Math.max(run?.done ?? 0, landed),
       running: list.filter(j => !LANDED.includes(j.stage) && !NEEDS_USER.includes(j.stage)),

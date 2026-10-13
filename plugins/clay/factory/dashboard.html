@@ -25,7 +25,13 @@ main { max-width: 1100px; margin: 0 auto; padding: 18px; }
 .cards { display: flex; flex-wrap: wrap; gap: 8px; }
 .card { flex: 1 1 250px; max-width: 340px; padding: 10px 12px; text-align: left; font: inherit; color: inherit;
         background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; cursor: pointer; }
+.card { cursor: default; user-select: text; }
 .card:hover { border-color: var(--accent); }
+.cmdrow { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+code.cmd { padding: 1px 6px; font: 12px ui-monospace, monospace; background: var(--page); border: 1px solid var(--rule); border-radius: 4px; user-select: all; overflow-wrap: anywhere; }
+button.copy { padding: 0 7px; font-size: 11px; color: var(--soft); background: transparent; border: 1px solid var(--rule); border-radius: 4px; cursor: pointer; }
+button.copy:hover { color: var(--text); border-color: var(--accent); }
+.planbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; }
 .card.needs-human, .card.waiting-input { border-color: var(--attn); outline: 2px solid color-mix(in srgb, var(--attn) 30%, transparent); }
 .line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
 .line:first-child { margin-top: 0; }
@@ -81,6 +87,16 @@ async function findRoot() {
   try { await entries('jobs/'); return 'jobs/' } catch { return './' }
 }
 
+async function readRuns() {
+  const runs = {}
+  try {
+    for (const name of (await entries(ROOT + '_runs/')).filter(n => n.endsWith('.json'))) {
+      try { const r = JSON.parse(await readText(ROOT + '_runs/' + name)); if (r.plan) runs[r.plan] = r } catch { /* skip a bad file */ }
+    }
+  } catch { /* no runs folder yet */ }
+  return runs
+}
+
 async function readJobs() {
   if (ROOT === null) ROOT = await findRoot()
   const folders = (await entries(ROOT)).map(h => h.replace(/\/$/, '')).filter(h => /^\d{3}-/.test(h))
@@ -98,11 +114,29 @@ function groupBy(list, key) {
   return out
 }
 
+// A small button that copies `text`; it never opens the detail panel.
+function copyButton(text) {
+  const b = make('button', 'copy', 'copy')
+  b.type = 'button'
+  b.addEventListener('click', async e => {
+    e.stopPropagation()
+    try { await navigator.clipboard.writeText(text); b.textContent = 'copied' } catch { b.textContent = 'select it' }
+    setTimeout(() => { b.textContent = 'copy' }, 1200)
+  })
+  return b
+}
+
+// A command the user can select or copy, with its copy button.
+function commandRow(text) {
+  const row = make('div', 'cmdrow')
+  row.append(make('code', 'cmd', text), copyButton(text))
+  return row
+}
+
 function cardFor(job) {
-  const card = make('button', 'card ' + job.stage)
-  card.type = 'button'
+  const card = make('div', 'card ' + job.stage)
   const head = make('div', 'line')
-  head.append(make('span', 'name', job.id), make('span', 'pill stage-' + job.stage, job.stage))
+  head.append(make('span', 'name', job.id), copyButton(job.id), make('span', 'pill stage-' + job.stage, job.stage))
   const facts = make('div', 'line')
   facts.append(make('span', 'pill', job.tier || 'medium'))
   if (job.round) facts.append(make('span', 'pill', 'round ' + job.round))
@@ -113,16 +147,20 @@ function cardFor(job) {
     lenses.append(make('span', 'lens ' + verdict, lens + ' ' + verdict))
   }
   card.append(head, facts, lenses)
-  card.addEventListener('click', () => showJob(job))
+  if (job.stage === 'needs-human') card.append(commandRow('/factory-approve ' + job.id), commandRow('/factory-rework ' + job.id + ' <note>'))
+  if (job.stage === 'waiting-input') card.append(commandRow('/factory-answer ' + job.id))
+  card.addEventListener('click', () => { if (!String(getSelection())) showJob(job) })
   return card
 }
 
-function draw(jobs) {
+function draw(jobs, runs) {
   $plans.replaceChildren()
   if (jobs.length === 0) { $plans.append(make('div', 'none', 'No jobs yet. Start one with the run command.')); return }
   for (const [plan, inPlan] of groupBy(jobs, j => j.plan || 'adhoc')) {
     const section = make('section', 'plan')
     section.append(make('h2', '', plan))
+    const path = runs[plan] && runs[plan].path
+    if (path) { const bar = make('div', 'planbar'); bar.append(commandRow('/factory-run ' + path)); section.append(bar) }
     for (const [repo, inRepo] of groupBy(inPlan, j => j.repo || 'repo')) {
       const block = make('div', 'repo')
       const cards = make('div', 'cards')
@@ -154,10 +192,15 @@ async function showJob(job) {
   }
 }
 
+let lastKey = ''
+
 async function refresh() {
   try {
     const jobs = await readJobs()
-    draw(jobs)
+    const runs = await readRuns()
+    const key = JSON.stringify([jobs, runs])
+    // Redrawing would clear a selection and flicker, so only draw when something changed and nothing is selected.
+    if (key !== lastKey && !String(getSelection())) { draw(jobs, runs); lastKey = key }
     const waiting = jobs.filter(j => j.stage === 'needs-human' || j.stage === 'waiting-input').length
     $status.textContent = jobs.length + ' jobs' + (waiting ? ', ' + waiting + ' waiting for you' : '')
   } catch {

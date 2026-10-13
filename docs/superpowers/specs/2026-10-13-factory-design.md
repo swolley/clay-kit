@@ -201,6 +201,19 @@ answers, at any later time, also from another session; resuming `run` re-asks th
 restarted without using a review resume. "I do not know" moves the job to `needs-human`. `BLOCKED` is kept for faults no
 answer can fix.
 
+### 4.7b Pace and arguments
+
+**Pace.** A run is *guided* by default: when a job ends, the orchestrator asks with the question tool what to do next and does it, so the
+user never has to type another command to go on. After a landed job: continue with the next task, stop, or run the rest without asking
+(`pace: auto`). After a job that needs a person: it quotes the question of the job's `decision.md` and offers approve as it stands,
+rework with a note, skip (isolated mode only, because in current-branch mode the changes sit in the tree and the next task must not
+start on top of them) or stop. In `auto` pace nothing is asked between tasks and a job that needs a person stops the run, with the ready
+commands listed. A dismissed prompt counts as stop. A separate always-on autopilot command (`factory-goal`) was considered and left out.
+
+**Arguments.** `factory-approve`, `factory-rework` and `factory-answer` accept nothing (the only eligible job), the full id, `002`, a task
+number or a fragment of the id; several matches are put to the user as a question. `factory-run` without a plan takes the only plan in
+`docs/superpowers/plans/` that still has open steps, or asks which. `scripts/resolve.py` does the matching, so it is tested.
+
 ### 4.8 Resuming an interrupted run
 
 There is no separate resume command: `/factory-run <plan>` is idempotent and resumes by itself.
@@ -261,6 +274,10 @@ in the working folder and one level below it (a workspace root with several repo
   to `sec`, a `!` or `…` as a cue besides color). A legend names the five levels, easy to hard, and the three verdicts. Planned
   tasks appear as rows too, so the order of the plan can be read in one place. A dot says the state only (yellow waiting, light
   running, green landed); a bar color says the level only.
+- **Actions in the pane.** Rows that need the user carry buttons that write the ready command into the prompt (`approve`, `rework`, `answer`), the plan
+  header has `run` with the plan path from the run file, and each task shows its job id. The user checks the command and sends it; nothing is
+  copied by hand. The static dashboard offers the same through selectable text, `copy` buttons and the command lines of waiting jobs, and it
+  only redraws when the data changed and nothing is selected.
 - **Who is working, and on which model.** The "in charge" column writes the roles that have the task now (the builder; the
   reviewers whose verdict is still pending; the approver). The data comes from two places: `job.json` `agents`, the model and
   effort the orchestrator passed at spawn, and the mod's own observation of `agent.spawn` events, which carry the model the

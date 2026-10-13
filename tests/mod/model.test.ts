@@ -14,8 +14,8 @@ test('parseJob accepts a valid job and rejects garbage', () => {
 })
 
 test('parseRun reads totals and tolerates missing fields', () => {
-  assert.deepEqual(parseRun(JSON.stringify({ plan: 'p1', total: 5, done: 2 })), { plan: 'p1', total: 5, done: 2, tasks: [] })
-  assert.deepEqual(parseRun(JSON.stringify({ plan: 'p1' })), { plan: 'p1', total: 0, done: 0, tasks: [] })
+  assert.deepEqual(parseRun(JSON.stringify({ plan: 'p1', total: 5, done: 2 })), { plan: 'p1', path: '', total: 5, done: 2, tasks: [] })
+  assert.deepEqual(parseRun(JSON.stringify({ plan: 'p1' })), { plan: 'p1', path: '', total: 0, done: 0, tasks: [] })
   assert.equal(parseRun('[]'), null)
 })
 
@@ -27,7 +27,7 @@ test('summarize counts landed jobs as done and splits running from waiting', () 
     job({ id: '004-d', stage: 'needs-human' }),
     job({ id: '005-e', stage: 'waiting-input' }),
   ]
-  const s = summarize([{ plan: 'p1', total: 6, done: 0, tasks: [] }], jobs)
+  const s = summarize([{ plan: 'p1', path: '', total: 6, done: 0, tasks: [] }], jobs)
   assert.equal(s.plans.length, 1)
   assert.deepEqual([s.plans[0]!.total, s.plans[0]!.done], [6, 2])
   assert.equal(s.plans[0]!.running.length, 1)
@@ -36,7 +36,7 @@ test('summarize counts landed jobs as done and splits running from waiting', () 
 })
 
 test('summarize trusts a larger done from the run file and falls back to the job count for total', () => {
-  const a = summarize([{ plan: 'p1', total: 5, done: 3, tasks: [] }], [job({ stage: 'merged' })])
+  const a = summarize([{ plan: 'p1', path: '', total: 5, done: 3, tasks: [] }], [job({ stage: 'merged' })])
   assert.equal(a.plans[0]!.done, 3)
   const b = summarize([], [job({ id: '001-a', stage: 'build' }), job({ id: '002-b', stage: 'merged' })])
   assert.deepEqual([b.plans[0]!.total, b.plans[0]!.done], [2, 1])
@@ -102,7 +102,7 @@ test('scan reads jobs and run files from the working folder', async () => {
   })
   const out = await scan(fs)
   assert.deepEqual(out.jobs.map(j => j.id).sort(), ['001-a', '002-b'])
-  assert.deepEqual(out.runs, [{ plan: 'p1', total: 4, done: 1, tasks: [] }])
+  assert.deepEqual(out.runs, [{ plan: 'p1', path: '', total: 4, done: 1, tasks: [] }])
 })
 
 test('scan also looks one folder down, as when started from a workspace root', async () => {
@@ -339,4 +339,12 @@ test('rowStatus gives a short label and a kind for each row', () => {
   assert.equal(rowStatus(rows[0]!).label, 'landed')
   assert.equal(rowStatus(rows[1]!).label, 'review r0 0/1')
   assert.equal(rowStatus(rows[3]!).label, 'planned · after 3')
+})
+
+
+test('parseRun reads the plan path and summarize carries it to the plan view', () => {
+  const run = parseRun(JSON.stringify({ plan: 'p1', path: 'docs/superpowers/plans/p1.md', total: 2, done: 0 }))!
+  assert.equal(run.path, 'docs/superpowers/plans/p1.md')
+  assert.equal(summarize([run], []).plans[0]!.path, 'docs/superpowers/plans/p1.md')
+  assert.equal(summarize([], [job()]).plans[0]!.path, '')
 })

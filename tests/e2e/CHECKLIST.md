@@ -61,6 +61,16 @@ Use a task whose brief leaves a real choice open (for example "add a cache" with
 - [ ] `/factory-answer <job-id>` asks the same questions again; answering writes `answers-1.md` and a fresh builder continues without using a review resume.
 - [ ] Answering "I do not know" moves the job to `needs-human`.
 
+## H. Pace and short arguments
+
+- [ ] `/factory-run` without an argument takes the only plan with open steps, or asks which one.
+- [ ] After a landed task it asks: continue, stop, or run the rest without asking.
+- [ ] After an escalated task it quotes the question and offers approve, rework with a note, skip (isolated mode only) and stop; the answer is applied and the run goes on without a new command.
+- [ ] Choosing "run the rest without asking" stops asking; an escalation then stops the run and lists the ready commands.
+- [ ] `/factory-approve`, `/factory-rework` and `/factory-answer` work with no argument (one candidate), with `2`, with `002` and with a fragment of the id.
+- [ ] The pane buttons (`approve`, `rework`, `answer`, `run`) write the right command in the prompt.
+- [ ] In the dashboard the ids and commands can be selected and copied, and a selection survives the refresh.
+
 ## G. Progress mod (Claude Code)
 
 - [ ] With the plugin loaded and jobs present, the band above the prompt shows the plan, the bar and the running phases.

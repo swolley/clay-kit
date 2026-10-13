@@ -11,5 +11,6 @@ shared rules (files, modes, resume, job loop, completion). Use the plugin root a
 
 Arguments: $ARGUMENTS (first word is the job id, anything after it is the answers).
 
+Resolve the job as in "Resolving arguments" (stages `waiting-input`); the argument may be empty, a number or a fragment.
 Follow "The other commands", answer, and "Questions from agents" in the reference. If the job is not waiting for
 input, say so and show its stage.

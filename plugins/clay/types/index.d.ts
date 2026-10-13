@@ -19,6 +19,7 @@ export type FactoryPlanTask = { n: number; title: string; tier: string; after: n
 export type FactorySummary = {
   plans: {
     plan: string
+    path: string
     total: number
     done: number
     running: FactoryJob[]

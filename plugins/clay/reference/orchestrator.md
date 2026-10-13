@@ -15,7 +15,7 @@ runtime sits under `<repo>/factory/jobs/`, which git never tracks:
 
 | Path under `factory/jobs/` | Written by | Holds |
 |---|---|---|
-| `_runs/<plan-slug>.json` | you | the mode chosen for the run, the integration branch, the plan path, the task counts `total` and `done` (set at the start, `done` raised each time a job lands), and `tasks`, the planned tasks as `{ "n", "title", "tier", "after" }` written at the start (`after` lists the task numbers it waits for); the progress mod reads them |
+| `_runs/<plan-slug>.json` | you | the mode chosen for the run, the integration branch, the plan path, the run `pace`, the task counts `total` and `done` (set at the start, `done` raised each time a job lands), and `tasks`, the planned tasks as `{ "n", "title", "tier", "after" }` written at the start (`after` lists the task numbers it waits for); the progress mod reads them |
 | `<job-id>/job.json` | you, only you | the job's state; the dashboard reads it |
 | `<job-id>/task.md` | you | the task brief, copied from the plan |
 | `<job-id>/build.md` | builder | what was built and the proof |
@@ -44,7 +44,8 @@ on every change (the progress mod shows elapsed time from them).
 `stage` is `spec`, `build`, `waiting-input`, `review`, `approve`, `merged`, `committed` or `needs-human`. Replace
 the file as a whole each time it changes. `reviews` holds the current round; earlier rounds stay in their folders.
 Before the first job, create `factory/jobs/` with a `factory/jobs/.gitignore` containing `*` (it ignores itself, so
-job state never dirties the repo) and copy `<plugin root>/factory/dashboard.html` to `factory/jobs/dashboard.html`.
+job state never dirties the repo). At the start of every run copy `<plugin root>/factory/dashboard.html` to
+`factory/jobs/dashboard.html`, replacing the old copy, so the page is never older than the plugin.
 The user serves that folder with `cd factory/jobs && python3 -m http.server` and opens `/dashboard.html`.
 `task.md` holds the task's title, fields, steps and a link to the spec named in the plan header.
 
@@ -136,6 +137,38 @@ worktree path, the branch, the mode and the base.
    branch: commit the paths and message from build.md. Set `merged` or `committed`.
 8. **Needs human.** `stage: "needs-human"`; keep the branch and worktree; name the waiting job for the user, give its worktree path, and quote either decision.md or the
    reason given for BLOCKED.
+
+## Pace
+
+Recorded in the run state as `pace`: `step` (the default) or `auto`.
+
+**Guided (`step`).** When a job ends, ask with the question tool what to do next, and do it without making the user
+type another command.
+- A job landed and tasks are left: continue with the next task (recommended), stop here, or
+  run the rest without asking (sets `pace: auto`). After the last task, go to Completion.
+- A job needs a person (`needs-human`): quote in two lines the question in the `## Handoff to the human` of its
+  decision.md, or the BLOCKED reason, then offer: approve as it stands (Land), rework with a note (take the note as
+  free text), skip this task and go on, or stop. Apply the answer and continue the loop. In current-branch mode
+  skip is not offered: the changes are in the tree and the next task must not start on top of them. In isolated mode a skipped job
+  stays `needs-human`, and the tasks that depend on it are not started.
+- An agent asked a question: handle it in place, as in Questions from agents.
+
+**Auto.** No question between tasks. A job that needs a person stops the run: list the waiting jobs, each with the
+ready command (`/factory-approve <id>`, `/factory-rework <id> <note>`, `/factory-answer <id>`), and stop.
+
+A prompt that is dismissed counts as stop and leaves every job as it is. Running `factory-run` again starts guided again.
+
+## Resolving arguments
+
+A command may get a short token or nothing. Resolve a job with
+`python3 <plugin root>/scripts/resolve.py job "<token>" --stages <stages> --root <repo>`: the stages are `needs-human`
+for approve and rework, `waiting-input` for answer. A `match` is the job. `candidates` mean you ask which one with the
+question tool, listing each as its id and stage. With no match, say the `reason` and list what is eligible. A token can be
+nothing (the only eligible job), the full id, `002`, a task number, or a fragment of the id.
+
+For `factory-run` without a plan, run `python3 <plugin root>/scripts/resolve.py plans --root <repo>`: one plan with open
+steps is the plan; several, ask with the question tool, each as its path and open over total tasks; none, point to
+`factory-brainstorm` and `factory-plan`.
 
 ## Questions from agents
 
