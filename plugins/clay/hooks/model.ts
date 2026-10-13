@@ -24,6 +24,11 @@ export type Job = {
   agentMs: number
 }
 
+// A run lock: while it is fresh, the plan and its spec are protected from edits.
+export type Lock = { plan: string; runId: string; since: number; heartbeat: number; protect: string[] }
+
+const STALE_MS = 30 * 60_000
+
 export type Run = { plan: string; path: string; total: number; done: number; tasks: PlanTask[] }
 
 export type PlanView = {
@@ -38,6 +43,7 @@ export type PlanView = {
   tasks: PlanTask[]
   tokens: number
   agentMs: number
+  lock: Lock | null
 }
 
 export type Summary = { plans: PlanView[]; waiting: number; running: number }
@@ -125,10 +131,11 @@ export function parseRun(text: string): Run | null {
   }
 }
 
-export function summarize(runs: Run[], jobs: Job[]): Summary {
+export function summarize(runs: Run[], jobs: Job[], locks: Lock[] = []): Summary {
   const plans = new Map<string, Job[]>()
   for (const job of jobs) plans.set(job.plan, [...(plans.get(job.plan) ?? []), job])
   for (const run of runs) if (!plans.has(run.plan)) plans.set(run.plan, [])
+  for (const lock of locks) if (!plans.has(lock.plan)) plans.set(lock.plan, [])
 
   const views: PlanView[] = []
   for (const [plan, list] of plans) {
@@ -147,6 +154,7 @@ export function summarize(runs: Run[], jobs: Job[]): Summary {
       tasks: run?.tasks ?? [],
       tokens: list.reduce((n, j) => n + j.tokens, 0),
       agentMs: list.reduce((n, j) => n + j.agentMs, 0),
+      lock: locks.find(l => l.plan === plan) ?? null,
     })
   }
   return {
@@ -222,9 +230,10 @@ async function jobsFolders(fs: Fs): Promise<string[]> {
 
 // Reads the state the run command writes: job.json per job and _runs/<plan>.json per plan.
 // Looks in the working folder and one level below it. A file that cannot be read or parsed is skipped.
-export async function scan(fs: Fs): Promise<{ runs: Run[]; jobs: Job[] }> {
+export async function scan(fs: Fs): Promise<{ runs: Run[]; jobs: Job[]; locks: Lock[] }> {
   const runs: Run[] = []
   const jobs: Job[] = []
+  const locks: Lock[] = []
   for (const base of await jobsFolders(fs)) {
     let entries: { name: string; kind: string }[] = []
     try {
@@ -245,13 +254,17 @@ export async function scan(fs: Fs): Promise<{ runs: Run[]; jobs: Job[] }> {
           const run = await fs.read(`${base}/_runs/${f.name}`).then(parseRun, () => null)
           if (run) runs.push(run)
         }
+        for (const f of files.filter(x => x.name.endsWith('.lock'))) {
+          const lock = await fs.read(`${base}/_runs/${f.name}`).then(parseLock, () => null)
+          if (lock) locks.push(lock)
+        }
       } else if (/^\d{3}-/.test(entry.name) && jobs.length < MAX_JOBS) {
         const job = await fs.read(`${base}/${entry.name}/job.json`).then(parseJob, () => null)
         if (job) jobs.push(job)
       }
     }
   }
-  return { runs, jobs }
+  return { runs, jobs, locks }
 }
 
 export const STAGE_STEPS = 5
@@ -420,4 +433,36 @@ export function formatTokens(n: number): string {
   if (n < 10_000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`
   if (n < 1_000_000) return `${Math.round(n / 1000)}k`
   return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
+}
+
+export function parseLock(text: string): Lock | null {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!isRecord(raw) || typeof raw.plan !== 'string' || typeof raw.run_id !== 'string') return null
+  return {
+    plan: raw.plan,
+    runId: raw.run_id,
+    since: toMs(raw.started) ?? 0,
+    heartbeat: toMs(raw.heartbeat) ?? 0,
+    protect: Array.isArray(raw.protect) ? raw.protect.filter((p): p is string => typeof p === 'string') : [],
+  }
+}
+
+export function isStale(lock: Lock, now: number): boolean {
+  return now - lock.heartbeat > STALE_MS
+}
+
+// The fresh lock whose plan or spec an edit of `path` would change, if any. Paths are compared by their end, since a lock
+// names them relative to the repository and an edit names them absolutely.
+export function protectedBy(locks: Lock[], path: string, now: number): Lock | null {
+  const norm = path.replace(/\\/g, '/')
+  return locks.find(l => !isStale(l, now) && l.protect.some(p => norm === p || norm.endsWith(`/${p}`))) ?? null
+}
+
+export function lockNote(lock: Lock, now: number): string {
+  return isStale(lock, now) ? 'lock stale: no activity for over 30 minutes' : `locked: plan and spec read-only while this run lasts`
 }

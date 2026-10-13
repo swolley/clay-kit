@@ -31,6 +31,7 @@ export type FactorySummary = {
     tasks: FactoryPlanTask[]
     tokens: number
     agentMs: number
+    lock: { plan: string; runId: string; since: number; heartbeat: number; protect: string[] } | null
   }[]
   waiting: number
   running: number
@@ -43,6 +44,7 @@ declare module 'claude-code' {
       isHidden: boolean
       isOnlyMine: boolean
       observed: Record<string, Record<string, { model: string }>>
+      locks: { plan: string; runId: string; since: number; heartbeat: number; protect: string[] }[]
     }
   }
 }

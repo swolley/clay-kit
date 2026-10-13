@@ -184,3 +184,118 @@ def test_cli_prints_json_and_returns_a_failure_code_for_a_failed_check(repo, cap
     assert json.loads(capsys.readouterr().out)["reviewers"] == ["code", "security"]
     assert state.main(["verdicts", j["id"], "--root", str(repo)]) == 1
     assert json.loads(capsys.readouterr().out)["ok"] is False
+
+
+# ---- run lock and protected files ----
+
+import os  # noqa: E402
+import stat  # noqa: E402
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+PLAN_FILE = "docs/superpowers/plans/2026-01-01-demo.md"
+
+
+def writable(p: Path) -> bool:
+    return bool(p.stat().st_mode & stat.S_IWUSR)
+
+
+@pytest.fixture
+def locked_repo(repo):
+    spec = repo / "docs/superpowers/specs"
+    spec.mkdir(parents=True)
+    (spec / "2026-01-01-demo-design.md").write_text("# spec\n")
+    plan = repo / PLAN_FILE
+    plan.write_text(plan.read_text().replace("**Spec:** none", "**Spec:** `docs/superpowers/specs/2026-01-01-demo-design.md`"))
+    state.setup(repo, repo)
+    return repo
+
+
+def test_acquire_takes_the_lock_and_makes_plan_and_spec_read_only(locked_repo):
+    r = state.lock_acquire(locked_repo, PLAN_FILE, run_id="run-a")
+    assert r["ok"] is True
+    assert not writable(locked_repo / PLAN_FILE)
+    assert not writable(locked_repo / "docs/superpowers/specs/2026-01-01-demo-design.md")
+    lock = json.loads((locked_repo / "factory/jobs/_runs/2026-01-01-demo.lock").read_text())
+    assert lock["run_id"] == "run-a" and set(lock["protect"]) == {PLAN_FILE, "docs/superpowers/specs/2026-01-01-demo-design.md"}
+
+
+def test_a_second_run_is_refused_while_the_first_is_alive(locked_repo):
+    state.lock_acquire(locked_repo, PLAN_FILE, run_id="run-a")
+    r = state.lock_acquire(locked_repo, PLAN_FILE, run_id="run-b")
+    assert r["ok"] is False and r["stale"] is False and r["held_by"] == "run-a"
+    assert not writable(locked_repo / PLAN_FILE)
+
+
+def test_the_same_run_can_take_its_own_lock_again(locked_repo):
+    state.lock_acquire(locked_repo, PLAN_FILE, run_id="run-a")
+    assert state.lock_acquire(locked_repo, PLAN_FILE, run_id="run-a")["ok"] is True
+
+
+def test_release_restores_the_original_permissions_and_removes_the_lock(locked_repo):
+    before = (locked_repo / PLAN_FILE).stat().st_mode & 0o777
+    state.lock_acquire(locked_repo, PLAN_FILE, run_id="run-a")
+    r = state.lock_release(locked_repo, "2026-01-01-demo", run_id="run-a")
+    assert r["ok"] is True and r["released"] is True
+    assert (locked_repo / PLAN_FILE).stat().st_mode & 0o777 == before
+    assert not (locked_repo / "factory/jobs/_runs/2026-01-01-demo.lock").exists()
+
+
+def test_release_by_another_run_is_refused_unless_forced(locked_repo):
+    state.lock_acquire(locked_repo, PLAN_FILE, run_id="run-a")
+    assert state.lock_release(locked_repo, "2026-01-01-demo", run_id="run-b")["ok"] is False
+    assert not writable(locked_repo / PLAN_FILE)
+    assert state.lock_release(locked_repo, "2026-01-01-demo", run_id="run-b", force=True)["ok"] is True
+    assert writable(locked_repo / PLAN_FILE)
+
+
+def _age(repo, minutes):
+    p = repo / "factory/jobs/_runs/2026-01-01-demo.lock"
+    lock = json.loads(p.read_text())
+    lock["heartbeat"] = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    p.write_text(json.dumps(lock))
+
+
+def test_a_lock_without_a_heartbeat_for_long_is_stale_and_needs_an_explicit_takeover(locked_repo):
+    before = (locked_repo / PLAN_FILE).stat().st_mode & 0o777
+    state.lock_acquire(locked_repo, PLAN_FILE, run_id="run-a")
+    _age(locked_repo, 45)
+    r = state.lock_acquire(locked_repo, PLAN_FILE, run_id="run-b")
+    assert r["ok"] is False and r["stale"] is True
+    r = state.lock_acquire(locked_repo, PLAN_FILE, run_id="run-b", force=True)
+    assert r["ok"] is True
+    state.lock_release(locked_repo, "2026-01-01-demo", run_id="run-b")
+    assert (locked_repo / PLAN_FILE).stat().st_mode & 0o777 == before
+
+
+def test_any_job_change_refreshes_the_heartbeat(locked_repo):
+    state.lock_acquire(locked_repo, PLAN_FILE, run_id="run-a")
+    _age(locked_repo, 20)
+    j = new(locked_repo)
+    state.set_stage(locked_repo, j["id"], "build")
+    lock = json.loads((locked_repo / "factory/jobs/_runs/2026-01-01-demo.lock").read_text())
+    age = datetime.now(timezone.utc) - datetime.strptime(lock["heartbeat"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    assert age < timedelta(minutes=2)
+
+
+def test_lock_list_reports_each_lock_and_whether_it_is_stale(locked_repo):
+    state.lock_acquire(locked_repo, PLAN_FILE, run_id="run-a")
+    _age(locked_repo, 45)
+    [item] = state.lock_list(locked_repo)
+    assert item["plan"] == "2026-01-01-demo" and item["stale"] is True and item["run_id"] == "run-a"
+
+
+def test_tick_plan_ticks_only_landed_tasks_even_on_a_read_only_plan(locked_repo):
+    state.lock_acquire(locked_repo, PLAN_FILE, run_id="run-a")
+    j = new(locked_repo, 1)
+    state.land_job(locked_repo, j["id"], "committed", head="abc")
+    state.tick_plan(locked_repo, PLAN_FILE)
+    text = (locked_repo / PLAN_FILE).read_text()
+    assert text.count("- [x]") == 2 and text.count("- [ ]") == 1
+    assert not writable(locked_repo / PLAN_FILE)
+
+
+def test_cli_lock_acquire_exits_3_when_another_run_holds_the_plan(locked_repo, capsys):
+    assert state.main(["lock", "acquire", "--root", str(locked_repo), "--plan-file", PLAN_FILE, "--run-id", "run-a"]) == 0
+    capsys.readouterr()
+    assert state.main(["lock", "acquire", "--root", str(locked_repo), "--plan-file", PLAN_FILE, "--run-id", "run-b"]) == 3
+    assert json.loads(capsys.readouterr().out)["held_by"] == "run-a"

@@ -173,3 +173,13 @@ def test_a_commit_message_with_a_longer_subject_still_counts(tmp_path, capsys):
     tasks = json.loads(capsys.readouterr().out)["tasks"]
     assert bool(tasks[0]["done_signals"]) is True
     assert bool(tasks[1]["done_signals"]) is True  # prefix match is deliberate; the user is asked, never skipped silently
+
+
+def test_spec_path_is_read_from_the_plan_header():
+    text = "# P\n\n**Goal:** x\n\n**Spec:** `docs/superpowers/specs/2026-01-01-demo-design.md`\n\n### Task 1: A\n\n- [ ] **Step 1: do**\n"
+    assert parse_plan(text).spec == "docs/superpowers/specs/2026-01-01-demo-design.md"
+
+
+def test_a_plan_without_a_real_spec_has_an_empty_spec():
+    assert parse_plan("# P\n\n**Spec:** none (fixture)\n\n### Task 1: A\n\n- [ ] **Step 1: do**\n").spec == ""
+    assert parse_plan("# P\n\n### Task 1: A\n\n- [ ] **Step 1: do**\n").spec == ""

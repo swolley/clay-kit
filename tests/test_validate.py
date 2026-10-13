@@ -23,7 +23,7 @@ def make_scaffold(root: Path) -> None:
     write(root, "plugins/clay/.claude-plugin/plugin.json", json.dumps({"name": "clay"}))
     write(root, "plugins/clay/skills/factory-brainstorm/SKILL.md", skill("factory-brainstorm"))
     write(root, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan"))
-    for cmd in ("factory-run", "factory-task", "factory-status", "factory-approve", "factory-rework", "factory-answer"):
+    for cmd in ("factory-run", "factory-task", "factory-status", "factory-approve", "factory-rework", "factory-answer", "factory-unlock"):
         write(root, f"plugins/clay/skills/{cmd}/SKILL.md", skill(cmd, "disable-model-invocation: true\n") + "reference/orchestrator.md\n")
     write(root, "plugins/clay/agents/builder.md", skill("builder"))
 
@@ -98,3 +98,9 @@ def test_skill_name_must_match_its_folder(tmp_path):
     make_scaffold(tmp_path)
     write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", skill("plan"))
     assert any("factory-plan/SKILL.md" in p and "name" in p and "folder" in p for p in validate(tmp_path))
+
+
+def test_unlock_skill_must_disable_model_invocation(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/skills/factory-unlock/SKILL.md", skill("factory-unlock") + "reference/orchestrator.md\n")
+    assert any("factory-unlock/SKILL.md" in p and "disable-model-invocation" in p for p in validate(tmp_path))

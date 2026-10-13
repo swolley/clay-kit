@@ -5,7 +5,7 @@ import re
 import sys
 from pathlib import Path
 
-MANUAL_ONLY = {"factory-run", "factory-task", "factory-status", "factory-approve", "factory-rework", "factory-answer"}
+MANUAL_ONLY = {"factory-run", "factory-task", "factory-status", "factory-approve", "factory-rework", "factory-answer", "factory-unlock"}
 AUTO_ALLOWED = {"factory-brainstorm", "factory-plan"}
 
 

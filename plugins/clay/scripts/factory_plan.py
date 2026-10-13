@@ -48,6 +48,7 @@ class Task:
 class Plan:
     title: str
     tasks: list[Task]
+    spec: str = ""
 
 
 def _clean(text: str) -> str:
@@ -89,6 +90,7 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
     tasks: list[Task] = []
     current: Task | None = None
     in_fence = False
+    spec = ""
     last_field = ""
     for line in text.splitlines():
         if re.match(r"^\s*(```|~~~)", line):
@@ -112,6 +114,9 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
             last_field = ""
             continue
         if current is None:
+            if m := re.match(r"^\*\*Spec:\*\*\s*(.*)$", line):
+                found = re.search(r"`([^`]+)`", m.group(1))
+                spec = found.group(1) if found else ""
             continue
         if m := FIELD.match(line):
             _apply_field(current, m.group(1), m.group(2).strip())
@@ -138,7 +143,7 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
             t.repo = default_repo
         if "accept" not in t.fields_seen:
             t.accept = [s.text for s in t.steps if s.state != "cancelled"]
-    return Plan(title=title, tasks=tasks)
+    return Plan(title=title, tasks=tasks, spec=spec)
 
 
 def check_files(files: list[str], root: Path) -> tuple[list[str], list[str]]:

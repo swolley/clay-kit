@@ -238,6 +238,24 @@ The first real run (three trivial tasks, 18 agent runs) took about 6.5 minutes o
   dashboard (per agent, and the time spent in each phase). The orchestrator's own session usage is not available and is not included; no dollar cost is computed,
   because the host reports one total per agent, not input and output.
 
+### 4.7e One run per plan, and protected files
+
+A plan can be run by one session at a time. At the start of `factory-run` the orchestrator takes a lock, the file `factory/jobs/_runs/<plan>.lock`
+(`state.py lock acquire`), holding the run's id, the start time and a heartbeat that every change of a job refreshes. A second run on the same plan, from
+another chat, finds a fresh lock (heartbeat within 30 minutes) and stops, saying who holds it and since when; a stale lock (no heartbeat for over 30 minutes:
+the session closed or crashed) can be taken over after the user confirms. `approve`, `rework` and `answer` run from a session that does not hold a fresh lock ask
+for confirmation first. The lock is released when the run completes, when the user stops it, or when an `auto` run ends on a job that needs a person; a
+guided run that carries on after a decision keeps it. `factory-unlock` releases a lock by hand, for a crashed run or to edit the plan.
+
+While the lock is held the plan file and the spec its header names (`**Spec:**`) are made read-only, and their original permissions are kept in the lock and
+restored on release. This is the hard guard: no tool, editor or shell command can write them. The progress mod adds a friendlier layer: it refuses `Edit`,
+`Write`, `MultiEdit` and `NotebookEdit` on those paths with a message saying the plan is being run and how to release it (if its own check fails it lets the
+edit through, because the permissions still guard). The plan's steps are ticked at the end by `state.py tick-plan`, which works on the read-only file and
+leaves it read-only until the lock is released. The pane and the dashboard show the lock on the plan, whether it is stale, and the command to release it.
+
+Plans in different repositories, or different plans in the same repository run from isolated mode, can run at the same time in different sessions; two plans
+that touch the same files meet only at the final merge, which the lock does not prevent.
+
 ### 4.8 Resuming an interrupted run
 
 There is no separate resume command: `/factory-run <plan>` is idempotent and resumes by itself.

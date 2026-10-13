@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar, reviewerLabel, verdictMark, roleOf, jobIdFromPrompt, shortModel, workingNow, taskRows, situationText, rowStatus, formatTokens } from '../../plugins/clay/hooks/model.ts'
+import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar, reviewerLabel, verdictMark, roleOf, jobIdFromPrompt, shortModel, workingNow, taskRows, situationText, rowStatus, formatTokens, parseLock, isStale, protectedBy, lockNote } from '../../plugins/clay/hooks/model.ts'
 
 const job = (over: Record<string, unknown> = {}) =>
   parseJob(JSON.stringify({ id: '001-a', plan: 'p1', repo: 'api', tier: 'medium', stage: 'build', round: 0, reviewers: [], reviews: {}, ...over }))!
@@ -120,7 +120,7 @@ test('scan survives bad files and returns nothing when there is no factory folde
   const bad = fakeFs({ 'factory/jobs/001-a/job.json': '{broken', 'factory/jobs/002-b/job.json': J('002-b', 'build') })
   assert.deepEqual((await scan(bad)).jobs.map(j => j.id), ['002-b'])
   const none = await scan(fakeFs({ 'src/a.ts': 'x' }))
-  assert.deepEqual(none, { runs: [], jobs: [] })
+  assert.deepEqual(none, { runs: [], jobs: [], locks: [] })
 })
 
 
@@ -384,4 +384,52 @@ test('formatTokens keeps the number short and readable', () => {
   assert.equal(formatTokens(14171), '14k')
   assert.equal(formatTokens(260000), '260k')
   assert.equal(formatTokens(1_250_000), '1.3M')
+})
+
+
+const LOCK = JSON.stringify({
+  run_id: 'run-a', plan: 'p1', path: 'docs/superpowers/plans/p1.md', spec: 'docs/superpowers/specs/p1-design.md',
+  protect: ['docs/superpowers/plans/p1.md', 'docs/superpowers/specs/p1-design.md'], started: '2026-10-13T10:00:00Z', heartbeat: '2026-10-13T10:20:00Z',
+})
+
+test('parseLock reads a run lock and rejects garbage', () => {
+  const l = parseLock(LOCK)!
+  assert.deepEqual([l.plan, l.runId, l.protect.length, l.heartbeat], ['p1', 'run-a', 2, Date.parse('2026-10-13T10:20:00Z')])
+  assert.equal(parseLock('{nope'), null)
+  assert.equal(parseLock(JSON.stringify({ plan: 'p1' })), null)
+})
+
+test('a lock is stale when its heartbeat is older than the limit', () => {
+  const l = parseLock(LOCK)!
+  assert.equal(isStale(l, l.heartbeat + 10 * 60_000), false)
+  assert.equal(isStale(l, l.heartbeat + 31 * 60_000), true)
+})
+
+test('protectedBy matches an edited path against the files of fresh locks only', () => {
+  const l = parseLock(LOCK)!
+  const now = l.heartbeat + 60_000
+  assert.equal(protectedBy([l], '/home/u/repo/docs/superpowers/plans/p1.md', now)?.plan, 'p1')
+  assert.equal(protectedBy([l], '/home/u/repo/docs/superpowers/specs/p1-design.md', now)?.plan, 'p1')
+  assert.equal(protectedBy([l], '/home/u/repo/src/app.ts', now), null)
+  assert.equal(protectedBy([l], '/home/u/repo/docs/superpowers/plans/p1.md', l.heartbeat + 40 * 60_000), null)
+})
+
+test('summarize attaches the lock to its plan and lockNote words it', () => {
+  const l = parseLock(LOCK)!
+  const p = summarize([], [job({ plan: 'p1' })], [l]).plans[0]!
+  assert.equal(p.lock?.runId, 'run-a')
+  assert.equal(summarize([], [job({ plan: 'other' })], [l]).plans[0]!.lock, null)
+  assert.match(lockNote(l, l.heartbeat + 60_000), /locked/)
+  assert.match(lockNote(l, l.heartbeat + 40 * 60_000), /stale/)
+})
+
+test('scan reads the lock files next to the run files', async () => {
+  const fs = fakeFs({
+    'factory/jobs/_runs/p1.json': JSON.stringify({ plan: 'p1', total: 2, done: 0 }),
+    'factory/jobs/_runs/p1.lock': LOCK,
+    'factory/jobs/001-a/job.json': J('001-a', 'build', 'p1'),
+  })
+  const out = await scan(fs)
+  assert.equal(out.locks.length, 1)
+  assert.equal(out.locks[0]!.plan, 'p1')
 })

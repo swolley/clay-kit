@@ -70,6 +70,25 @@ does not commit; it lists its files and a one-line commit message in build.md. R
 look at `git diff HEAD` plus untracked files. On APPROVE you commit those paths with that message. On
 failure or escalation you stop and leave the changes in the tree for the user.
 
+## Run lock
+
+One run at a time per plan, and the plan and its spec cannot be edited while it lasts. The run takes a lock at the start with
+`python3 <plugin root>/scripts/state.py lock acquire --root <repo> --plan-file <plan> --run-id <id>`, where `<id>` is a fresh unique id you
+remember for the whole run. The lock is the file `factory/jobs/_runs/<plan>.lock`; it records the run id, when it started, and a heartbeat that
+every `state.py` change of a job refreshes. It also makes the plan file and the spec its header names (`**Spec:**`) read-only, and remembers their
+original permissions.
+
+- The command exits 3 when another run holds the plan, and prints who, since when and the last heartbeat. If that heartbeat is recent (30 minutes),
+  tell the user the plan is being run by another session, that it must be stopped there first or released with `/factory-unlock`, and stop.
+- If the other run is `stale` (no heartbeat for over 30 minutes: its session was closed or crashed), say so and ask with the question tool whether to
+  take over; take over with `--force`, which keeps the original permissions.
+- Release it with `state.py lock release --root <repo> --plan <plan-stem> --run-id <id>` when the run completes, when the user stops it, and when the
+  run ends because a job needs a person in `auto` pace. A run that goes on after a decision in guided pace keeps the lock.
+- The plan's steps are ticked at the end with `state.py tick-plan --root <repo> --plan-file <plan>`, which works on the read-only file and leaves it
+  read-only. Never edit the plan or the spec yourself while the lock is held, and tell the builders not to.
+- A command that acts on a job (`approve`, `rework`, `answer`) from a session that does not hold the lock, on a plan with a recent heartbeat, asks the
+  user to confirm before acting, because the session that runs the plan may be acting on the same job.
+
 ## Preconditions (run)
 
 1. The plan file exists. Parse it: `python3 <plugin root>/scripts/factory_plan.py <plan> --repo <name> --root <repo>`.
@@ -118,7 +137,7 @@ When an agent finishes, the spawn result carries its usage (`subagent_tokens`, `
 `ux`, `ui`, `approver`; leave `--effort` empty when the host did not accept one). The progress views show who has the job, on which
 model, and what it cost in time and tokens. The usage of your own session is not included: it is not reported to you.
 
-0. **Once per run.** `state.py setup --plugin-root <plugin root>` (creates `factory/jobs/`, ignored by git, and copies the
+0. **Once per run.** Take the run lock (see Run lock), then `state.py setup --plugin-root <plugin root>` (creates `factory/jobs/`, ignored by git, and copies the
    dashboard) and `state.py run --plan-file <plan> --mode <mode> --pace <pace>` (writes the run state: total, tasks, and `done`
    counted from the landed jobs).
 1. **Create** the job. In isolated mode create the branch and worktree first, and only then write `job.json`:
@@ -209,7 +228,9 @@ At the end of a run, and in `status`, list every job that is waiting for you.
 
 ## Completion
 
-When every task is landed, tick the steps of each completed task in the plan file. Isolated mode then ends
+When every task is landed, tick the steps of each completed task with `state.py tick-plan` (see Run lock) and commit that on
+the branch the jobs landed on: in current-branch mode in the repo (message "Mark the plan steps done"), in isolated mode in the integration
+worktree (pass the plan's path inside that worktree as `--plan-file`). Then release the lock. Isolated mode then ends
 with the finish step: ask the user, with the question tool, how the integration branch reaches the repo's
 main branch: merge it, prepare a pull request without pushing, keep the branch, or discard it. Do only the
 chosen local action. Current-branch mode has nothing to merge.

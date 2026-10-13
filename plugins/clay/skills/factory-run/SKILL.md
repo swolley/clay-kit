@@ -11,7 +11,7 @@ shared rules (files, modes, resume, job loop, completion). Use the plugin root a
 
 Plan file: $ARGUMENTS (may be empty: see "Resolving arguments" in the reference)
 
-1. Resolve the plan, then Preconditions, Resume and the mode question (orchestrator reference). The pace is guided unless the user
+1. Resolve the plan, take the run lock ("Run lock": stop if another run holds the plan), then Preconditions, Resume and the mode question (orchestrator reference). The pace is guided unless the user
    chooses otherwise: see "Pace".
 2. Run the Job loop for each runnable task, in order, in parallel only where the reference allows.
 3. When every task has landed, do Completion.

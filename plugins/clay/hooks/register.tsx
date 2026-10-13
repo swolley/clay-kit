@@ -6,11 +6,14 @@ import {
   activePlans,
   formatDuration,
   formatTokens,
+  isStale,
   jobIdFromPrompt,
   jobElapsed,
   labeledBar,
+  lockNote,
   phaseLabel,
   planElapsed,
+  protectedBy,
   reviewerLabel,
   roleOf,
   rowStatus,
@@ -25,7 +28,7 @@ import {
   waitingLabel,
   workingNow,
 } from './model'
-import type { Fs, Job, PlanView, Summary, TaskRow } from './model'
+import type { Fs, Job, Lock, PlanView, Summary, TaskRow } from './model'
 import { pillBar, slimBar } from './svg'
 
 const PANE = 'factory-agents'
@@ -33,6 +36,10 @@ const POLL_MS = 3000
 
 const view = atom({ plugin: 'clay', key: 'view' } as const, { plans: [], waiting: 0, running: 0 } as Summary)
 const isHidden = atom({ plugin: 'clay', key: 'isHidden' } as const, false)
+// The run locks found on disk: while one is fresh, the plan and its spec must not be edited.
+const locks = atom({ plugin: 'clay', key: 'locks' } as const, [] as Lock[])
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
+
 const isOnlyMine = atom({ plugin: 'clay', key: 'isOnlyMine' } as const, false)
 // The model each agent of a job really started on, as the engine reported it at spawn, by job id and role.
 const observed = atom({ plugin: 'clay', key: 'observed' } as const, {} as Record<string, Record<string, { model: string }>>)
@@ -137,8 +144,9 @@ export const register: Register = on => {
     const refresh = async () => {
       try {
         const found = await scan(fs)
-        const summary = summarize(found.runs, found.jobs)
+        const summary = summarize(found.runs, found.jobs, found.locks)
         await update($, view, () => summary)
+        await update($, locks, () => found.locks)
 
         const now = waitingIds(found.jobs)
         const fresh = [...now].filter(id => !known || !known.has(id))
@@ -168,6 +176,20 @@ export const register: Register = on => {
     }
     return started
   })
+
+  // Refuses an edit of a plan or spec that a run holds. The read-only permissions the lock sets are the hard guard; this hook
+  // says why before the attempt.
+  on('tool.call', async ($, e, next) => {
+    if (!EDIT_TOOLS.has(e.tool)) return next(e)
+    const raw = e as unknown as Record<string, unknown>
+    const path = raw.file_path ?? raw.notebook_path
+    if (typeof path !== 'string') return next(e)
+    const hit = protectedBy(await read($, locks), path, await $.clock.now())
+    if (!hit) return next(e)
+    return {
+      deny: `This file belongs to the plan "${hit.plan}", which a run is executing, so it is locked. Editing it now could change tasks that are already running. Stop the run first, or release the lock with /factory-unlock ${hit.plan}.`,
+    }
+  }).catch(($, e, next) => next(e)) // if the check itself fails, do not block edits: the read-only permissions still guard the files
 
   on('command.run', { command: 'factory-progress' }, async $ => {
     const hidden = await read($, isHidden)
@@ -298,7 +320,9 @@ export const register: Register = on => {
             {mid(Box, <Text dimColor>{elapsed === null ? '' : formatDuration(elapsed)}</Text>)}
             {p.tokens > 0 && mid(Box, <Text dimColor>{formatTokens(p.tokens)} tok · {formatDuration(p.agentMs)} agents</Text>)}
             {p.path && act('run', `/factory-run ${p.path}`)}
+            {p.lock && act('unlock', `/factory-unlock ${p.plan}`)}
           </Box>
+          {p.lock && <Text color={isStale(p.lock, now) ? WAIT : undefined} dimColor={!isStale(p.lock, now)}>{lockNote(p.lock, now)}</Text>}
           {rows.length > 0 && header}
           {rows.map(row)}
           {rows.length === 0 && <Text dimColor>Nothing here needs you.</Text>}

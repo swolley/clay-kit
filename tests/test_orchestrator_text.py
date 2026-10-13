@@ -189,3 +189,24 @@ def test_agent_usage_is_recorded_after_every_spawn():
     t = read("reference/orchestrator.md")
     assert "subagent_tokens" in t or "usage" in t
     assert "state.py agent" in t
+
+
+def test_run_takes_a_lock_and_refuses_a_second_run_on_the_same_plan():
+    t = read("reference/orchestrator.md")
+    assert "## Run lock" in t and "state.py lock acquire" in t and "state.py lock release" in t
+    assert "another run" in t and "stale" in t and "read-only" in t
+
+
+def test_the_plan_is_ticked_by_the_script_after_the_lock_is_released_or_while_held():
+    t = read("reference/orchestrator.md")
+    assert "state.py tick-plan" in t
+
+
+def test_commands_that_act_on_jobs_respect_the_lock():
+    for skill in ("factory-approve", "factory-rework", "factory-answer"):
+        assert "lock" in read(f"skills/{skill}/SKILL.md"), skill
+
+
+def test_unlock_command_exists_and_is_manual_only():
+    t = read("skills/factory-unlock/SKILL.md")
+    assert "disable-model-invocation: true" in t and "reference/orchestrator.md" in t and "state.py lock" in t

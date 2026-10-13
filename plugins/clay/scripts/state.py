@@ -14,10 +14,12 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
 """
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
+import stat
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -29,6 +31,7 @@ VERDICTS = ("PASS", "CHANGES")
 STOPWORDS = {"the", "a", "an", "to", "of", "for", "and", "in", "on", "with"}
 LITE_MAX_FILES = 3
 LITE_MAX_LINES = 30
+STALE_MINUTES = 30
 
 
 def now() -> str:
@@ -46,6 +49,7 @@ def read_job(root, job_id: str) -> dict:
 def write_job(root, job: dict) -> None:
     job["updated"] = now()
     (jobs_dir(root) / job["id"] / "job.json").write_text(json.dumps(job, indent=2))
+    touch_lock(root, job.get("plan", ""))
 
 
 def git(cwd, *args: str) -> str:
@@ -117,6 +121,7 @@ def new_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, b
         "phases": [{"stage": "spec", "start": t, "end": None}],
     }
     (folder / "job.json").write_text(json.dumps(job, indent=2))
+    touch_lock(root, job["plan"])
     return {"id": job_id, "folder": str(folder)}
 
 
@@ -249,9 +254,135 @@ def land_job(root, job_id: str, stage: str, head: str) -> dict:
     return job
 
 
+# ---- run lock: one run per plan, and the plan and its spec read-only while it lasts ----
+
+
+def lock_path(root, plan_stem: str) -> Path:
+    return jobs_dir(root) / "_runs" / f"{plan_stem}.lock"
+
+
+def read_lock(root, plan_stem: str) -> dict | None:
+    p = lock_path(root, plan_stem)
+    try:
+        return json.loads(p.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def age_minutes(iso: str) -> float:
+    t = datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - t).total_seconds() / 60
+
+
+def touch_lock(root, plan_stem: str) -> None:
+    lock = read_lock(root, plan_stem) if plan_stem else None
+    if lock:
+        lock["heartbeat"] = now()
+        lock_path(root, plan_stem).write_text(json.dumps(lock, indent=2))
+
+
+def lock_view(lock: dict, stale_minutes: int = STALE_MINUTES) -> dict:
+    return {"plan": lock["plan"], "run_id": lock["run_id"], "since": lock["started"], "heartbeat": lock["heartbeat"],
+            "stale": age_minutes(lock["heartbeat"]) > stale_minutes, "protect": lock["protect"]}
+
+
+def lock_acquire(root, plan_file: str, run_id: str, force: bool = False, stale_minutes: int = STALE_MINUTES) -> dict:
+    root = Path(root)
+    path = Path(plan_file) if Path(plan_file).is_absolute() else root / plan_file
+    plan = parse_plan(path.read_text())
+    stem = path.stem
+    existing = read_lock(root, stem)
+    modes: dict[str, int] = {}
+    if existing:
+        view = lock_view(existing, stale_minutes)
+        if existing["run_id"] == run_id:
+            touch_lock(root, stem)
+            return {"ok": True, "held": True, "reacquired": True}
+        if not force:
+            return {"ok": False, "held_by": existing["run_id"], "since": existing["started"], "heartbeat": existing["heartbeat"], "stale": view["stale"]}
+        modes = existing.get("modes", {})
+    protect = [plan_file] + ([plan.spec] if plan.spec else [])
+    for rel in protect:
+        p = root / rel
+        if p.exists():
+            modes.setdefault(rel, stat.S_IMODE(p.stat().st_mode))
+            p.chmod(modes[rel] & ~0o222)
+    lock = {"run_id": run_id, "plan": stem, "path": plan_file, "spec": plan.spec, "protect": protect, "modes": modes,
+            "started": now(), "heartbeat": now()}
+    lp = lock_path(root, stem)
+    lp.parent.mkdir(parents=True, exist_ok=True)
+    lp.write_text(json.dumps(lock, indent=2))
+    return {"ok": True, "held": True, "reacquired": False}
+
+
+def lock_release(root, plan_stem: str, run_id: str | None = None, force: bool = False) -> dict:
+    root = Path(root)
+    lock = read_lock(root, plan_stem)
+    if not lock:
+        return {"ok": True, "released": False}
+    if run_id and lock["run_id"] != run_id and not force:
+        return {"ok": False, "released": False, "held_by": lock["run_id"]}
+    for rel, mode in lock.get("modes", {}).items():
+        p = root / rel
+        if p.exists():
+            p.chmod(mode)
+    lock_path(root, plan_stem).unlink()
+    return {"ok": True, "released": True}
+
+
+def lock_list(root, stale_minutes: int = STALE_MINUTES) -> list[dict]:
+    out = []
+    for f in sorted((jobs_dir(root) / "_runs").glob("*.lock")):
+        lock = read_lock(root, f.stem)
+        if lock:
+            out.append(lock_view(lock, stale_minutes))
+    return out
+
+
+def tick_plan(root, plan_file: str) -> dict:
+    """Tick the open steps of every task a job has landed. Works on a read-only plan and leaves it read-only."""
+    root = Path(root)
+    path = Path(plan_file) if Path(plan_file).is_absolute() else root / plan_file
+    plan = parse_plan(path.read_text())
+    landed = set()
+    for f in jobs_dir(root).glob("*/job.json"):
+        j = json.loads(f.read_text())
+        if j.get("plan") == path.stem and j.get("stage") in TERMINAL:
+            landed.add(j.get("task"))
+    heading = re.compile(r"^#{2,4}\s+(?:Task|Phase|Step|Milestone|Wave)\b[^\n]*?(\d+)", re.I)
+    out, current, in_fence, ticked = [], None, False, 0
+    for line in path.read_text().splitlines(keepends=True):
+        if re.match(r"^\s*(```|~~~)", line):
+            in_fence = not in_fence
+        elif not in_fence and (m := heading.match(line)):
+            current = int(m.group(1))
+        elif not in_fence and current in landed and re.match(r"^\s*[-*] \[ \]", line):
+            line = line.replace("[ ]", "[x]", 1)
+            ticked += 1
+        out.append(line)
+    mode = stat.S_IMODE(path.stat().st_mode)
+    path.chmod(mode | 0o200)
+    try:
+        path.write_text("".join(out))
+    finally:
+        path.chmod(mode)
+    return {"ok": True, "ticked": ticked}
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="state.py")
     sub = ap.add_subparsers(dest="cmd", required=True)
+    lk = sub.add_parser("lock")
+    lk.add_argument("action", choices=("acquire", "release", "status", "list"))
+    lk.add_argument("--root", default=".")
+    lk.add_argument("--plan-file")
+    lk.add_argument("--plan")
+    lk.add_argument("--run-id")
+    lk.add_argument("--force", action="store_true")
+    lk.add_argument("--stale-minutes", type=int, default=STALE_MINUTES)
+    tp = sub.add_parser("tick-plan")
+    tp.add_argument("--root", default=".")
+    tp.add_argument("--plan-file", required=True)
     for name in ("setup", "run", "new-job", "stage", "agent", "route", "verdicts", "land"):
         sp = sub.add_parser(name)
         sp.add_argument("--root", default=".")
@@ -284,6 +415,22 @@ def main(argv: list[str]) -> int:
             sp.add_argument("--stage", dest="to_stage", default="committed")
             sp.add_argument("--head", required=True)
     a = ap.parse_args(argv)
+    if a.cmd == "tick-plan":
+        print(json.dumps(tick_plan(a.root, a.plan_file), indent=2))
+        return 0
+    if a.cmd == "lock":
+        stem = a.plan or (Path(a.plan_file).stem if a.plan_file else "")
+        if a.action == "acquire":
+            out = lock_acquire(a.root, a.plan_file, a.run_id or "", a.force, a.stale_minutes)
+        elif a.action == "release":
+            out = lock_release(a.root, stem, a.run_id, a.force)
+        elif a.action == "status":
+            lock = read_lock(a.root, stem)
+            out = {"held": bool(lock), **(lock_view(lock, a.stale_minutes) if lock else {})}
+        else:
+            out = lock_list(a.root, a.stale_minutes)
+        print(json.dumps(out, indent=2))
+        return 3 if a.action == "acquire" and not out["ok"] else 0
     if a.cmd == "setup":
         setup(a.root, a.plugin_root)
         out: dict = {"ok": True}
