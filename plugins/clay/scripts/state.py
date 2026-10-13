@@ -10,9 +10,12 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
   state.py agent JOB ROLE --model M --effort E --tokens N --ms N --tools N --root DIR
   state.py route JOB --root DIR [--table FILE]
   state.py verdicts JOB --root DIR
+  state.py verify JOB --cmd COMMAND [--reuse] [--timeout S] --root DIR
+  state.py checks JOB --root DIR
   state.py land JOB --stage committed|merged --head SHA --root DIR
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -20,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import stat
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -52,9 +56,9 @@ def write_job(root, job: dict) -> None:
     touch_lock(root, job.get("plan", ""))
 
 
-def git(cwd, *args: str) -> str:
+def git(cwd, *args: str, ok: tuple[int, ...] = (0,)) -> str:
     done = subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True)
-    return done.stdout if done.returncode == 0 else ""
+    return done.stdout if done.returncode in ok else ""
 
 
 def setup(root, plugin_root) -> None:
@@ -168,25 +172,92 @@ def changed(job: dict, root) -> tuple[list[str], int]:
     return sorted(set(names)), lines
 
 
+def fingerprints(job: dict, root) -> dict[str, str]:
+    """Path to a short identity of its content, for every file the job's change touches."""
+    cwd = job.get("worktree") or str(root)
+    out: dict[str, str] = {}
+    if job["mode"] == "current-branch":
+        names = git(cwd, "diff", "--name-only", "-z", "--no-renames", "HEAD").split("\0") + git(cwd, "ls-files", "--others", "--exclude-standard", "-z").split("\0")
+        for name in filter(None, names):
+            f = Path(cwd) / name
+            out[name] = hashlib.sha1(f.read_bytes()).hexdigest() if f.is_file() else "gone"
+        return out
+    raw = git(cwd, "diff", "--raw", "-z", "--no-abbrev", "--no-renames", f"{job['base']}...{job['branch']}").split("\0")
+    for meta, name in zip(raw[0::2], raw[1::2]):
+        out[name] = meta.split()[3]
+    return out
+
+
+def tree_state(job: dict, root) -> str:
+    """Identity of the code a check runs against: the tree of HEAD plus anything uncommitted, so a new commit of the same code keeps it."""
+    cwd = job.get("worktree") or str(root)
+    parts = [git(cwd, "rev-parse", "HEAD^{tree}").strip(), git(cwd, "status", "--porcelain"), git(cwd, "diff", "HEAD"), json.dumps(sorted(fingerprints(job, root).items()))]
+    return hashlib.sha1("\0".join(parts).encode()).hexdigest()[:16]
+
+
+def build_patch(job: dict, root, paths: list[str], round_no: int, delta: set[str] | None) -> str:
+    """The change as a reviewer reads it: commits, file list and diff in one file, so no agent runs the same git commands again."""
+    cwd = job.get("worktree") or str(root)
+    head = [f"# Job {job['id']}, round {round_no}", f"# Base {job['base']}, branch {job['branch']}, mode {job['mode']}"]
+    if job["mode"] == "current-branch":
+        diff = git(cwd, "diff", "HEAD")
+        numstat = git(cwd, "diff", "--numstat", "HEAD")
+        for extra in git(cwd, "ls-files", "--others", "--exclude-standard").split():
+            diff += git(cwd, "diff", "--no-index", "--", "/dev/null", extra, ok=(0, 1))
+            numstat += f"new\t-\t{extra}\n"
+    else:
+        span = f"{job['base']}...{job['branch']}"
+        head.append("# Commits:")
+        head += [f"#   {ln}" for ln in git(cwd, "log", "--oneline", f"{job['base']}..{job['branch']}").splitlines()]
+        diff = git(cwd, "diff", span)
+        numstat = git(cwd, "diff", "--numstat", span)
+    head.append("# Files (added, removed, path):")
+    head += [f"#   {ln.replace(chr(9), ' ')}" for ln in numstat.splitlines()]
+    if delta is not None:
+        head.append("# Changed since the previous round: " + (", ".join(sorted(delta)) or "nothing"))
+    return "\n".join(head) + "\n\n" + diff
+
+
 def route_job(root, job_id: str, table: str | None = None) -> dict:
     job = read_job(root, job_id)
     paths, lines = changed(job, root)
+    prints = fingerprints(job, root)
+    previous = job.get("fingerprints")
+    delta = None if previous is None else {p for p in set(previous) | set(prints) if previous.get(p) != prints.get(p)}
     default = Path(__file__).resolve().parent.parent / "routing.md"
     own = jobs_dir(root).parent / "routing.md"
     rules = load_rules(Path(table) if table else own if own.exists() else default)
     reviewers = route(paths, rules)
     lite = job["tier"] == "light" and reviewers == ["code"] and len(paths) <= LITE_MAX_FILES and lines <= LITE_MAX_LINES
+    folder = jobs_dir(root) / job_id
     if lite:
-        job.update(reviewers=[], reviews={}, lite=True)
+        patch = folder / "diff.patch"
+        patch.write_text(build_patch(job, root, paths, job["round"], delta))
+        job.update(reviewers=[], reviews={}, rerun=[], carried={}, lite=True, fingerprints=prints)
         write_job(root, job)
         set_stage(root, job_id, "approve")
-    else:
-        job["round"] += 1
-        job.update(reviewers=reviewers, reviews={r: "pending" for r in reviewers}, lite=False, build_round=job["round"])
-        write_job(root, job)
-        (jobs_dir(root) / job_id / f"round-{job['round']}").mkdir(exist_ok=True)
-        set_stage(root, job_id, "review")
-    return {"reviewers": [] if lite else reviewers, "lite": lite, "paths": paths, "files": len(paths), "lines": lines}
+        return {"reviewers": [], "rerun": [], "carried": {}, "lite": True, "paths": paths, "files": len(paths), "lines": lines, "diff": str(patch)}
+    # A lens that passed keeps its verdict while nothing its rules watch has changed since that round. The code lens
+    # watches every path, so it runs again whenever anything changed; a lens that asked for changes always runs again.
+    touched = set(route(sorted(delta), rules)) if delta else set()
+    carried = {
+        lens: job.get("carried", {}).get(lens, job["round"])
+        for lens in reviewers
+        if previous is not None and job.get("reviews", {}).get(lens) == "PASS" and lens not in touched
+    }
+    rerun = [lens for lens in reviewers if lens not in carried]
+    job["round"] += 1
+    job.update(
+        reviewers=reviewers, rerun=rerun, carried=carried, lite=False, build_round=job["round"], fingerprints=prints,
+        reviews={lens: "PASS" if lens in carried else "pending" for lens in reviewers},
+    )
+    write_job(root, job)
+    rnd = folder / f"round-{job['round']}"
+    rnd.mkdir(exist_ok=True)
+    patch = rnd / "diff.patch"
+    patch.write_text(build_patch(job, root, paths, job["round"], delta))
+    set_stage(root, job_id, "review")
+    return {"reviewers": reviewers, "rerun": rerun, "carried": carried, "lite": False, "paths": paths, "files": len(paths), "lines": lines, "diff": str(patch)}
 
 
 def check_verdicts(root, job_id: str) -> dict:
@@ -195,7 +266,7 @@ def check_verdicts(root, job_id: str) -> dict:
     verdicts: dict[str, str] = {}
     missing: list[str] = []
     invalid: list[str] = []
-    for r in job["reviewers"]:
+    for r in job.get("rerun", job["reviewers"]):
         f = rnd / f"review-{r}.md"
         if not f.exists():
             missing.append(r)
@@ -210,7 +281,60 @@ def check_verdicts(root, job_id: str) -> dict:
         job["reviews"].update(verdicts)
         write_job(root, job)
     ok = not missing and not invalid
-    return {"ok": ok, "verdicts": verdicts, "missing": missing, "invalid": invalid, "all_pass": ok and all(v == "PASS" for v in verdicts.values())}
+    all_pass = ok and all(job["reviews"].get(r) == "PASS" for r in job["reviewers"])
+    return {"ok": ok, "verdicts": verdicts, "carried": job.get("carried", {}), "missing": missing, "invalid": invalid, "all_pass": all_pass}
+
+
+# ---- checks: a command run once per tree state, so the reviewers and the approver read the result instead of running it again ----
+
+TAIL_LINES = 30
+
+
+def read_checks(root, job_id: str) -> list[dict]:
+    try:
+        return json.loads((jobs_dir(root) / job_id / "checks.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def check_view(record: dict, current: str, reused: bool = False) -> dict:
+    log = Path(record["log"])
+    tail = log.read_text().splitlines()[-TAIL_LINES:] if log.exists() else []
+    return {"n": record["n"], "cmd": record["cmd"], "exit": record["exit"], "state": record["state"], "current": record["state"] == current,
+            "reused": reused, "at": record["at"], "ms": record["ms"], "log": record["log"], "tail": tail}
+
+
+def run_check(root, job_id: str, cmd: str, reuse: bool = False, timeout: int = 1800) -> dict:
+    """Run a command in the job's checkout and record its exit code, log and the tree state it ran against. With `reuse`, a
+    record of the same command for the same tree state is returned instead of running it again."""
+    job = read_job(root, job_id)
+    state_now = tree_state(job, root)
+    records = read_checks(root, job_id)
+    if reuse:
+        for r in reversed(records):
+            if r["cmd"] == cmd and r["state"] == state_now:
+                return check_view(r, state_now, reused=True)
+    n = len(records) + 1
+    folder = jobs_dir(root) / job_id / "checks"
+    folder.mkdir(exist_ok=True)
+    started = time.monotonic()
+    try:
+        done = subprocess.run(cmd, shell=True, cwd=job.get("worktree") or str(root), capture_output=True, text=True, timeout=timeout)
+        code, out = done.returncode, done.stdout + done.stderr
+    except subprocess.TimeoutExpired as e:
+        code, out = 124, f"timed out after {timeout}s\n" + "".join(x if isinstance(x, str) else x.decode(errors="replace") for x in (e.stdout, e.stderr) if x)
+    log = folder / f"{n}.log"
+    log.write_text(out)
+    record = {"n": n, "cmd": cmd, "exit": code, "state": state_now, "at": now(), "ms": int((time.monotonic() - started) * 1000), "log": str(log)}
+    (jobs_dir(root) / job_id / "checks.json").write_text(json.dumps([*records, record], indent=2))
+    touch_lock(root, job.get("plan", ""))
+    return check_view(record, state_now)
+
+
+def list_checks(root, job_id: str) -> list[dict]:
+    job = read_job(root, job_id)
+    state_now = tree_state(job, root)
+    return [check_view(r, state_now) for r in read_checks(root, job_id)]
 
 
 def run_path(root, plan_stem: str) -> Path:
@@ -455,11 +579,15 @@ def main(argv: list[str]) -> int:
     cl = sub.add_parser("clean")
     cl.add_argument("--root", default=".")
     cl.add_argument("--plan", required=True)
-    for name in ("setup", "run", "new-job", "stage", "agent", "route", "verdicts", "land"):
+    for name in ("setup", "run", "new-job", "stage", "agent", "route", "verdicts", "land", "verify", "checks"):
         sp = sub.add_parser(name)
         sp.add_argument("--root", default=".")
-        if name in ("stage", "agent", "route", "verdicts", "land"):
+        if name in ("stage", "agent", "route", "verdicts", "land", "verify", "checks"):
             sp.add_argument("job")
+        if name == "verify":
+            sp.add_argument("--cmd", dest="check_cmd", required=True)
+            sp.add_argument("--reuse", action="store_true")
+            sp.add_argument("--timeout", type=int, default=1800)
         if name == "setup":
             sp.add_argument("--plugin-root", required=True)
         if name in ("run", "new-job"):
@@ -522,10 +650,16 @@ def main(argv: list[str]) -> int:
         out = route_job(a.root, a.job, a.table)
     elif a.cmd == "verdicts":
         out = check_verdicts(a.root, a.job)
+    elif a.cmd == "verify":
+        out = run_check(a.root, a.job, a.check_cmd, a.reuse, a.timeout)
+    elif a.cmd == "checks":
+        out = list_checks(a.root, a.job)
     else:
         out = {"id": a.job, "stage": land_job(a.root, a.job, a.to_stage, a.head)["stage"]}
     print(json.dumps(out, indent=2))
-    return 1 if a.cmd == "verdicts" and not out["ok"] else 0
+    if a.cmd == "verdicts" and not out["ok"]:
+        return 1
+    return 1 if a.cmd == "verify" and out["exit"] != 0 else 0
 
 
 if __name__ == "__main__":

@@ -6,11 +6,10 @@ argument-hint: <job id> <note>
 ---
 
 Plugin root: ${CLAUDE_PLUGIN_ROOT}
-Follow ${CLAUDE_PLUGIN_ROOT}/STYLE.md. Read ${CLAUDE_PLUGIN_ROOT}/reference/orchestrator.md first: it holds the
-shared rules (files, modes, resume, job loop, completion). Use the plugin root above wherever it says `<plugin root>`.
+Follow ${CLAUDE_PLUGIN_ROOT}/STYLE.md. Read these parts of the shared reference together, in one message: ${CLAUDE_PLUGIN_ROOT}/reference/orchestrator.md, ${CLAUDE_PLUGIN_ROOT}/reference/lock.md, ${CLAUDE_PLUGIN_ROOT}/reference/commands.md, ${CLAUDE_PLUGIN_ROOT}/reference/job-loop.md. Read `questions.md` (same folder) only when an agent asks something. Use the plugin root above wherever they say `<plugin root>`.
 
 Arguments: $ARGUMENTS (first word is the job id, the rest is the note).
 
-Resolve the job as in "Resolving arguments" (stages `needs-human`); the argument may be empty, a number or a fragment.
-Respect the run lock (see "Run lock"): if another session holds the plan with a recent heartbeat, say so and ask before acting.
-Follow "The other commands", rework, in the reference. Store the note verbatim.
+Resolve the job as in "Resolving a job" in `commands.md`, with stages `needs-human`; the argument may be empty, a number or a fragment.
+Respect the run lock (`lock.md`): if another session holds the plan with a recent heartbeat, say so and ask before acting.
+Follow "The other commands", rework, in `commands.md`. Store the note verbatim.

@@ -8,9 +8,10 @@ You are the visual reviewer for one job. Style rules: `${CLAUDE_PLUGIN_ROOT}/STY
 `<job folder>/round-<N>/review-ui.md`, and change nothing else.
 
 The prompt gives the job folder, worktree, branch, mode, base, round and possibly a port. Start each Bash
-call with `cd <worktree> &&`. Gather the repo's instructions, `task.md`, `build.md` and the change
-(`git diff <base>...<branch>`; in current-branch mode `git diff HEAD` plus untracked files from
-`git status --porcelain`). After round 1, confirm your earlier points were handled. Do not take the
+call with `cd <worktree> &&`. Gather the repo's instructions, `task.md`, `build.md` and the change from the `Diff:` file named in the prompt. `state.py route` wrote it for this round: commits, file list, what changed since the previous
+round, and the diff. Use git only to read a whole file or older history, or when no `Diff:` path was given (`git diff <base>...<branch>`; in
+current-branch mode `git diff HEAD` plus untracked files from `git status --porcelain`). After round 1, confirm your earlier points
+were handled. Do not take the
 builder's description on faith.
 
 When the repo's instructions give a dev-server command and you were given a port, run it from the worktree on
