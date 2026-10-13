@@ -36,6 +36,9 @@ session took it, take the next number. `job.json`:
 
 `stage` is `spec`, `build`, `review`, `approve`, `merged`, `committed` or `needs-human`. Rewrite
 the whole file on every change. `reviews` holds the current round; earlier rounds stay in their folders.
+Before the first job, create `factory/jobs/` with a `factory/jobs/.gitignore` containing `*` (it ignores itself, so
+job state never dirties the repo) and copy `<plugin root>/factory/dashboard.html` to `factory/jobs/dashboard.html`.
+The user serves that folder with `cd factory/jobs && python3 -m http.server` and opens `/dashboard.html`.
 `task.md` holds the task's title, fields, steps and a link to the spec named in the plan header.
 
 ## Modes
@@ -46,8 +49,11 @@ Ask once per run, with the question tool, and record the answer in the run state
 branch, checked out in its own worktree `<repo-parent>/<repo-name>-factory/_integration-<plan-slug>`.
 Per job: branch `factory/<plan-slug>/<job-id>` and worktree `<repo-parent>/<repo-name>-factory/<job-id>`,
 created from the integration branch. Run the repo's fresh-checkout setup in the worktree; if it fails, stop.
-Tasks run in sequence; tasks whose `Depends` are merged and whose `Files` do not overlap may run in
-parallel. The user's checkout is never touched.
+Tasks run in plan order. Run two tasks in parallel only when both declared `Depends` and a non-empty `Files`
+(the parser lists what a task left out in `defaults_applied`; such a task is assumed to follow the one before it),
+their `Files` do not overlap and their dependencies have landed. When a task goes `needs-human`, do not start
+the tasks that depend on it, or any later task if it declared nothing; continue only with independent ones
+and say so. The user's checkout is never touched.
 
 **Current branch.** The user confirms the branch you name (warn explicitly when it is the default
 branch). Require a clean working tree. Jobs run strictly in sequence, in the repo itself. The builder
@@ -92,8 +98,8 @@ Prompt for every agent starts: `Job folder: <repo>/factory/jobs/<job-id>/. Workt
 2. **Build.** `stage: "build"`. Spawn `builder` named `builder-<job-id>` with model and effort from the task's
    tier in `<plugin root>/tiers.md`, prompt `<paths> Build round 1.` plus `Port: <5100+10n>` (n = job number).
    Read the first line of build.md: `STATUS: READY` continues; `STATUS: BLOCKED` goes to Needs human.
-3. **Route.** Take the changed paths (`git diff --name-only <base>...<branch>`, or `git status --porcelain` in
-   current-branch mode), pipe them to `python3 <plugin root>/scripts/route.py` (add `--table <repo>/factory/routing.md`
+3. **Route.** Take the changed paths (`git diff --name-only <base>...<branch>`; in current-branch
+   mode `git diff --name-only HEAD` plus `git ls-files --others --exclude-standard`), pipe them to `python3 <plugin root>/scripts/route.py` (add `--table <repo>/factory/routing.md`
    if that file exists). Write the result to `reviewers` in `job.json`.
 4. **Review round N.** `stage: "review"`, `round: N`, selected reviews `pending`, create `round-N/`. Spawn all
    selected reviewers in one message, with the fixed settings from `tiers.md`, prompt `<paths> Review round N.`
@@ -130,8 +136,8 @@ chosen local action. Current-branch mode has nothing to merge.
   build.md; a rework gets a fresh budget of 2 resumes. Continue from Build check.
 - **status**: list jobs from `job.json` files: id, plan, stage, round, reviewers with verdicts; say which
   wait for the user. Read-only.
-- **task `<text>`**: build a one-task plan in memory (title from the text, tier medium, no steps) and run
-  it through the same loop with plan name `adhoc`.
+- **task `<text>`**: build a one-task plan in memory (title from the text, tier medium, one `Accept`
+  criterion taken from the text) and run it through the Job loop and Completion with plan name `adhoc`.
 
 ## Reporting and progress
 

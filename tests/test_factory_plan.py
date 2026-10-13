@@ -62,3 +62,19 @@ def test_plan_skill_template_parses():
     t = plan.tasks[0]
     assert t.defaults_applied == [] and t.tier == "careful" and t.depends == [1]
     assert len(t.steps) >= 2 and all(s.state == "open" for s in t.steps)
+
+
+def test_superpowers_files_bullets_parsed():
+    text = "# P\n\n### Task 1: A\n\n**Files:**\n- Create: `a/b.py`\n- Modify: `c.py:12-30`\n- Test: `t/test_b.py`\n\n- [ ] **Step 1: do**\n"
+    t = parse_plan(text).tasks[0]
+    assert t.files == ["a/b.py", "c.py", "t/test_b.py"] and len(t.steps) == 1
+
+
+def test_files_listed_in_defaults_when_absent():
+    t = parse_plan("# P\n\n### Task 1: A\n\n- [ ] **Step 1: do**\n").tasks[0]
+    assert "files" in t.defaults_applied
+
+
+def test_all_cancelled_task_is_done():
+    t = parse_plan("# P\n\n### Task 1: A\n\n- [-] **Step 1: dropped**\n").tasks[0]
+    assert t.done is True

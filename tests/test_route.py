@@ -44,3 +44,26 @@ def test_load_rules_ignores_header_and_blank_lines(tmp_path):
     f = tmp_path / "routing.md"
     f.write_text("# Routing\n\n| glob | reviewer |\n|------|----------|\n| `**/*.vue` | ui |\n\n| composer.lock | security |\n")
     assert load_rules(f) == [Rule("**/*.vue", "ui"), Rule("composer.lock", "security")]
+
+
+REAL = load_rules(HERE.parent / "plugins/factory/routing.md")
+
+
+def test_nested_manifests_and_env_route_to_security():
+    for p in ["frontend/package.json", "apps/web/.env", "laraplate/routes/api.php", "svc/go.mod"]:
+        assert "security" in route([p], REAL), p
+
+
+def test_docs_paths_do_not_pull_reviewers():
+    assert route(["docs/components/x.md", "docs/auth/y.md", "docs/pages/z.md"], REAL) == ["code"]
+
+
+def test_code_under_components_still_routes():
+    assert "ui" in route(["src/components/Button.ts"], REAL)
+
+
+def test_brace_alternation_in_glob():
+    rules = [Rule("**/auth/**/*.{php,py}", "security")]
+    assert route(["a/auth/x.php"], rules) == ["code", "security"]
+    assert route(["a/auth/x.py"], rules) == ["code", "security"]
+    assert route(["a/auth/x.md"], rules) == ["code"]

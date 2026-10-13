@@ -27,6 +27,10 @@ def _regex(glob: str) -> re.Pattern[str]:
         elif glob[i] == "*":
             out += "[^/]*"
             i += 1
+        elif glob[i] == "{" and "}" in glob[i:]:
+            end = glob.index("}", i)
+            out += "(?:" + "|".join(re.escape(a) for a in glob[i + 1 : end].split(",")) + ")"
+            i = end + 1
         elif glob[i] == "?":
             out += "[^/]"
             i += 1

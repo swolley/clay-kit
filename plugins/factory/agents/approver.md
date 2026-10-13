@@ -19,6 +19,7 @@ call with `cd <worktree> &&`. Read the repo's instructions, everything in the jo
   least one yourself.
 - Every selected reviewer's file in the final round is `VERDICT: PASS`, and no Note in
   them describes a real problem.
+- The task has at least one acceptance criterion; if its Accept list is empty, ESCALATE, because nothing can be verified.
 - In isolated mode, `git merge-tree --write-tree <integration branch> <branch>` reports no conflicts.
 
 ## ESCALATE if any of that fails, or if the change

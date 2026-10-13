@@ -36,7 +36,7 @@ class Task:
     @property
     def done(self) -> bool:
         states = [s.state for s in self.steps]
-        return "done" in states and "open" not in states
+        return bool(states) and "open" not in states
 
 
 @dataclass
@@ -84,6 +84,7 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
     tasks: list[Task] = []
     current: Task | None = None
     in_fence = False
+    last_field = ""
     for line in text.splitlines():
         if re.match(r"^\s*(```|~~~)", line):
             in_fence = not in_fence
@@ -100,15 +101,20 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
             name = _clean(heading.split(":", 1)[1] if ":" in heading else heading)
             current = Task(number=number, title=name)
             tasks.append(current)
+            last_field = ""
             continue
         if current is None:
             continue
         if m := FIELD.match(line):
             _apply_field(current, m.group(1), m.group(2).strip())
+            last_field = m.group(1).lower()
+        elif last_field == "files" and (m := re.match(r"^\s*[-*]\s+(?!\[[ xX-]\])(.*)$", line)):
+            current.files += [re.sub(r":\d+(?:-\d+)?$", "", p) for p in re.findall(r"`([^`]+)`", m.group(1))]
         elif m := STEP.match(line):
+            last_field = ""
             current.steps.append(Step(STATES[m.group(1)], _clean(re.sub(r"^Step \d+:\s*", "", _clean(m.group(2))))))
     for t in tasks:
-        for name in ("tier", "repo", "depends", "accept", "verify"):
+        for name in ("tier", "repo", "depends", "files", "accept", "verify"):
             if name not in t.fields_seen:
                 t.defaults_applied.append(name)
         if "repo" not in t.fields_seen:

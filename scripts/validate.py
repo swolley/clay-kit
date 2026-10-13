@@ -42,6 +42,8 @@ def validate(root: Path) -> list[str]:
             if f.is_file() and f.suffix in {".md", ".json", ".html"} and "superpowers:" in f.read_text():
                 problems.append(f"{rel(f)}: references superpowers: (no hard dependency allowed)")
 
+        if (plugin / "NOTICE.md").exists() and not list((plugin / "licenses").glob("*.txt")):
+            problems.append(f"{rel(plugin / 'NOTICE.md')}: license texts missing in licenses/")
         ref = plugin / "reference/orchestrator.md"
         if ref.exists() and "CLAUDE_PLUGIN_ROOT" in ref.read_text():
             problems.append(f"{rel(ref)}: must not use CLAUDE_PLUGIN_ROOT (not substituted in files read at runtime)")

@@ -80,3 +80,9 @@ def test_orchestrator_reference_must_not_use_plugin_root_variable(tmp_path):
     make_scaffold(tmp_path)
     write(tmp_path, "plugins/factory/reference/orchestrator.md", "uses ${CLAUDE_PLUGIN_ROOT}/x\n")
     assert any("orchestrator.md" in p and "CLAUDE_PLUGIN_ROOT" in p for p in validate(tmp_path))
+
+
+def test_notice_requires_shipped_license_texts(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/factory/NOTICE.md", "derived")
+    assert any("NOTICE.md" in p and "licenses" in p for p in validate(tmp_path))

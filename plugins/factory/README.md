@@ -32,7 +32,8 @@ is untouched. You can instead confirm working on the current branch; jobs then r
 committed after approval.
 
 State lives in `factory/jobs/` (add it to `.gitignore`). A static dashboard shows it:
-`cd factory && python3 -m http.server`, then open `/dashboard.html` from the plugin's `factory/` folder.
+`run` copies the page to `factory/jobs/dashboard.html`; serve that folder with
+`cd factory/jobs && python3 -m http.server` and open `/dashboard.html`.
 
 ## Plan format and why it follows superpowers
 

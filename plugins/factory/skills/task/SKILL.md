@@ -12,4 +12,4 @@ shared rules (files, modes, resume, job loop, completion). Use the plugin root a
 Task text: $ARGUMENTS
 
 Treat the text as a one-task plan named `adhoc` (see "The other commands" in the reference) and run the
-Preconditions, mode question and Job loop for it. Do not write a plan file.
+Preconditions, mode question, Job loop and Completion for it. Do not write a plan file.

@@ -20,7 +20,7 @@ Tick each line with what you observed. Failures become fixes in the file that ow
 - [ ] Job 3 (`app/auth/session.py`) selects `code`, `security`, and the approver writes `ESCALATE`; the job ends `needs-human`.
 - [ ] Jobs 1 and 2 are merged into the integration branch; each has `decision.md` starting `APPROVE`.
 - [ ] Nothing was pushed (`git remote -v` is empty).
-- [ ] The dashboard (`cd factory && python3 -m http.server`, open `/dashboard.html`) shows the three jobs grouped under the plan, with only the selected reviewers, and job 3 highlighted.
+- [ ] The dashboard (`cd factory/jobs && python3 -m http.server`, open `/dashboard.html`) shows the three jobs grouped under the plan, with only the selected reviewers, and job 3 highlighted.
 - [ ] `/factory:status` lists the same states.
 - [ ] `/factory:approve 003-...` lands job 3 in the integration branch; the run's Completion step then asks how the integration branch reaches `main`, and does only that local action.
 
