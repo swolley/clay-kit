@@ -64,8 +64,8 @@ Use a task whose brief leaves a real choice open (for example "add a cache" with
 ## G. Progress mod (Claude Code)
 
 - [ ] With the plugin loaded and jobs present, the band above the prompt shows the plan, the bar and the running phases.
-- [ ] `/factory:progress` hides and shows the band (or `/factory-progress` if the colon name is not accepted; update the docs then).
-- [ ] `/factory:agents` opens the pane with the jobs and their reviewer verdicts.
+- [ ] `/factory-progress` hides and shows the band.
+- [ ] `/factory-agents` opens the pane with the jobs and their reviewer verdicts.
 - [ ] A job moving to `needs-human` or `waiting-input` raises a toast and the band shows "waiting for you".
 - [ ] With no `factory/jobs` folder, nothing is drawn and no error appears in the transcript.
 - [ ] Started from a workspace root with the jobs in `<repo>/factory/jobs`, the band still appears.

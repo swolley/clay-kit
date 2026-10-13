@@ -76,5 +76,6 @@ def test_progress_mod_is_wired_into_the_plugin():
     assert json.loads(read("hooks/hooks.json"))["modules"] == ["./register.tsx"]
     assert json.loads(read(".claude-plugin/plugin.json"))["types"] == "./types/index.d.ts"
     reg = read("hooks/register.tsx")
-    assert "factory:progress" in reg and "factory:agents" in reg
+    assert "factory-progress" in reg and "factory-agents" in reg
+    assert "factory:progress" not in reg and "factory:agents" not in reg
     assert (PLUGIN / "types/index.d.ts").exists()

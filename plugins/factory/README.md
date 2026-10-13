@@ -36,9 +36,9 @@ committed after approval.
 
 The plugin includes a mod that shows progress inside the interface, with no setup: a band above the prompt
 (tasks done over total, running phases, how many jobs wait for you), a toast when a job needs you, and a pane
-with the jobs. `/factory:progress` shows or hides the band and `/factory:agents` opens the pane. It only reads the
-files in `factory/jobs/`. If your Claude Code does not accept a colon in a mod command, the names are
-`/factory-progress` and `/factory-agents`.
+with the jobs. `/factory-progress` shows or hides the band and `/factory-agents` opens the pane. They use a hyphen because Claude Code
+refuses a colon in a mod command name (skills get `/factory:run` from the plugin namespace). It only reads the
+files in `factory/jobs/`.
 
 State lives in `factory/jobs/` (add it to `.gitignore`). A static dashboard shows it:
 `run` copies the page to `factory/jobs/dashboard.html`; serve that folder with

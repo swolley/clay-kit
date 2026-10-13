@@ -17,8 +17,8 @@ export const register: Register = on => {
   let known: Set<string> | null = null
 
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'factory:progress', description: 'Show or hide the factory progress band' })
-    await $.command.register({ name: 'factory:agents', description: 'Open or close the pane with the factory jobs' })
+    await $.command.register({ name: 'factory-progress', description: 'Show or hide the factory progress band' })
+    await $.command.register({ name: 'factory-agents', description: 'Open or close the pane with the factory jobs' })
 
     const fs: Fs = {
       list: path => $.fs.list(path),
@@ -53,13 +53,13 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('command.run', { command: 'factory:progress' }, async $ => {
+  on('command.run', { command: 'factory-progress' }, async $ => {
     const hidden = await read($, isHidden)
     await update($, isHidden, () => !hidden)
     return { text: hidden ? 'Factory progress band shown.' : 'Factory progress band hidden.' }
   })
 
-  on('command.run', { command: 'factory:agents' }, async $ => {
+  on('command.run', { command: 'factory-agents' }, async $ => {
     await $.ui.open({ id: PANE, title: 'Factory jobs' })
     return { text: 'Factory jobs pane opened.' }
   })
