@@ -69,3 +69,27 @@ def test_cli_job_and_plans_print_json(tmp_path, capsys):
     _plan(tmp_path, "2026-01-01-open.md", "- [ ] **Step 1: do**")
     assert main(["plans", "--root", str(tmp_path)]) == 0
     assert json.loads(capsys.readouterr().out)[0]["open"] == 1
+
+
+def test_plan_counts_tasks_landed_by_jobs_even_when_steps_are_not_ticked(tmp_path):
+    d = tmp_path / "docs/superpowers/plans"
+    d.mkdir(parents=True)
+    (d / "2026-01-01-demo.md").write_text(
+        "# Demo\n\n### Task 1: A\n\n- [ ] **Step 1: do**\n\n### Task 2: B\n\n- [ ] **Step 1: do**\n\n### Task 3: C\n\n- [ ] **Step 1: do**\n"
+    )
+    for n, stage in ((1, "committed"), (2, "merged")):
+        job = tmp_path / f"factory/jobs/00{n}-x"
+        job.mkdir(parents=True)
+        (job / "job.json").write_text(json.dumps({"id": f"00{n}-x", "plan": "2026-01-01-demo", "task": n, "stage": stage}))
+    plans = list_plans(tmp_path)
+    assert plans[0]["tasks"] == 3 and plans[0]["open"] == 1
+
+
+def test_plan_with_every_task_landed_by_jobs_is_not_listed(tmp_path):
+    d = tmp_path / "docs/superpowers/plans"
+    d.mkdir(parents=True)
+    (d / "2026-01-02-all.md").write_text("# All\n\n### Task 1: A\n\n- [ ] **Step 1: do**\n")
+    job = tmp_path / "factory/jobs/001-x"
+    job.mkdir(parents=True)
+    (job / "job.json").write_text(json.dumps({"id": "001-x", "plan": "2026-01-02-all", "task": 1, "stage": "committed"}))
+    assert list_plans(tmp_path) == []

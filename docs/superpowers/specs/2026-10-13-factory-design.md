@@ -214,6 +214,14 @@ commands listed. A dismissed prompt counts as stop. A separate always-on autopil
 number or a fragment of the id; several matches are put to the user as a question. `factory-run` without a plan takes the only plan in
 `docs/superpowers/plans/` that still has open steps, or asks which. `scripts/resolve.py` does the matching, so it is tested.
 
+### 4.7c What a real run showed
+
+A first run with real agents (a three-task fixture, current-branch mode, guided pace) worked end to end and led to these rules, all in the orchestrator reference:
+the check of the review verdicts is its own step, never in the same message as the start of the approver; a reviewer's chat reply is not a verdict,
+only its file is, and a reviewer that wrote no file gets one more try; the host's spawn tool may take the model but no effort and no name, so tiers
+apply the model only, `agents` records an empty effort, and a resumed agent is addressed by the id the spawn returned; and the plans listed by
+`resolve.py plans` count a task as done when a job landed it, because plan steps are ticked only at the end of a run.
+
 ### 4.8 Resuming an interrupted run
 
 There is no separate resume command: `/factory-run <plan>` is idempotent and resumes by itself.

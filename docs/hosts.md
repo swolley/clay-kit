@@ -22,6 +22,8 @@ the pages read do not say it; nothing here is inferred. Read on 2026-10-13.
 
 Command names: skills are named `factory-<verb>` so they are typed `/factory-<verb>` (the bare form of a skill name is documented to work when no other command uses it; the namespaced `/clay:factory-<verb>` also works), and the mod commands are `factory-progress` and `factory-agents`, because a mod command name may only hold letters, digits, `_` and `-` (verified live on 2026-10-13).
 
+Observed in a real run (Claude Code desktop, 2.1.293, 2026-10-13): the Agent tool of the orchestrating session accepted a `model` but no `effort` and no `name` for the agent. Tiers therefore apply the model only, and a resumed agent is addressed by the id the spawn returns.
+
 Consequences for this tool:
 - Any question to the user is asked by a skill in the main session. Agents never ask; they write open questions into their own file and the orchestrator asks.
 - Shared logic is read from `${CLAUDE_PLUGIN_ROOT}/reference/orchestrator.md`, and helper scripts live in `plugins/clay/scripts/`, so an installed plugin never reads outside its folder.

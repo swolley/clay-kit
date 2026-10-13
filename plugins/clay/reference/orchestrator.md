@@ -112,8 +112,11 @@ worktree path, the branch, the mode and the base.
 1. **Create** the job: claim the folder, then in isolated mode create the branch and worktree, and only then write `job.json`
    (`stage: "spec"`, round 0, reviewers `[]`) and `task.md`, so a crash never leaves a job without its
    worktree. A job folder that has no `job.json` is an abandoned claim: start the task fresh.
-2. **Build.** `stage: "build"`. Spawn the `builder` under the name `builder-<job-id>` with model and effort from the task's
-   tier in `<plugin root>/tiers.md`, prompt `<paths> Build round 1.` plus `Port: <5100+10n>` (n = job number).
+2. **Build.** `stage: "build"`. Spawn the `builder` with the model and effort of the task's tier in `<plugin root>/tiers.md`,
+   prompt `<paths> Build round 1.` plus `Port: <5100+10n>` (n = job number), and name it `builder-<job-id>` where the host allows it.
+   Some hosts' spawn tool takes the model but does not accept an effort or a name: pass what it accepts, and in `agents` record
+   the model and leave `effort` empty, never one that was not applied. Keep the agent id the spawn returns; it replaces the name
+   when you resume the builder (`SendMessage` to that id).
    The first line of build.md decides what happens next: `STATUS: READY` moves on, `STATUS: NEEDS_INPUT` goes to
    Questions from agents, `STATUS: BLOCKED` sends the job to step 8.
 3. **Route.** Take the changed paths (`git diff --name-only <base>...<branch>`; in current-branch
@@ -121,16 +124,18 @@ worktree path, the branch, the mode and the base.
    if that file exists). Write the result to `reviewers` in `job.json`.
 4. **Review round N.** `stage: "review"`, `round: N`, selected reviews `pending`, create `round-N/`. Spawn all
    selected reviewers in one message, with the fixed settings from `tiers.md`, prompt `<paths> Review round N.`
-   plus `Port: 5101+10n` for ux and `5102+10n` for ui. As each reviewer finishes, take the verdict from line one of its file (`PASS` or `CHANGES`) and store it in
-   `job.json` straight away. The round ends only when every selected
-   file exists. A reviewer that finishes without a verdict line: stop and tell the user. The builder stays
-   untouched until the whole round is in.
+   plus `Port: 5101+10n` for ux and `5102+10n` for ui. When they have finished, check the round in its own step: read line one
+   of every selected file (`PASS` or `CHANGES`), store each verdict in `job.json`, and fail loudly if a file or a verdict line
+   is missing. A reviewer's chat reply is a claim, not a verdict: only its file counts. A reviewer that wrote no file gets
+   one more time, with a reminder to write it; if it still has no verdict line, stop and tell the user. The builder stays untouched
+   until the whole round is in.
 5. **Decide.** All PASS: approve. Any CHANGES with resumes left (max 2 after round 1): `stage: "build"`,
    resume `builder-<job-id>` with `SendMessage` (or a fresh builder if the session lost it) saying the
    reviews are in `round-N/` and to answer every CHANGES; then check the first line of build.md as in step 2, re-route (the diff may have grown),
    next round. When the resumes are used up, you write `decision.md` yourself: first line `ESCALATE`, then a sentence naming
    the lenses that still ask for changes, and go to step 8.
-6. **Approve.** `stage: "approve"`. Spawn `approver` (fixed settings) with `<paths> Final round: N.` Line one
+6. **Approve.** Only after the check in step 4 passed, and never in the same message as that check (a failed check must not
+   still start the approver), set `stage: "approve"` and spawn `approver` (fixed settings) with `<paths> Final round: N.` Line one
    of decision.md routes it: `APPROVE` goes to step 7, `ESCALATE` to step 8.
 7. **Land.** Isolated: in the integration worktree run `git merge --no-ff <job branch> -m "Merge <job-id>"`; on
    conflict `git merge --abort`, Needs human. Then remove the job worktree and delete the job branch. Current

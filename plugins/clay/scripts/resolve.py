@@ -52,10 +52,14 @@ def resolve_job(token: str | None, jobs: list[dict], stages: tuple[str, ...]) ->
 
 
 def list_plans(root: Path) -> list[dict]:
+    """Plans that still have work. A task counts as done when its steps are ticked or a job of this plan landed it,
+    since the steps are only ticked at the end of a run."""
+    jobs = load_jobs(root)
     plans = []
     for f in sorted((root / PLANS_DIR).glob("*.md")):
         parsed = parse_plan(f.read_text())
-        open_tasks = [t for t in parsed.tasks if not t.done]
+        landed = {j.get("task") for j in jobs if j.get("plan") == f.stem and j.get("stage") in ("merged", "committed")}
+        open_tasks = [t for t in parsed.tasks if not t.done and t.number not in landed]
         if open_tasks:
             plans.append({"path": f"{PLANS_DIR}/{f.name}", "title": parsed.title, "tasks": len(parsed.tasks), "open": len(open_tasks)})
     return plans

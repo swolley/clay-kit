@@ -142,3 +142,19 @@ def test_auto_pace_stops_with_the_ready_command():
 
 def test_skip_is_not_offered_in_current_branch_mode():
     assert "skip is not offered" in read("reference/orchestrator.md")
+
+
+def test_verdicts_are_checked_in_their_own_step_before_the_next_agent():
+    t = read("reference/orchestrator.md")
+    assert "own step" in t and "never in the same message" in t
+
+
+def test_a_reviewer_that_wrote_no_file_gets_one_more_try():
+    t = read("reference/orchestrator.md")
+    assert "wrote no file" in t and "one more time" in t
+
+
+def test_spawn_limits_of_the_host_are_stated():
+    t = read("reference/orchestrator.md")
+    assert "does not accept an effort" in t and "leave `effort` empty" in t
+    assert "agent id" in t

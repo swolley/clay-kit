@@ -12,6 +12,9 @@ reserved: use it only when a task clearly needs it.
 | heavy | unfamiliar code, unclear root cause | opus | xhigh |
 | fable | hardest problems | fable | high |
 
+Applying a tier (Claude Code): where the spawn tool accepts no effort, only the model of the tier is applied and the effort column is a
+recommendation, not a guarantee.
+
 Applying a tier (Claude Code): the orchestrator passes `model` when it spawns the
 builder, and `effort` too when the host accepts a per-call value; otherwise the
 agent file's frontmatter default applies.
