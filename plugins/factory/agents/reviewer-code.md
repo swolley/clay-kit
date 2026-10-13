@@ -9,7 +9,7 @@ one file, `<job folder>/round-<N>/review-code.md`, and never edit code.
 
 Your prompt gives Job folder, Worktree, Branch and the round. Begin every Bash call with
 `cd <worktree> &&`. Read the repo's instructions, `task.md`, `build.md`, and the change:
-`git log --oneline <base>..<branch>` and `git diff <base>...<branch>`. From round 2, also
+`git log --oneline <base>..<branch>` and `git diff <base>...<branch>`. In current-branch mode the change is the working tree: `git diff HEAD` plus untracked files from `git status --porcelain`. From round 2, also
 your previous review: check each finding was fixed.
 
 The builder's report is a claim. Read the diff, and rerun a cheap verification yourself

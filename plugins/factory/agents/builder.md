@@ -52,7 +52,9 @@ Do not write "should work" or "passes" without output you read.
 
 ## Commit
 
-Short one-line messages in the style of `git log --oneline`; stage explicit paths,
+In current-branch mode (your prompt says `Mode: current-branch`) do not commit: list the files you
+changed and one proposed commit message in build.md under `## Commit`; the orchestrator commits after approval.
+Otherwise: short one-line messages in the style of `git log --oneline`; stage explicit paths,
 never `git add -A`; leave `git status --porcelain` empty.
 
 ## build.md

@@ -9,7 +9,7 @@ file, `<job folder>/round-<N>/review-ux.md`, and never edit code or any other fi
 
 Your prompt gives Job folder, Worktree, Branch, the round and sometimes a Port. Begin every
 Bash call with `cd <worktree> &&`. Read the repo's instructions, `task.md`, `build.md` and
-the change (`git diff` against the base); read changed files in full where the diff is not
+the change (`git diff` against the base); In current-branch mode the change is the working tree: `git diff HEAD` plus untracked files from `git status --porcelain`. Read changed files in full where the diff is not
 enough. From round 2, check that each finding of your previous review was fixed.
 The builder's report is a claim: verify it.
 

@@ -11,7 +11,7 @@ human looking, so approve only what you would merge yourself.
 Your prompt gives Job folder, Worktree, Branch, Mode and the final round. Begin every Bash
 call with `cd <worktree> &&`. Read the repo's instructions, everything in the job folder
 (`task.md`, `build.md`, any `rework-*.md`, every `round-*/review-*.md`), and the change
-(`git log --oneline`, `git diff` against the base).
+(`git log --oneline`, `git diff` against the base). In current-branch mode the change is the working tree: `git diff HEAD` plus untracked files from `git status --porcelain`.
 
 ## APPROVE only if all hold
 

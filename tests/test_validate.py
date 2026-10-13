@@ -24,7 +24,7 @@ def make_scaffold(root: Path) -> None:
     write(root, "plugins/factory/skills/brainstorm/SKILL.md", skill("brainstorm"))
     write(root, "plugins/factory/skills/plan/SKILL.md", skill("plan"))
     for cmd in ("run", "task", "status", "approve", "rework"):
-        write(root, f"plugins/factory/skills/{cmd}/SKILL.md", skill(cmd, "disable-model-invocation: true\n"))
+        write(root, f"plugins/factory/skills/{cmd}/SKILL.md", skill(cmd, "disable-model-invocation: true\n") + "reference/orchestrator.md\n")
     write(root, "plugins/factory/agents/builder.md", skill("builder"))
 
 
@@ -68,3 +68,15 @@ def test_brainstorm_and_plan_must_allow_model_invocation(tmp_path):
     make_scaffold(tmp_path)
     write(tmp_path, "plugins/factory/skills/plan/SKILL.md", skill("plan", "disable-model-invocation: true\n"))
     assert any("plan/SKILL.md" in p and "disable-model-invocation" in p for p in validate(tmp_path))
+
+
+def test_command_skill_must_read_orchestrator_reference(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/factory/skills/run/SKILL.md", skill("run", "disable-model-invocation: true\n"))
+    assert any("run/SKILL.md" in p and "orchestrator.md" in p for p in validate(tmp_path))
+
+
+def test_orchestrator_reference_must_not_use_plugin_root_variable(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/factory/reference/orchestrator.md", "uses ${CLAUDE_PLUGIN_ROOT}/x\n")
+    assert any("orchestrator.md" in p and "CLAUDE_PLUGIN_ROOT" in p for p in validate(tmp_path))

@@ -42,6 +42,10 @@ def validate(root: Path) -> list[str]:
             if f.is_file() and f.suffix in {".md", ".json", ".html"} and "superpowers:" in f.read_text():
                 problems.append(f"{rel(f)}: references superpowers: (no hard dependency allowed)")
 
+        ref = plugin / "reference/orchestrator.md"
+        if ref.exists() and "CLAUDE_PLUGIN_ROOT" in ref.read_text():
+            problems.append(f"{rel(ref)}: must not use CLAUDE_PLUGIN_ROOT (not substituted in files read at runtime)")
+
         for f in [*plugin.glob("skills/*/SKILL.md"), *plugin.glob("agents/*.md")]:
             text = f.read_text()
             fm = frontmatter(text)
@@ -57,6 +61,8 @@ def validate(root: Path) -> list[str]:
                     problems.append(f"{rel(f)}: disable-model-invocation must be true")
                 if skill in AUTO_ALLOWED and disabled:
                     problems.append(f"{rel(f)}: disable-model-invocation must not be set")
+                if skill in MANUAL_ONLY and "reference/orchestrator.md" not in text:
+                    problems.append(f"{rel(f)}: must point to reference/orchestrator.md")
     return problems
 
 

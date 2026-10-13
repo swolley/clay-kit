@@ -23,6 +23,7 @@ the pages read do not say it; nothing here is inferred. Read on 2026-10-13.
 Consequences for this tool:
 - Any question to the user is asked by a skill in the main session. Agents never ask; they write open questions into their own file and the orchestrator asks.
 - Shared logic is read from `${CLAUDE_PLUGIN_ROOT}/reference/orchestrator.md`, and helper scripts live in `plugins/factory/scripts/`, so an installed plugin never reads outside its folder.
+- `${CLAUDE_PLUGIN_ROOT}` is substituted in skill and agent text, not in files read later, so each command skill states the plugin root at its top and `reference/orchestrator.md` refers to `<plugin root>`. The validator enforces both.
 - Tiers pass `model` at spawn, and `effort` when the host accepts it; otherwise the agent's frontmatter default applies.
 
 ## Codex (docs: https://developers.openai.com/codex/ and openai/codex)
