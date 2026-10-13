@@ -2,7 +2,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugins/clay/scripts"))
-from plan_status import discover, scan_plans, scan_specs, scan_todos  # noqa: E402
+import json  # noqa: E402
+
+from plan_status import (Options, build_report, discover, main, render_html, render_json,  # noqa: E402
+                         render_table, scan_plans, scan_specs, scan_todos)
 
 KEYS = {"repo", "file", "path", "date", "title", "front_matter_status", "status_banner", "tasks", "total_steps",
         "checked_steps", "state", "inconsistency"}
@@ -232,3 +235,268 @@ def test_markers_are_found_in_python_comments_but_not_in_python_strings(tmp_path
     _write(tmp_path / "docs/superpowers/plans/x.md", "- [ ] a")
     _write(tmp_path / "a.py", '# TODO x\ns = "# TODO"\n')
     assert [(t["path"], t["line"], t["text"]) for t in _todos(tmp_path)] == [("a.py", 1, "x")]
+
+
+def test_scan_todos_can_report_one_repository_without_walking_into_the_nested_ones(tmp_path):
+    _workspace(tmp_path)
+    _write(tmp_path / "root.sh", "# TODO root")
+    _write(tmp_path / "orchard/o.sh", "# TODO orchard")
+    repos = discover(tmp_path)
+    assert [t["path"] for t in scan_todos(tmp_path, repos, 10, only=tmp_path.name)] == ["root.sh"]
+    assert [t["path"] for t in scan_todos(tmp_path, repos, 10, only="orchard")] == ["orchard/o.sh"]
+
+
+# ---- renderers and command line
+
+def _backlog(root: Path) -> None:
+    """One plan of every state, specs of every state and a marker, in two repositories."""
+    _plan(root / "docs/superpowers/plans/2026-01-01-open-plan.md", "- [ ] a")
+    _plan(root / "docs/superpowers/plans/2026-01-02-partial-plan.md", "- [x] a\n- [ ] b")
+    _plan(root / "docs/superpowers/plans/2026-01-03-done-plan.md", "- [x] a",
+          head="Spec: docs/superpowers/specs/2026-01-01-kiln-design.md")
+    _plan(root / "docs/superpowers/plans/2026-01-04-old-plan.md", "- [ ] a", front="superseded")
+    _write(root / "docs/superpowers/plans/2026-01-05-bare-plan.md", "# Bare plan\nno boxes here\n")
+    _write(root / "docs/superpowers/specs/2026-01-01-kiln-design.md", "# Kiln\n")
+    _write(root / "docs/superpowers/specs/2026-01-02-glaze.md", "# Glaze\n")
+    _write(root / "docs/superpowers/specs/2026-01-03-ref.md", "# Ref\n**Plan: not required**\n")
+    _write(root / "docs/superpowers/specs/2026-01-04-lathe-design.md", "# Lathe\n")
+    _plan(root / "docs/superpowers/plans/2026-01-04-lathe.md", "- [ ] a")
+    _plan(root / "orchard/docs/superpowers/plans/2026-02-01-orchard-plan.md", "- [ ] a\n- [ ] b")
+    _write(root / "orchard/tree.ts", "// TODO prune the tree\n")
+
+
+def _report(root: Path, **kw):
+    return build_report(root, Options(**kw))
+
+
+def _run(capsys, *argv) -> tuple[int, str, str]:
+    code = main([str(a) for a in argv])
+    out = capsys.readouterr()
+    return code, out.out, out.err
+
+
+def test_the_default_table_shows_only_open_work(tmp_path, capsys):
+    _backlog(tmp_path)
+    code, out, _ = _run(capsys, "--root", tmp_path)
+    assert code == 0
+    for shown in ("open-plan.md", "partial-plan.md", "bare-plan.md", "orchard-plan.md", "NO BOXES", "NO PLAN",
+                  "2026-01-02-glaze.md"):
+        assert shown in out
+    for hidden in ("done-plan.md", "old-plan.md", "kiln-design.md", "ref.md", "SUPERSED", "DONE "):
+        assert hidden not in out
+    assert "Plans 7 (1 done, 1 partial, 3 open, 1 superseded)" in out
+    assert "TODO" not in out
+
+
+def test_the_default_narrows_a_plan_to_its_unfinished_tasks(tmp_path, capsys):
+    _write(tmp_path / "docs/superpowers/plans/2026-01-01-two.md",
+           "# Two\n## Task 1: first\n- [x] a\n## Task 2: second\n- [ ] b\n")
+    _, out, _ = _run(capsys, "--root", tmp_path)
+    assert "second" in out and "first" not in out
+    _, out, _ = _run(capsys, "--root", tmp_path, "--all")
+    assert "second" in out and "first" in out
+
+
+def test_all_adds_finished_and_superseded_plans_and_planned_specs(tmp_path, capsys):
+    _backlog(tmp_path)
+    _, out, _ = _run(capsys, "--root", tmp_path, "--all")
+    for shown in ("done-plan.md", "old-plan.md", "DONE", "SUPERSED", "open-plan.md", "bare-plan.md"):
+        assert shown in out
+    report = _report(tmp_path, all=True)
+    assert {s["state"] for s in report["specs"]} == {"planned", "plan_uncited", "unplanned", "reference"}
+    assert "kiln-design.md" in out and "SPECS WITH A PLAN" in out
+
+
+def test_open_is_accepted_and_is_the_default(tmp_path, capsys):
+    _backlog(tmp_path)
+    _, default, _ = _run(capsys, "--root", tmp_path)
+    code, explicit, _ = _run(capsys, "--root", tmp_path, "--open")
+    assert code == 0 and explicit == default
+
+
+def test_the_build_report_filters_plans_and_specs_by_default(tmp_path):
+    _backlog(tmp_path)
+    report = _report(tmp_path)
+    assert sorted(p["state"] for p in report["plans"]) == ["empty", "open", "open", "open", "partial"]
+    assert sorted(s["state"] for s in report["specs"]) == ["plan_uncited", "unplanned"]
+    assert {s["state"] for s in report["specs"]} <= {"unplanned", "plan_uncited"}
+    assert report["totals"]["plans"] == 7
+
+
+def test_json_has_the_keys_of_the_php_report(tmp_path, capsys):
+    _backlog(tmp_path)
+    code, out, _ = _run(capsys, "--root", tmp_path, "--format", "json", "--kind", "plans,specs,todos")
+    data = json.loads(out)
+    assert code == 0
+    assert data.keys() >= {"generated_at", "totals", "plans", "specs", "todos", "scope"}
+    assert data["scope"] == "open"
+    assert data["totals"].keys() >= {"plans", "plans_done", "plans_partial", "plans_open", "plans_superseded",
+                                     "tasks_done", "tasks_partial", "tasks_open", "tasks_cancelled", "stale_tasks",
+                                     "inconsistent_plans", "specs_unplanned", "specs_reference", "specs_plan_uncited",
+                                     "todos"}
+    assert KEYS <= data["plans"][0].keys()
+    assert [t["text"] for t in data["todos"]] == ["prune the tree"]
+    assert json.loads(render_json(_report(tmp_path), Options()))["scope"] == "open"
+    all_data = json.loads(_run(capsys, "--root", tmp_path, "--format=json", "--all")[1])
+    assert all_data["scope"] == "all" and len(all_data["plans"]) == 7
+
+
+def test_repos_lists_each_repository_and_exits(tmp_path, capsys):
+    _workspace(tmp_path)
+    code, out, _ = _run(capsys, "--root", tmp_path, "--repos")
+    assert code == 0
+    assert out.splitlines() == [f"{tmp_path.name:<24} .", f"{'orchard':<24} orchard", f"{'quarry':<24} quarry"]
+
+
+def test_summary_prints_one_line_per_plan_without_tasks(tmp_path, capsys):
+    _backlog(tmp_path)
+    _, full, _ = _run(capsys, "--root", tmp_path)
+    _, short, _ = _run(capsys, "--root", tmp_path, "--summary")
+    assert "light the lantern" in full and "light the lantern" not in short
+    assert "open-plan.md" in short
+
+
+def test_a_root_with_nothing_to_scan_prints_a_message_and_exits_zero(tmp_path, capsys):
+    code, out, err = _run(capsys, "--root", tmp_path)
+    assert code == 0 and "No plans or specs found" in out and err == ""
+    assert _run(capsys, "--root", tmp_path, "--repos")[0] == 0
+    assert _run(capsys, "--root", tmp_path, "--format", "json")[0] == 0
+
+
+def test_an_invalid_root_fails(tmp_path, capsys):
+    code, _, err = _run(capsys, "--root", tmp_path / "missing")
+    assert code == 1 and "not a directory" in err
+
+
+def test_bad_option_values_fail_with_a_message(tmp_path, capsys):
+    _backlog(tmp_path)
+    assert _run(capsys, "--root", tmp_path, "--format", "xml")[0] == 2
+    assert _run(capsys, "--root", tmp_path, "--sort", "size")[0] == 2
+    code, _, err = _run(capsys, "--root", tmp_path, "--repo", "nothing")
+    assert code == 1 and "Unknown --repo=nothing" in err and "orchard" in err
+
+
+def test_repo_filter_takes_a_unique_substring_and_keeps_the_specs_honest(tmp_path, capsys):
+    _backlog(tmp_path)
+    _plan(tmp_path / "orchard/docs/superpowers/plans/2026-02-02-cites.md", "- [ ] a",
+          head="Spec: docs/superpowers/specs/x.md")
+    _, out, _ = _run(capsys, "--root", tmp_path, "--repo", "orch", "--kind", "plans,todos")
+    assert "orchard-plan.md" in out and "open-plan.md" not in out.replace("orchard-plan.md", "")
+    assert "tree.ts" in out
+    _, out, _ = _run(capsys, "--root", tmp_path, "--repo", "orchard", "--kind", "todos")
+    assert "tree.ts" in out
+    root_only = json.loads(_run(capsys, "--root", tmp_path, "--repo", tmp_path.name, "--kind", "todos",
+                                "--format", "json")[1])
+    assert root_only["todos"] == []
+
+
+def test_plan_filters_by_file_name(tmp_path, capsys):
+    _backlog(tmp_path)
+    _, out, _ = _run(capsys, "--root", tmp_path, "--plan", "partial", "--kind", "plans")
+    assert "partial-plan.md" in out and "open-plan.md" not in out
+
+
+def test_kind_selects_the_sources(tmp_path):
+    _backlog(tmp_path)
+    report = build_report(tmp_path, Options(kinds=("plans",)))
+    assert report["plans"] and report["specs"] == [] and report["todos"] == []
+    report = build_report(tmp_path, Options(kinds=("todos",)))
+    assert report["plans"] == [] and report["todos"]
+
+
+def test_sort_orders_plans(tmp_path):
+    _backlog(tmp_path)
+    by = lambda s: [p["file"] for p in build_report(tmp_path, Options(sort=s))["plans"]]  # noqa: E731
+    assert by("date")[0] == "2026-01-01-open-plan.md" and by("date")[-1] == "2026-02-01-orchard-plan.md"
+    assert by("progress")[-1] == "2026-01-05-bare-plan.md" and by("progress")[-2] == "2026-01-02-partial-plan.md"
+    assert by("repo")[0] == "2026-02-01-orchard-plan.md"
+
+
+def test_stale_keeps_only_unflagged_tasks_whose_files_all_exist(tmp_path, capsys):
+    _write(tmp_path / "src/kiln.py", "x")
+    _write(tmp_path / "docs/superpowers/plans/2026-01-01-a.md",
+           "# A\n## Task 1: built\n**Files:**\n- Create: `src/kiln.py`\n- [ ] a\n## Task 2: not built\n"
+           "**Files:**\n- Create: `src/lathe.py`\n- [ ] b\n")
+    _write(tmp_path / "docs/superpowers/specs/s.md", "# S\n")
+    report = build_report(tmp_path, Options(stale=True))
+    assert [t["name"] for p in report["plans"] for t in p["tasks"]] == ["built"]
+    assert report["specs"] == [] and report["todos"] == []
+    assert report["totals"]["stale_tasks"] == 1
+    _, out, _ = _run(capsys, "--root", tmp_path, "--stale")
+    assert "every declared file exists" in out and "unflagged task(s)" in out
+
+
+def test_no_evidence_skips_the_filesystem_checks(tmp_path):
+    _write(tmp_path / "src/kiln.py", "x")
+    _write(tmp_path / "docs/superpowers/plans/2026-01-01-a.md",
+           "# A\n## Task 1: built\n**Files:**\n- Create: `src/kiln.py`\n- [ ] a\n")
+    task = build_report(tmp_path, Options(evidence=False))["plans"][0]["tasks"][0]
+    assert task["files_found"] == 0 and task["stale"] is False
+
+
+def test_inconsistencies_are_reported_in_the_table(tmp_path, capsys):
+    _plan(tmp_path / "docs/superpowers/plans/2026-01-01-a.md", "- [ ] a\n- [x] b", front="completed")
+    _plan(tmp_path / "docs/superpowers/plans/2026-01-02-b.md", "- [ ] a", front="in-progress")
+    _, out, _ = _run(capsys, "--root", tmp_path, "--all")
+    assert "status: completed" in out and "! front-matter says completed but 1/2 steps are flagged" in out
+    assert "1 plan(s) disagree" in out
+
+
+def test_todos_are_listed_only_when_asked(tmp_path, capsys):
+    _backlog(tmp_path)
+    _, out, _ = _run(capsys, "--root", tmp_path, "--kind", "todos", "--todo-limit", "5")
+    assert "CODE MARKERS" in out and "orchard/tree.ts:1" in out
+
+
+def test_style_box_uses_ascii_checkboxes_and_icon_uses_marks(tmp_path):
+    _backlog(tmp_path)
+    box = render_table(_report(tmp_path), Options(style="box"))
+    icon = render_table(_report(tmp_path), Options(style="icon"))
+    assert "[ ]" in box and "○" not in box
+    assert "○" in icon and "[ ]" not in icon
+
+
+def test_colors_wrap_the_state_labels_in_ansi_codes(tmp_path):
+    _backlog(tmp_path)
+    assert "\033[31mOPEN\033[0m" in render_table(_report(tmp_path), Options(colors=True))
+    assert "\033" not in render_table(_report(tmp_path), Options(colors=False))
+
+
+def test_the_table_never_exceeds_a_narrow_terminal(tmp_path):
+    long = "a very long name for a task that goes on and on and on and on"
+    _write(tmp_path / ("docs/superpowers/plans/2026-01-01-" + "long-" * 10 + "plan.md"),
+           f"---\nstatus: in-progress\n---\n# T\n## Task 1: {long}\n**Files:**\n- Create: `a/b.py`\n- [ ] a\n")
+    _write(tmp_path / ("docs/superpowers/specs/2026-01-01-" + "spec-" * 20 + ".md"), "# " + long + "\n")
+    _write(tmp_path / "src.ts", "// TODO " + long * 2)
+    for width in (30, 40, 60, 120):
+        out = render_table(build_report(tmp_path, Options(kinds=("plans", "specs", "todos"), width=width)),
+                           Options(width=width))
+        assert max(len(line) for line in out.splitlines()) <= width, (width, out)
+        assert "OPEN" in out or "PARTIAL" in out
+
+
+def test_the_table_of_an_empty_selection_still_prints_the_totals(tmp_path, capsys):
+    _plan(tmp_path / "docs/superpowers/plans/2026-01-01-a.md", "- [x] a")
+    code, out, _ = _run(capsys, "--root", tmp_path)
+    assert code == 0 and "Plans 1 (1 done" in out and "Nothing open" in out
+
+
+def test_html_is_one_self_contained_page_with_escaped_text(tmp_path, capsys):
+    _backlog(tmp_path)
+    _write(tmp_path / "docs/superpowers/specs/2026-01-09-x.md", "# <script>alert(1)</script>\n")
+    page = render_html(_report(tmp_path), Options())
+    assert page.startswith("<!doctype html>") and "<script>alert(1)</script>" not in page
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page
+    assert "http://" not in page and "https://" not in page
+    assert "open-plan.md" in page and "done-plan.md" not in page
+    assert 'data-kind="spec"' in page and "NO BOXES" in page
+    _, out, _ = _run(capsys, "--root", tmp_path, "--format", "html")
+    assert out.startswith("<!doctype html>")
+
+
+def test_out_writes_a_file_instead_of_stdout(tmp_path, capsys):
+    _backlog(tmp_path)
+    target = tmp_path / "out" / "backlog.json"
+    code, out, _ = _run(capsys, "--root", tmp_path, "--format", "json", "--out", target)
+    assert code == 0 and out == f"Written: {target}\n"
+    assert json.loads(target.read_text())["totals"]["plans"] == 7

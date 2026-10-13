@@ -8,9 +8,16 @@ disagreement between the two is reported as an inconsistency. The tool never edi
 Ported from laraplate's `scripts/plan-status.php`; plans are read through `factory_plan.parse_plan`, so the backlog and
 the factory runner give a plan the same meaning. Standard library only.
 """
+import argparse
 import glob
+import html
+import json
 import os
 import re
+import shutil
+import sys
+import textwrap
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -272,14 +279,15 @@ def _source_files(base: Path, nested: list[Path]):
                 yield here / name
 
 
-def scan_todos(root: Path | str, repos: dict[str, str], limit: int) -> list[dict]:
+def scan_todos(root: Path | str, repos: dict[str, str], limit: int, only: str | None = None) -> list[dict]:
     """Markers (`TODO`, `FIXME`, `XXX`, `@todo`) in the comments of source files, at most `limit`. The root repository
-    does not walk into the repositories nested under it, so a marker is reported once."""
+    does not walk into the repositories nested under it, so a marker is reported once. `only` reports one repository
+    but still knows about the others, so the root does not walk into them."""
     root = Path(root).resolve()
     todos: list[dict] = []
     for repo, relative in repos.items():
         base = root / relative
-        if not base.is_dir():
+        if (only is not None and repo != only) or not base.is_dir():
             continue
         nested = [root / other for name, other in repos.items() if name != repo and other]
         for file in _source_files(base, nested):
@@ -297,3 +305,449 @@ def scan_todos(root: Path | str, repos: dict[str, str], limit: int) -> list[dict
                     if len(todos) >= limit:
                         return todos
     return todos
+
+
+# ---- report, renderers and command line
+
+LABEL = {"done": "DONE", "partial": "PARTIAL", "open": "OPEN", "superseded": "SUPERSED", "cancelled": "CANCELLED",
+         "empty": "NO BOXES", "planned": "PLANNED", "unplanned": "NO PLAN", "plan_uncited": "UNCITED",
+         "reference": "REFERENCE"}
+COLOR = {"done": "\033[32m", "partial": "\033[33m", "open": "\033[31m", "superseded": "\033[90m",
+         "cancelled": "\033[90m", "empty": "\033[90m", "planned": "\033[90m", "unplanned": "\033[35m",
+         "plan_uncited": "\033[33m", "reference": "\033[90m"}
+ICON = {"done": "✓", "partial": "~", "cancelled": "✗", "empty": "–"}
+BOX = {"done": "x", "partial": "~", "cancelled": "-", "empty": "-"}
+OPEN_PLAN_STATES = {"open", "partial", "empty"}
+OPEN_SPEC_STATES = {"unplanned", "plan_uncited"}
+KINDS = ("plans", "specs", "todos")
+SORTS = ("date", "repo", "progress")
+STALE_HINT = "  << every declared file exists"
+ANSI = re.compile(r"\033\[[0-9;]*m")
+MAX_WIDTH = 120
+
+
+@dataclass
+class Options:
+    """What the report holds (`all`, `kinds`, `repo`, `plan`, `sort`, `stale`, `evidence`, `todo_limit`) and how it is
+    drawn (`summary`, `style`, `colors`, `width`; no width means the terminal's)."""
+    all: bool = False
+    kinds: tuple[str, ...] = ("plans", "specs")
+    repo: str | None = None
+    plan: str | None = None
+    sort: str = "date"
+    stale: bool = False
+    evidence: bool = True
+    todo_limit: int = 200
+    summary: bool = False
+    style: str = "icon"
+    colors: bool = False
+    width: int | None = None
+
+
+def resolve_repo(name: str, repos: dict[str, str]) -> str:
+    """An exact repository name wins; failing that a single substring match is enough."""
+    if name in repos:
+        return name
+    matches = [r for r in repos if name in r]
+    if len(matches) == 1:
+        return matches[0]
+    known = ", ".join(repos)
+    raise ValueError(f"Unknown --repo={name}. Found: {known}." if not matches
+                     else f"Ambiguous --repo={name}: matches {', '.join(matches)}.")
+
+
+def _sort_plans(plans: list[dict], by: str) -> list[dict]:
+    if by == "repo":
+        return sorted(plans, key=lambda p: (p["repo"], p["file"]))
+    if by == "progress":
+        return sorted(plans, key=lambda p: (p["checked_steps"] / p["total_steps"] if p["total_steps"] else 1.0,
+                                            p["date"]))
+    return sorted(plans, key=lambda p: (p["date"], p["repo"], p["file"]))
+
+
+def _totals(plans: list[dict], specs: list[dict], todos: list[dict]) -> dict:
+    tasks = [t for p in plans for t in p["tasks"]]
+    plan_count = lambda state: sum(p["state"] == state for p in plans)  # noqa: E731
+    spec_count = lambda state: sum(s["state"] == state for s in specs)  # noqa: E731
+    return {
+        "plans": len(plans),
+        "plans_done": plan_count("done"),
+        "plans_partial": plan_count("partial"),
+        "plans_open": plan_count("open"),
+        "plans_superseded": plan_count("superseded"),
+        "tasks_done": sum(t["state"] == "done" for t in tasks),
+        "tasks_partial": sum(t["state"] == "partial" for t in tasks),
+        "tasks_open": sum(t["state"] not in ("done", "partial", "cancelled") for t in tasks),
+        "tasks_cancelled": sum(t["state"] == "cancelled" for t in tasks),
+        "stale_tasks": sum(t["stale"] for t in tasks),
+        "inconsistent_plans": sum(p["inconsistency"] is not None for p in plans),
+        "specs_unplanned": spec_count("unplanned"),
+        "specs_reference": spec_count("reference"),
+        "specs_plan_uncited": spec_count("plan_uncited"),
+        "todos": len(todos),
+    }
+
+
+def build_report(root: Path | str, opts: Options) -> dict:
+    """Scan `root` and keep what `opts` selects. The totals describe everything selected by `repo`, `plan` and `kinds`,
+    before the open-work filter, so a short list still says how much exists. Raises ValueError on an unknown repo."""
+    root = Path(root).resolve()
+    repos = discover(root)
+    repo = resolve_repo(opts.repo, repos) if opts.repo is not None else None
+    every_plan = scan_plans(root, repos, opts.evidence)
+    plans = [p for p in every_plan
+             if "plans" in opts.kinds and (repo is None or p["repo"] == repo)
+             and (opts.plan is None or opts.plan in p["file"])]
+    plans = _sort_plans(plans, opts.sort)
+    # Whether a plan names a spec is answered against every plan, never against the filtered ones.
+    specs = [s for s in scan_specs(root, repos, every_plan) if repo is None or s["repo"] == repo] \
+        if "specs" in opts.kinds else []
+    todos = scan_todos(root, repos, max(1, opts.todo_limit), only=repo) if "todos" in opts.kinds else []
+    totals = _totals(plans, specs, todos)
+    if not opts.all or opts.stale:
+        plans = [{**p, "tasks": [t for t in p["tasks"] if t["state"] not in ("done", "cancelled")
+                                 and (t["stale"] or not opts.stale)]}
+                 for p in plans if opts.all or p["state"] in OPEN_PLAN_STATES]
+        if opts.stale:
+            plans = [p for p in plans if p["tasks"]]
+    if not opts.all:
+        specs = [s for s in specs if s["state"] in OPEN_SPEC_STATES]
+    if opts.stale:
+        specs, todos = [], []
+    return {"generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "scope": "all" if opts.all else "open", "totals": totals, "plans": plans, "specs": specs, "todos": todos}
+
+
+def _width(opts: Options) -> int:
+    return max(20, min(opts.width or shutil.get_terminal_size((100, 24)).columns, MAX_WIDTH))
+
+
+def _shorten(text: str, limit: int) -> str:
+    text = re.sub(r"\*\*|`", "", text).strip()
+    return text if len(text) <= limit else text[:max(limit - 1, 0)] + "…"
+
+
+def _shorten_left(text: str, limit: int) -> str:
+    return text if len(text) <= limit else "…" + text[len(text) - max(limit - 1, 0):]
+
+
+def _clip(line: str, width: int) -> str:
+    """A line that still overflows is cut to the width; its colour codes go with it."""
+    plain = ANSI.sub("", line)
+    return line if len(plain) <= width else plain[:width - 1] + "…"
+
+
+def _paint(state: str, opts: Options) -> str:
+    label = LABEL.get(state, state)
+    return f"{COLOR.get(state, '')}{label}\033[0m" if opts.colors else label
+
+
+def _mark(state: str, opts: Options) -> str:
+    """Always three visible characters, so callers pad around it rather than through it."""
+    if opts.style == "icon":
+        glyph, tail = ICON.get(state, "○"), "  "
+    else:
+        glyph, tail = BOX.get(state, " "), ""
+    if opts.colors:
+        glyph = f"{COLOR.get(state, '')}{glyph}\033[0m"
+    return glyph + tail if opts.style == "icon" else f"[{glyph}]"
+
+
+def _rule(title: str, width: int) -> list[str]:
+    return ["", title, "-" * min(len(title), width)]
+
+
+def _plan_header(plan: dict, opts: Options, width: int) -> list[str]:
+    declared = f"  status: {plan['front_matter_status']}" if plan["front_matter_status"] else ""
+    date = f"~{plan['date']}  " if plan["date_source"] == "mtime" else ""
+    tail = f"  [{plan['repo']}]  {plan['checked_steps']}/{plan['total_steps']} steps  "
+    visible_tail = len(tail) + len(LABEL.get(plan["state"], plan["state"])) + len(declared)
+    room = width - len(date) - visible_tail
+    if room >= 16:
+        return [date + _shorten(plan["file"], room) + tail + _paint(plan["state"], opts) + declared]
+    return [date + _shorten(plan["file"], width - len(date)),
+            f"    {_paint(plan['state'], opts)}  {plan['checked_steps']}/{plan['total_steps']} steps  "
+            f"[{plan['repo']}]{declared}"]
+
+
+def _task_line(task: dict, opts: Options, width: int) -> str:
+    """Names are padded to one column; on a narrow terminal the evidence and the stale hint shrink first."""
+    evidence = f"  files {task['files_found']}/{task['files_total']}" if task["files_total"] else ""
+    stale = STALE_HINT if task["stale"] else ""
+    room = width - 8 - 6  # mark and indent, counts
+    for ev, st in ((evidence, stale), (evidence, "  <<" if stale else ""), ("", "  <<" if stale else ""), ("", "")):
+        # Reserve the longest tail on wide terminals so that the counts line up from one task to the next.
+        reserve = 13 + len(STALE_HINT) if (ev, st) == (evidence, stale) else len(ev) + len(st)
+        if room - reserve >= 16:
+            break
+    name_width = min(52, room - reserve)
+    name = _shorten(task["name"], name_width).ljust(name_width)
+    return f"    {_mark(task['state'], opts)} {name} {task['checked']:2d}/{task['total']:<2d}{ev}{st}"
+
+
+def render_table(report: dict, opts: Options) -> str:
+    width = _width(opts)
+    out: list[str] = []
+    if report["plans"]:
+        out += _rule("PLANS", width)
+        for plan in report["plans"]:
+            out += _plan_header(plan, opts, width)
+            if plan["inconsistency"]:
+                out.append("    ! " + _shorten(plan["inconsistency"], width - 6))
+            if not opts.summary:
+                out += [_task_line(task, opts, width) for task in plan["tasks"]]
+                out.append("")
+
+    def specs_of(state: str) -> list[dict]:
+        return [s for s in report["specs"] if s["state"] == state]
+
+    def spec_block(title: str, state: str, extra) -> None:
+        if not (found := specs_of(state)):
+            return
+        out.extend(_rule(title, width))
+        for spec in found:
+            head = f"    {LABEL[state]:<8} [{spec['repo']}] "
+            out.append(head + _shorten(spec["title"], width - len(head)))
+            out.extend("             " + _shorten_left(line, width - 13) for line in extra(spec))
+        out.append("")
+
+    spec_block("SPECS WITH AN UNCITED PLAN", "plan_uncited",
+               lambda s: [f"spec: {s['path']}", f"plan: {s['sibling_plan']}"])
+    spec_block("SPECS WITH NO PLAN", "unplanned", lambda s: [s["path"]])
+    spec_block("SPECS WITH A PLAN", "planned", lambda s: [s["path"]])
+    spec_block("SPECS THAT NEED NO PLAN", "reference", lambda s: [s["path"]])
+
+    if report["todos"]:
+        out += _rule("CODE MARKERS", width)
+        for todo in report["todos"]:
+            head = f"    {todo['marker']:<6} "
+            where = _shorten_left(f"{todo['path']}:{todo['line']}", max(10, width - len(head) - 12))
+            out.append(head + where + "  " + _shorten(todo["text"], max(0, width - len(head) - len(where) - 2)))
+        out.append("")
+
+    t = report["totals"]
+    if not (report["plans"] or report["specs"] or report["todos"]):
+        out += ["", "Nothing open." if report["scope"] == "open" else "Nothing found."]
+    out += ["", *textwrap_line(
+        f"Plans {t['plans']} ({t['plans_done']} done, {t['plans_partial']} partial, {t['plans_open']} open, "
+        f"{t['plans_superseded']} superseded) | tasks {t['tasks_done']} done, {t['tasks_partial']} partial, "
+        f"{t['tasks_open']} open, {t['tasks_cancelled']} cancelled | specs: {t['specs_unplanned']} with no plan, "
+        f"{t['specs_plan_uncited']} with an uncited plan | code markers {t['todos']}", width)]
+    if t["stale_tasks"]:
+        out += textwrap_line(f"{t['stale_tasks']} unflagged task(s) have every declared file on disk: verify "
+                             "them, then flag or explain.", width)
+    if t["inconsistent_plans"]:
+        out += textwrap_line(f"{t['inconsistent_plans']} plan(s) disagree with their own declared status: "
+                             "reconcile the front-matter.", width)
+    lines = []
+    for line in out:
+        if line or (lines and lines[-1]):
+            lines.append(_clip(line.rstrip(), width))
+    return "\n".join(lines) + "\n"
+
+
+def textwrap_line(text: str, width: int) -> list[str]:
+    return textwrap.wrap(text, width, break_long_words=True)
+
+
+def render_json(report: dict, opts: Options) -> str:
+    return json.dumps(report, indent=4, ensure_ascii=False) + "\n"
+
+
+SVG = '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" ' \
+      'stroke-linecap="round" stroke-linejoin="round">{}</svg>'
+SVG_DEFAULT = '<circle cx="8" cy="8" r="5.6"/>'
+SVG_PATH = {
+    "done": '<polyline points="3.5,8.5 6.8,11.8 12.5,4.8"/>',
+    "partial": '<path d="M3.5 9.2c1.2-2.6 2.5-2.6 3.7 0s2.5 2.6 3.7 0"/><circle cx="8" cy="8" r="6.2" opacity=".35"/>',
+    "empty": '<path d="M4 8h8" opacity=".6"/>',
+    "cancelled": '<path d="M4.5 4.5l7 7M11.5 4.5l-7 7" opacity=".6"/>',
+}
+HTML_HEAD = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Backlog</title>
+<style>
+:root { color-scheme: light dark; --bg:#fff; --fg:#14161a; --muted:#6b7280; --line:#e5e7eb; --chip:#f3f4f6;
+        --done:#0a7f3f; --partial:#9a6700; --open:#b42318; --other:#6b21a8; }
+@media (prefers-color-scheme: dark) { :root { --bg:#14161a; --fg:#e8e8e8; --muted:#9aa0a6; --line:#2a2d33; --chip:#22252b;
+        --done:#43c06f; --partial:#e3b341; --open:#ff7b72; --other:#d8b4fe; } }
+body { margin:0; padding:24px; background:var(--bg); color:var(--fg);
+       font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+h1 { font-size:18px; margin:0 0 4px; } p.sub { color:var(--muted); margin:0 0 16px; font-size:13px; }
+.controls { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+button { font:inherit; font-size:13px; padding:5px 12px; border:1px solid var(--line); border-radius:999px;
+         background:var(--chip); color:var(--fg); cursor:pointer; }
+button[aria-pressed="true"] { border-color:currentColor; font-weight:600; }
+.wrap { overflow-x:auto; } table { border-collapse:collapse; width:100%; min-width:760px; }
+td { padding:6px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+tr.group td { background:var(--chip); border-top:2px solid var(--line); }
+td.dim { color:var(--muted); font-size:12px; white-space:nowrap; }
+td.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.pill { font-size:11px; letter-spacing:.04em; padding:2px 8px; border-radius:999px; border:1px solid currentColor; white-space:nowrap; }
+.done .pill{color:var(--done)} .partial .pill{color:var(--partial)} .open .pill{color:var(--open)}
+.box { display:inline-flex; align-items:center; }
+.ico { width:16px; height:16px; display:block; }
+.done .ico{color:var(--done)} .partial .ico{color:var(--partial)} .open .ico{color:var(--open)} .empty .ico,.cancelled .ico{color:var(--muted)}
+.unplanned .pill,.superseded .pill{color:var(--other)}
+.warn { color:var(--partial); font-size:12px; }
+[hidden]{display:none!important}
+</style></head><body>
+<h1>Backlog</h1>
+<p class="sub">__SUMMARY__</p>
+<div class="controls">
+  <button data-f="all" aria-pressed="true">All</button>
+  <button data-f="open" aria-pressed="false">Open</button>
+  <button data-f="partial" aria-pressed="false">Partial</button>
+  <button data-f="done" aria-pressed="false">Done</button>
+  <button data-k="plan" aria-pressed="false">Plans only</button>
+  <button data-k="spec" aria-pressed="false">Specs only</button>
+  <button data-k="todo" aria-pressed="false">Markers only</button>
+</div>
+<div class="wrap"><table>__BODY__</table></div>
+<script>
+var state = { f: 'all', k: 'all' };
+function apply() {
+  document.querySelectorAll('tr.row').forEach(function (row) {
+    var okF = state.f === 'all' || row.classList.contains(state.f);
+    var okK = state.k === 'all' || row.dataset.kind === state.k;
+    row.hidden = !(okF && okK);
+  });
+  document.querySelectorAll('tr.group').forEach(function (row) {
+    var next = row.nextElementSibling, visible = false;
+    while (next && next.classList.contains('row')) {
+      if (!next.hidden) { visible = true; break; }
+      next = next.nextElementSibling;
+    }
+    row.hidden = !(visible || (state.f === 'all' && state.k === 'all'));
+  });
+}
+document.querySelectorAll('button[data-f]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    state.f = b.dataset.f;
+    document.querySelectorAll('button[data-f]').forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); });
+    apply();
+  });
+});
+document.querySelectorAll('button[data-k]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    state.k = state.k === b.dataset.k ? 'all' : b.dataset.k;
+    document.querySelectorAll('button[data-k]').forEach(function (o) {
+      o.setAttribute('aria-pressed', String(o === b && state.k !== 'all'));
+    });
+    apply();
+  });
+});
+</script>
+</body></html>
+"""
+
+
+def render_html(report: dict, opts: Options) -> str:
+    e = lambda text: html.escape(str(text), quote=True)  # noqa: E731
+    rows = []
+    for plan in report["plans"]:
+        state = plan["state"]
+        note = (f'<span class="warn">{e(plan["inconsistency"])}</span>' if plan["inconsistency"]
+                else e(plan["front_matter_status"] or ""))
+        rows.append(f'<tr class="group plan {state}" data-kind="plan"><td>{e(plan["repo"])}</td>'
+                    f'<td><strong>{e(plan["title"])}</strong></td>'
+                    f'<td class="num">{plan["checked_steps"]}/{plan["total_steps"]}</td>'
+                    f'<td><span class="pill {state}">{e(LABEL.get(state, state))}</span></td><td>{note}</td></tr>')
+        for task in plan["tasks"]:
+            ts = task["state"]
+            evidence = f"{task['files_found']}/{task['files_total']} files" if task["files_total"] else ""
+            hint = ' <span class="warn">all files exist</span>' if task["stale"] else ""
+            rows.append(f'<tr class="row {ts}" data-kind="plan"><td class="dim">{e(plan["file"])}</td>'
+                        f'<td>{e(task["name"])}</td><td class="num">{task["checked"]}/{task["total"]}</td>'
+                        f'<td><span class="box" title="{e(LABEL.get(ts, ts))}">{SVG.format(SVG_PATH.get(ts, SVG_DEFAULT))}</span></td>'
+                        f'<td>{e(evidence)}{hint}</td></tr>')
+    for spec in report["specs"]:
+        state = spec["state"]
+        if state == "reference":
+            continue
+        rows.append(f'<tr class="row {state}" data-kind="spec"><td class="dim">{e(spec["repo"])}</td>'
+                    f'<td>{e(spec["title"])}</td><td class="num"></td>'
+                    f'<td><span class="pill {state}">{e(LABEL.get(state, ""))}</span></td>'
+                    f'<td class="dim">{e(spec["sibling_plan"] or spec["path"])}</td></tr>')
+    for todo in report["todos"]:
+        rows.append(f'<tr class="row open" data-kind="todo"><td class="dim">{e(todo["repo"])}</td>'
+                    f'<td>{e(todo["text"])}</td><td class="num"></td>'
+                    f'<td><span class="pill open">{e(todo["marker"])}</span></td>'
+                    f'<td class="dim">{e(todo["path"])}:{todo["line"]}</td></tr>')
+    t = report["totals"]
+    scope = "open work only" if report["scope"] == "open" else "everything"
+    summary = (f"{t['plans']} plans · {t['tasks_open']} tasks open · {t['specs_unplanned']} specs without a plan · "
+               f"{t['todos']} code markers · {scope} · generated {report['generated_at']}")
+    return HTML_HEAD.replace("__SUMMARY__", e(summary)).replace("__BODY__", "\n".join(rows))
+
+
+USAGE = """Development backlog of a repository, or of a whole workspace: plans, specs and code markers.
+
+Shows the open work (open and partial plans, plans with no boxes, specs without a plan); --all adds the rest.
+Repositories are discovered: every directory under the root holding plans or specs is one. A plan's front matter
+`status:` overrides its checkbox counts. Steps are `- [ ]` open, `- [x]` done, `- [-]` cancelled. The tool never
+edits a plan."""
+
+
+def _parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="plan_status.py", description=USAGE,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--root", default=".", help="where to scan from (default: the current directory)")
+    p.add_argument("--format", choices=("table", "json", "html"), default="table", help="output format")
+    p.add_argument("--kind", default="plans,specs", help="sources to scan: plans,specs,todos (default: plans,specs)")
+    p.add_argument("--all", action="store_true", help="also finished and superseded plans and planned specs")
+    p.add_argument("--open", action="store_true", help="only open work; this is the default")
+    p.add_argument("--stale", action="store_true", help="only unflagged tasks that create files, all of which exist")
+    p.add_argument("--plan", help="filter plans by file name substring")
+    p.add_argument("--repo", help="limit to one repository; a unique substring is enough")
+    p.add_argument("--sort", choices=SORTS, default="date", help="order plans: oldest first, by repo, or least advanced")
+    p.add_argument("--style", choices=("icon", "box"), default="icon", help="task marks as icons or ASCII checkboxes")
+    p.add_argument("--summary", action="store_true", help="one line per plan, no task detail")
+    p.add_argument("--todo-limit", type=int, default=200, help="cap code markers (default: 200)")
+    p.add_argument("--out", help="write to a file instead of stdout")
+    p.add_argument("--no-evidence", action="store_true", help="skip filesystem checks")
+    p.add_argument("--repos", action="store_true", help="list the repositories found under the root and exit")
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    try:
+        args = _parser().parse_args(argv)
+    except SystemExit as stop:
+        return stop.code if isinstance(stop.code, int) else 1
+    root = Path(args.root).resolve()
+    if not root.is_dir():
+        print(f"Invalid --root={args.root}: not a directory.", file=sys.stderr)
+        return 1
+    kinds = tuple(k.strip() for k in args.kind.split(",") if k.strip())
+    if bad := [k for k in kinds if k not in KINDS]:
+        print(f"Invalid --kind {','.join(bad)}. Use plans, specs or todos.", file=sys.stderr)
+        return 2
+    repos = discover(root)
+    if not repos:
+        print(f"No plans or specs found under {root}.")
+        return 0
+    if args.repos:
+        for name, relative in repos.items():
+            print(f"{name:<24} {relative or '.'}")
+        return 0
+    opts = Options(all=args.all, kinds=kinds, repo=args.repo, plan=args.plan, sort=args.sort, stale=args.stale,
+                   evidence=not args.no_evidence, todo_limit=args.todo_limit, summary=args.summary, style=args.style,
+                   colors=args.out is None and args.format == "table" and sys.stdout.isatty())
+    try:
+        report = build_report(root, opts)
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
+    output = {"json": render_json, "html": render_html}.get(args.format, render_table)(report, opts)
+    if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(output)
+        print(f"Written: {args.out}")
+    else:
+        sys.stdout.write(output)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
