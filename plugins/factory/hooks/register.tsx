@@ -68,8 +68,9 @@ const fillFor = (job: Job) =>
 // bar is built from colored text cells (`cols` wide). `elements` is what `$.ui.resolve` returned.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const bar = (elements: any, label: string, done: number, total: number, px: number, fill: string, glyph: string, cols: number) => {
+  const { Box, Text } = elements
   const Svg = 'Svg' in elements ? elements.Svg : undefined
-  if (!Svg) return labeled(elements.Box, elements.Text, label, done, total, cols, glyph)
+  if (!Svg) return labeled(Box, Text, label, done, total, cols, glyph)
   return (
     <Box alignSelf="center" flexShrink={0}>
       <Svg source={pillBar({ label, done, total, width: px, fill, track: TRACK })} alt={label} width={px} height={20} />
@@ -97,10 +98,18 @@ const tile = (elements: any, label: string, value: string, color?: string) => {
   )
 }
 
+// Centers one item on the cross axis of its row, so text sits at the middle of a bar and not on its baseline.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mid = (Box: any, node: unknown, shrink = 0) => (
+  <Box alignSelf="center" flexShrink={shrink}>
+    {node}
+  </Box>
+)
+
 // A reviewer as a colored LED with its name beside it. The mark is a cue besides color.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const led = (Box: any, Text: any, name: string, verdict: string | undefined) => (
-  <Box flexShrink={0}>
+  <Box alignSelf="center" flexShrink={0}>
     <Text color={ledColor(verdict)}>●</Text>
     <Text>{` ${reviewerLabel(name)}${verdictMark(verdict)}`}</Text>
   </Box>
@@ -178,11 +187,11 @@ export const register: Register = on => {
     // One row, never wrapped. The time stays in the pane.
     return (
       <Box flexWrap="nowrap" gap={1} alignItems="center">
-        <Text bold color={dot}>●</Text>
-        <Text bold>{lead.plan.slice(0, 20)}{more}</Text>
+        {mid(Box, <Text bold color={dot}>●</Text>)}
+        {mid(Box, <Text bold>{lead.plan.slice(0, 20)}{more}</Text>)}
         {bar(elements, label, lead.done, lead.total, 340, OK_FILL, OK, 46)}
-        {summary.waiting > 0 && <Text bold color={WAIT}>waiting: {waitingLabel(summary, 1)}</Text>}
-        <Text dimColor>×{summary.running}</Text>
+        {summary.waiting > 0 && mid(Box, <Text bold color={WAIT}>waiting: {waitingLabel(summary, 1)}</Text>)}
+        {mid(Box, <Text dimColor>×{summary.running}</Text>)}
         <Button key="hide" label="×" onPress={() => update($, isHidden, () => true)} />
       </Box>
     )
@@ -201,11 +210,11 @@ export const register: Register = on => {
       const color = stateColor(job)
       return (
         <Box flexDirection="column">
-          <Box gap={1}>
-            <Text color={color}>{stateIcon(job)}</Text>
-            <Text bold={job.stage === 'needs-human' || job.stage === 'waiting-input'}>{job.id}</Text>
-            <Text color={tierColor(job.tier)}>{job.tier}</Text>
-            <Text dimColor>{spent === null ? '' : formatDuration(spent)}</Text>
+          <Box gap={1} alignItems="center">
+            {mid(Box, <Text color={color}>{stateIcon(job)}</Text>)}
+            {mid(Box, <Text bold={job.stage === 'needs-human' || job.stage === 'waiting-input'}>{job.id}</Text>)}
+            {mid(Box, <Text color={tierColor(job.tier)}>{job.tier}</Text>)}
+            {mid(Box, <Text dimColor>{spent === null ? '' : formatDuration(spent)}</Text>)}
           </Box>
           <Box gap={1} paddingLeft={2} alignItems="center">
             {bar(elements, phaseLabel(job), stageStep(job), STAGE_STEPS, 220, fillFor(job), color, 30)}
@@ -220,9 +229,9 @@ export const register: Register = on => {
       return (
         <Box flexDirection="column">
           <Box gap={1} alignItems="center">
-            <Text bold>{p.plan}</Text>
+            {mid(Box, <Text bold>{p.plan}</Text>)}
             {bar(elements, `Tasks ${p.done}/${p.total}`, p.done, p.total, 220, OK_FILL, OK, 30)}
-            <Text dimColor>{elapsed === null ? '' : formatDuration(elapsed)}</Text>
+            {mid(Box, <Text dimColor>{elapsed === null ? '' : formatDuration(elapsed)}</Text>)}
           </Box>
           {p.waiting.length > 0 && <Text bold color={WAIT}>Waiting for you · {p.waiting.length}</Text>}
           {p.waiting.map(jobLine)}
