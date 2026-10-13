@@ -7,22 +7,27 @@ def read(rel: str) -> str:
     return (PLUGIN / rel).read_text()
 
 
+def reference() -> str:
+    """The whole orchestrator reference, which is split in parts a command reads as it needs them."""
+    return "\n".join(p.read_text() for p in sorted((PLUGIN / "reference").glob("*.md")))
+
+
 def test_current_branch_routing_uses_diff_not_porcelain():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "git status --porcelain | " not in t and "git ls-files --others --exclude-standard" in t
 
 
 def test_jobs_folder_ignores_itself():
-    assert "factory/jobs/.gitignore" in read("reference/orchestrator.md")
+    assert "factory/jobs/.gitignore" in reference()
 
 
 def test_dashboard_is_copied_next_to_jobs():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "copy" in t.lower() and "factory/jobs/dashboard.html" in t
 
 
 def test_parallel_only_when_declared():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "declared" in t and "plan order" in t
 
 
@@ -42,23 +47,23 @@ def test_builder_can_ask_through_the_orchestrator():
 
 
 def test_questions_are_persisted_before_asking():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "questions-<k>.md" in t and "answers-<k>.md" in t and "waiting-input" in t
 
 
 def test_no_answer_is_never_a_default():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "never apply a default" in t and "unrelated message" in t
 
 
 def test_waiting_jobs_are_reasked_on_resume_and_status():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "| waiting-input" in t and "waiting for you" in t
 
 
 def test_answer_command_exists_and_points_to_reference():
     t = read("skills/factory-answer/SKILL.md")
-    assert "disable-model-invocation: true" in t and "reference/orchestrator.md" in t
+    assert "disable-model-invocation: true" in t and "reference/" in t
 
 
 def test_dashboard_marks_waiting_input():
@@ -66,7 +71,7 @@ def test_dashboard_marks_waiting_input():
 
 
 def test_run_state_carries_task_counts_for_the_progress_band():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "`total`" in t and "`done`" in t and "each time a job lands" in t
 
 
@@ -82,31 +87,31 @@ def test_progress_mod_is_wired_into_the_plugin():
 
 
 def test_job_state_carries_times_and_run_state_carries_the_task_list():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "`started`" in t and "`updated`" in t and "ISO 8601" in t
     assert "`tasks`" in t and "`after`" in t
 
 
 def test_orchestrator_records_the_model_and_effort_of_each_agent():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "`agents` records" in t and "effort` you passed" in t
 
 
 def test_run_warns_about_tasks_that_may_already_be_implemented():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "--root" in t and "done_signals" in t and "already be implemented" in t
 
 
 def test_no_undefined_build_check_step():
-    assert "Build check" not in read("reference/orchestrator.md")
+    assert "Build check" not in reference()
 
 
 def test_job_json_is_written_after_the_worktree_exists():
-    assert "before writing `job.json`" in read("reference/orchestrator.md") or "only then write `job.json`" in read("reference/orchestrator.md")
+    assert "before writing `job.json`" in reference() or "only then write `job.json`" in reference()
 
 
 def test_job_records_head_and_build_round_for_resume():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "`head`" in t and "`build_round`" in t
 
 
@@ -120,42 +125,43 @@ def test_spec_says_the_orchestrator_lands_the_job():
 
 
 def test_arguments_are_resolved_with_the_helper_script():
-    t = read("reference/orchestrator.md")
-    assert "## Resolving arguments" in t and "resolve.py job" in t and "resolve.py plans" in t
+    t = reference()
+    assert "## Resolving a plan" in t and "## Resolving a job" in t and "resolve.py job" in t and "resolve.py plans" in t
 
 
 def test_command_skills_resolve_their_argument():
-    for skill in ("factory-approve", "factory-rework", "factory-answer", "factory-run"):
-        assert "Resolving arguments" in read(f"skills/{skill}/SKILL.md"), skill
+    for skill in ("factory-approve", "factory-rework", "factory-answer"):
+        assert "Resolving a job" in read(f"skills/{skill}/SKILL.md"), skill
+    assert "Resolving a plan" in read("skills/factory-run/SKILL.md")
 
 
 def test_run_is_guided_by_default_and_can_switch_to_auto():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "## Pace" in t and "`pace`" in t and "run the rest without asking" in t
     assert "approve as it stands" in t and "rework with a note" in t
 
 
 def test_auto_pace_stops_with_the_ready_command():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "stops the run" in t and "/factory-approve <id>" in t
 
 
 def test_skip_is_not_offered_in_current_branch_mode():
-    assert "skip is not offered" in read("reference/orchestrator.md")
+    assert "skip is not offered" in reference()
 
 
 def test_verdicts_are_checked_in_their_own_step_before_the_next_agent():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "own step" in t and "never in the same message" in t
 
 
 def test_a_reviewer_that_wrote_no_file_gets_one_more_try():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "wrote no file" in t and "one more time" in t
 
 
 def test_spawn_limits_of_the_host_are_stated():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "does not accept an effort" in t and "leave `effort` empty" in t
     assert "agent id" in t
 
@@ -174,31 +180,31 @@ def test_approver_model_depends_on_risk():
 
 
 def test_run_uses_the_state_script_for_bookkeeping():
-    t = read("reference/orchestrator.md")
-    for cmd in ("state.py new-job", "state.py route", "state.py verdicts", "state.py agent", "state.py land", "state.py stage"):
+    t = reference()
+    for cmd in ("state.py begin-job", "state.py route", "state.py verdicts", "state.py after-agent", "state.py land", "state.py stage"):
         assert cmd in t, cmd
 
 
 def test_short_path_is_described_for_light_tasks():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "short path" in t and "`lite`" in t
     assert "Lite" in read("agents/approver.md")
 
 
 def test_agent_usage_is_recorded_after_every_spawn():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "subagent_tokens" in t or "usage" in t
     assert "state.py agent" in t
 
 
 def test_run_takes_a_lock_and_refuses_a_second_run_on_the_same_plan():
-    t = read("reference/orchestrator.md")
-    assert "## Run lock" in t and "state.py lock acquire" in t and "state.py lock release" in t
+    t = reference()
+    assert "# Run lock" in t and "state.py lock acquire" in t and "state.py lock release" in t
     assert "another run" in t and "stale" in t and "read-only" in t
 
 
 def test_the_plan_is_ticked_by_the_script_after_the_lock_is_released_or_while_held():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "state.py tick-plan" in t
 
 
@@ -209,12 +215,12 @@ def test_commands_that_act_on_jobs_respect_the_lock():
 
 def test_unlock_command_exists_and_is_manual_only():
     t = read("skills/factory-unlock/SKILL.md")
-    assert "disable-model-invocation: true" in t and "reference/orchestrator.md" in t and "state.py lock" in t
+    assert "disable-model-invocation: true" in t and "reference/" in t and "state.py lock" in t
 
 
 def test_inline_mode_keeps_approver_and_reviewers_as_subagents():
-    t = read("reference/orchestrator.md")
-    assert "## Inline" in t and "tier `light`" in t and "stay subagents" in t
+    t = reference()
+    assert "# Inline mode" in t and "tier `light`" in t and "stay subagents" in t
     assert "inline" in read("skills/factory-run/SKILL.md")
 
 
@@ -226,5 +232,66 @@ def test_brainstorm_has_the_spec_reviewer_and_the_excuses_table():
 
 
 def test_completion_records_the_run_in_the_plan_and_cleans_the_local_jobs():
-    t = read("reference/orchestrator.md")
+    t = reference()
     assert "Execution record" in t and "state.py clean" in t and "does not\nremove worktrees" in t
+
+
+def parts_read_by(skill: str) -> set[str]:
+    import re
+
+    return set(re.findall(r"reference/([\w-]+\.md)", read(f"skills/{skill}/SKILL.md")))
+
+
+def test_every_part_of_the_reference_is_listed_in_the_core_and_exists():
+    import re
+
+    listed = set(re.findall(r"^\| `([\w-]+\.md)` \|", read("reference/orchestrator.md"), re.M))
+    present = {p.name for p in (PLUGIN / "reference").glob("*.md")}
+    assert listed == present and len(present) > 1
+
+
+def test_each_command_reads_only_the_parts_it_needs():
+    assert parts_read_by("factory-unlock") == {"lock.md"}
+    assert parts_read_by("factory-status") == {"orchestrator.md", "commands.md"}
+    assert parts_read_by("factory-approve") == {"orchestrator.md", "lock.md", "commands.md"}
+    assert {"job-loop.md", "start.md", "lock.md", "orchestrator.md"} <= parts_read_by("factory-run")
+    assert {"job-loop.md", "start.md", "lock.md", "orchestrator.md"} <= parts_read_by("factory-task")
+    assert {"job-loop.md", "commands.md", "lock.md", "questions.md"} <= parts_read_by("factory-answer")
+    assert {"job-loop.md", "commands.md", "lock.md"} <= parts_read_by("factory-rework")
+
+
+def test_the_parts_a_run_needs_only_sometimes_are_read_when_needed():
+    t = read("skills/factory-run/SKILL.md")
+    assert "questions.md" in t and "inline.md" in t and "completion.md" in t
+    for part in ("questions.md", "inline.md", "completion.md"):
+        assert part not in "".join(f"reference/{x}" for x in parts_read_by("factory-run")), part
+
+
+def test_the_small_commands_read_a_fraction_of_the_reference():
+    size = {p.name: len(p.read_text()) for p in (PLUGIN / "reference").glob("*.md")}
+    total = sum(size.values())
+    for skill, limit in (("factory-unlock", 0.1), ("factory-status", 0.4), ("factory-approve", 0.6)):
+        assert sum(size[n] for n in parts_read_by(skill)) < limit * total, skill
+
+
+def test_a_job_loop_spawns_only_the_lenses_to_rerun_and_hands_out_the_ready_made_diff():
+    t = read("reference/job-loop.md")
+    assert "`rerun`" in t and "`carried`" in t and "diff.patch" in t and "`Diff: <path>`" in t
+    assert "Spawn the reviewers in `rerun`" in t and "`all_pass` counts the carried verdicts" in t
+
+
+def test_agents_read_the_diff_file_and_the_recorded_checks():
+    for agent in ("reviewer-code", "reviewer-security", "reviewer-ui", "reviewer-ux", "approver"):
+        assert "`Diff:`" in read(f"agents/{agent}.md"), agent
+    for agent in ("builder", "reviewer-code", "approver"):
+        assert "<State command>" in read(f"agents/{agent}.md"), agent
+    assert "verify" in read("agents/builder.md") and "--reuse" in read("agents/reviewer-code.md")
+    approver = read("agents/approver.md")
+    assert "current: true" in approver and "without `--reuse`" in approver and "carried" in approver
+
+
+def test_the_composite_commands_replace_the_step_by_step_calls_in_the_loop():
+    loop, start = read("reference/job-loop.md"), read("reference/start.md")
+    assert "state.py begin-job" in loop and "state.py after-agent" in loop and "in one call" in loop
+    assert "state.py preflight" in start and "`jobs`" in start and "`audit`" in start
+    assert "state.py new-job" not in start and "factory_plan.py <plan> --repo <name> --root <repo>` prints it" in start

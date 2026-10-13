@@ -354,3 +354,268 @@ def test_clean_removes_landed_jobs_but_refuses_while_one_is_unfinished(locked_re
     state.land_job(locked_repo, b["id"], "merged", head="def")
     out = state.clean_jobs(locked_repo, "2026-01-01-demo")
     assert out["ok"] is True and not (locked_repo / "factory/jobs" / a["id"]).exists()
+
+
+# ---- partial review rounds, the ready-made diff and recorded checks ----
+
+
+def review(repo, job_id, rnd, lens, verdict):
+    d = repo / "factory/jobs" / job_id / f"round-{rnd}"
+    d.mkdir(exist_ok=True)
+    (d / f"review-{lens}.md").write_text(f"VERDICT: {verdict}\n\n## Issues\nNone.\n")
+
+
+def test_a_lens_that_passed_is_not_rerun_while_nothing_it_watches_changed(repo):
+    state.setup(repo, repo)
+    j = new(repo, 2)
+    (repo / "app/auth/session.py").write_text("N = 60\n")
+    assert state.route_job(repo, j["id"])["rerun"] == ["code", "security"]
+    review(repo, j["id"], 1, "code", "PASS")
+    review(repo, j["id"], 1, "security", "CHANGES")
+    assert state.check_verdicts(repo, j["id"])["all_pass"] is False
+    (repo / "app/auth/session.py").write_text("N = 61\n")
+    out = state.route_job(repo, j["id"])
+    assert out["rerun"] == ["code", "security"] and out["carried"] == {}
+    review(repo, j["id"], 2, "code", "PASS")
+    review(repo, j["id"], 2, "security", "PASS")
+    assert state.check_verdicts(repo, j["id"])["all_pass"] is True
+    (repo / "app/util.py").write_text("x = 2\n")
+    out = state.route_job(repo, j["id"])
+    assert out["reviewers"] == ["code", "security"] and out["rerun"] == ["code"] and out["carried"] == {"security": 2}
+    assert state.read_job(repo, j["id"])["reviews"] == {"code": "pending", "security": "PASS"}
+
+
+def test_the_round_is_complete_with_the_rerun_lenses_and_the_carried_verdicts(repo):
+    state.setup(repo, repo)
+    j = new(repo, 2)
+    (repo / "app/auth/session.py").write_text("N = 60\n")
+    state.route_job(repo, j["id"])
+    review(repo, j["id"], 1, "code", "PASS")
+    review(repo, j["id"], 1, "security", "PASS")
+    state.check_verdicts(repo, j["id"])
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.route_job(repo, j["id"])
+    missing = state.check_verdicts(repo, j["id"])
+    assert missing["ok"] is False and missing["missing"] == ["code"]
+    review(repo, j["id"], 2, "code", "CHANGES")
+    out = state.check_verdicts(repo, j["id"])
+    assert out["ok"] is True and out["all_pass"] is False and out["verdicts"] == {"code": "CHANGES"} and out["carried"] == {"security": 1}
+
+
+def test_a_carried_verdict_keeps_the_round_it_was_given_in(repo):
+    state.setup(repo, repo)
+    j = new(repo, 2)
+    (repo / "app/auth/session.py").write_text("N = 60\n")
+    state.route_job(repo, j["id"])
+    review(repo, j["id"], 1, "code", "PASS")
+    review(repo, j["id"], 1, "security", "PASS")
+    state.check_verdicts(repo, j["id"])
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.route_job(repo, j["id"])
+    review(repo, j["id"], 2, "code", "PASS")
+    state.check_verdicts(repo, j["id"])
+    (repo / "app/util.py").write_text("x = 3\n")
+    assert state.route_job(repo, j["id"])["carried"] == {"security": 1}
+
+
+def test_a_lens_newly_called_for_by_a_changed_path_runs_even_with_nothing_to_carry(repo):
+    state.setup(repo, repo)
+    j = new(repo, 2)
+    (repo / "app/util.py").write_text("x = 2\n")
+    assert state.route_job(repo, j["id"])["rerun"] == ["code"]
+    review(repo, j["id"], 1, "code", "PASS")
+    state.check_verdicts(repo, j["id"])
+    (repo / "app/auth/session.py").write_text("N = 60\n")
+    out = state.route_job(repo, j["id"])
+    assert out["rerun"] == ["code", "security"] and out["carried"] == {}
+
+
+def test_nothing_changed_since_a_passing_round_means_nothing_to_rerun(repo):
+    state.setup(repo, repo)
+    j = new(repo, 2)
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.route_job(repo, j["id"])
+    review(repo, j["id"], 1, "code", "PASS")
+    state.check_verdicts(repo, j["id"])
+    out = state.route_job(repo, j["id"])
+    assert out["rerun"] == [] and out["carried"] == {"code": 1}
+    assert state.check_verdicts(repo, j["id"])["all_pass"] is True
+
+
+def test_route_writes_the_diff_with_commits_files_and_what_changed_since_the_last_round(repo):
+    state.setup(repo, repo)
+    j = new(repo, 2)
+    (repo / "app/auth/session.py").write_text("N = 60\n")
+    (repo / "app/new.py").write_text("y = 1\n")
+    out = state.route_job(repo, j["id"])
+    patch = Path(out["diff"])
+    assert patch == repo / "factory/jobs" / j["id"] / "round-1/diff.patch"
+    text = patch.read_text()
+    assert "+N = 60" in text and "+y = 1" in text and "app/new.py" in text and "Changed since" not in text
+    (repo / "app/util.py").write_text("x = 2\n")
+    text = Path(state.route_job(repo, j["id"])["diff"]).read_text()
+    assert "# Changed since the previous round: app/util.py" in text
+
+
+def test_the_short_path_gets_its_diff_in_the_job_folder(repo):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    (repo / "app/util.py").write_text("x = 2\n")
+    out = state.route_job(repo, j["id"])
+    assert out["lite"] is True and out["diff"] == str(repo / "factory/jobs" / j["id"] / "diff.patch")
+    assert "+x = 2" in Path(out["diff"]).read_text()
+
+
+def test_isolated_job_diff_lists_the_commits_and_follows_the_branch(repo):
+    state.setup(repo, repo)
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    git(repo, "checkout", "-q", "-b", "factory/demo/001")
+    j = state.new_job(repo, "docs/superpowers/plans/2026-01-01-demo.md", 2, repo_name="demo", mode="isolated", branch="factory/demo/001", worktree=str(repo), base=base)
+    (repo / "app/auth/session.py").write_text("N = 60\n")
+    git(repo, "commit", "-q", "-am", "raise the lifetime")
+    out = state.route_job(repo, j["id"])
+    text = Path(out["diff"]).read_text()
+    assert out["reviewers"] == ["code", "security"] and "raise the lifetime" in text and "+N = 60" in text
+    review(repo, j["id"], 1, "code", "PASS")
+    review(repo, j["id"], 1, "security", "PASS")
+    state.check_verdicts(repo, j["id"])
+    (repo / "app/util.py").write_text("x = 2\n")
+    git(repo, "commit", "-q", "-am", "touch util")
+    out = state.route_job(repo, j["id"])
+    assert out["rerun"] == ["code"] and out["carried"] == {"security": 1}
+
+
+def test_verify_records_the_run_and_a_reuse_does_not_run_it_again(repo):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    counter = repo.parent / f"{repo.name}-runs.txt"
+    cmd = f"echo x >> {counter}; echo green"
+    first = state.run_check(repo, j["id"], cmd)
+    assert first["exit"] == 0 and first["reused"] is False and first["tail"] == ["green"] and first["current"] is True
+    again = state.run_check(repo, j["id"], cmd, reuse=True)
+    assert again["reused"] is True and again["n"] == first["n"] and counter.read_text() == "x\n"
+    assert Path(first["log"]).read_text() == "green\n"
+
+
+def test_verify_reruns_when_the_code_changed_or_the_command_differs(repo):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    first = state.run_check(repo, j["id"], "true")
+    (repo / "app/util.py").write_text("x = 2\n")
+    again = state.run_check(repo, j["id"], "true", reuse=True)
+    assert again["reused"] is False and again["n"] == first["n"] + 1 and again["state"] != first["state"]
+    other = state.run_check(repo, j["id"], "echo other", reuse=True)
+    assert other["reused"] is False and other["n"] == again["n"] + 1
+
+
+def test_a_failed_check_keeps_its_exit_code_and_is_reused_as_failed(repo):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    bad = state.run_check(repo, j["id"], "echo boom; exit 3")
+    assert bad["exit"] == 3 and bad["tail"] == ["boom"]
+    again = state.run_check(repo, j["id"], "echo boom; exit 3", reuse=True)
+    assert again["reused"] is True and again["exit"] == 3
+
+
+def test_checks_lists_every_run_and_marks_those_for_the_current_code(repo):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    state.run_check(repo, j["id"], "true")
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.run_check(repo, j["id"], "echo two")
+    listed = state.list_checks(repo, j["id"])
+    assert [(c["cmd"], c["current"]) for c in listed] == [("true", False), ("echo two", True)]
+
+
+def test_a_check_that_runs_too_long_is_recorded_as_timed_out(repo):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    out = state.run_check(repo, j["id"], "sleep 5", timeout=1)
+    assert out["exit"] == 124 and "timed out" in out["tail"][0]
+
+
+def test_cli_verify_returns_the_exit_code_of_the_check(repo, capsys):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    assert state.main(["verify", j["id"], "--cmd", "true", "--root", str(repo)]) == 0
+    assert json.loads(capsys.readouterr().out)["exit"] == 0
+    assert state.main(["verify", j["id"], "--cmd", "exit 2", "--root", str(repo)]) == 1
+    assert json.loads(capsys.readouterr().out)["exit"] == 2
+    assert state.main(["checks", j["id"], "--root", str(repo)]) == 0
+    assert len(json.loads(capsys.readouterr().out)) == 2
+
+
+def test_a_check_stays_current_when_the_same_code_is_committed_again(repo):
+    state.setup(repo, repo)
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    git(repo, "checkout", "-q", "-b", "factory/demo/001")
+    j = state.new_job(repo, "docs/superpowers/plans/2026-01-01-demo.md", 1, repo_name="demo", mode="isolated", branch="factory/demo/001", worktree=str(repo), base=base)
+    (repo / "app/util.py").write_text("x = 2\n")
+    git(repo, "commit", "-q", "-am", "change")
+    first = state.run_check(repo, j["id"], "true")
+    git(repo, "commit", "-q", "--amend", "-m", "same code, new message")
+    again = state.run_check(repo, j["id"], "true", reuse=True)
+    assert again["reused"] is True and again["n"] == first["n"] and again["current"] is True
+
+
+# ---- composite commands: fewer round trips for the same bookkeeping ----
+
+
+def test_begin_job_creates_the_job_and_moves_it_to_build(repo):
+    state.setup(repo, repo)
+    out = state.begin_job(repo, PLAN_FILE, 1, repo_name="demo", mode="current-branch", branch="main", worktree=str(repo))
+    job = state.read_job(repo, out["id"])
+    assert out["stage"] == "build" and job["stage"] == "build"
+    assert [p["stage"] for p in job["phases"]] == ["spec", "build"] and job["phases"][0]["end"] is not None
+    assert (repo / "factory/jobs" / out["id"] / "task.md").exists()
+
+
+def test_after_agent_records_several_agents_in_one_call(repo):
+    state.setup(repo, repo)
+    j = new(repo, 2)
+    state.record_agents(repo, j["id"], [
+        {"role": "code", "model": "sonnet", "effort": "medium", "tokens": 9000, "ms": 20000, "tools": 5},
+        {"role": "security", "model": "opus", "tokens": 12000, "ms": 30000, "tools": 7},
+    ])
+    state.record_agents(repo, j["id"], [{"role": "code", "model": "sonnet", "tokens": 1000, "ms": 2000, "tools": 1}])
+    agents = state.read_job(repo, j["id"])["agents"]
+    assert (agents["code"]["tokens"], agents["code"]["runs"], agents["security"]["model"]) == (10000, 2, "opus")
+
+
+def test_preflight_without_a_plan_lists_the_plans_with_open_steps(repo):
+    out = state.preflight(repo)
+    assert [p["path"] for p in out["plans"]] == [PLAN_FILE] and out["plans"][0]["open"] == 2 and out["unclassified"] == []
+
+
+def test_preflight_with_a_plan_gives_the_parse_the_jobs_and_the_audit(repo):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    state.set_stage(repo, j["id"], "build")
+    out = state.preflight(repo, PLAN_FILE, "demo")
+    assert [t["title"] for t in out["plan"]["tasks"]] == ["Add slugify helper", "Extend the session lifetime"]
+    assert out["plan"]["tasks"][1]["defaults_applied"] is not None and "done_signals" in out["plan"]["tasks"][0]
+    assert [(x["id"], x["task"], x["stage"]) for x in out["jobs"]] == [(j["id"], 1, "build")]
+    assert out["audit"] == []
+    assert "plans" not in out
+
+
+def test_preflight_audit_names_only_the_chosen_plan(repo):
+    other = repo / "docs/superpowers/plans/2026-01-02-other.md"
+    other.write_text("---\nstatus: completed\n---\n# Other\n\n### Task 1: Create the thing\n\n**Files:**\n- Create: `app/never.py`\n\n- [x] **Step 1: Done**\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "other plan")
+    everything = state.preflight(repo, "docs/superpowers/plans/2026-01-02-other.md", "demo")["audit"]
+    mine = state.preflight(repo, PLAN_FILE, "demo")["audit"]
+    assert mine == [] and all(f["path"].endswith("2026-01-02-other.md") for f in everything)
+
+
+def test_cli_runs_the_composite_commands(repo, capsys):
+    state.setup(repo, repo)
+    assert state.main(["preflight", "--root", str(repo), "--plan-file", PLAN_FILE, "--repo-name", "demo"]) == 0
+    assert json.loads(capsys.readouterr().out)["plan"]["title"]
+    assert state.main(["begin-job", "--root", str(repo), "--plan-file", PLAN_FILE, "--task", "1", "--repo-name", "demo", "--mode", "current-branch", "--branch", "main", "--worktree", str(repo)]) == 0
+    began = json.loads(capsys.readouterr().out)
+    assert began["stage"] == "build"
+    agents = json.dumps([{"role": "builder", "model": "sonnet", "tokens": 5, "ms": 6, "tools": 7}])
+    assert state.main(["after-agent", began["id"], "--agents", agents, "--root", str(repo)]) == 0
+    assert json.loads(capsys.readouterr().out)["builder"]["tokens"] == 5

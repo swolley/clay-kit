@@ -30,6 +30,8 @@ For each stage, stop the session at that point, reopen it, and rerun `/factory-r
 
 - [ ] While the builder runs: the same job is resumed, no second branch or worktree for that task.
 - [ ] With one reviewer done and others missing: only the missing reviewers rerun.
+- [ ] After a round where only `ux` asked for changes and the builder touched no `auth` path, round 2 runs `code` and `ux` and `security` keeps its PASS: `job.json` shows `carried: {"security": 1}`, no `round-2/review-security.md` exists, and the approver counts the carried PASS.
+- [ ] `round-1/diff.patch` exists and holds the commits, the file list and the diff; `state.py checks <job>` lists the builder's runs, and the reviewers and the approver did not run the suite again (their runs, if any, are single targeted checks).
 - [ ] After the approver, before landing: the approver is not rerun if `decision.md` exists; the job lands.
 - [ ] A `needs-human` job is listed and left alone.
 - [ ] Delete a job's worktree by hand, rerun: that job becomes `needs-human` with a reason; no branch is recreated.
