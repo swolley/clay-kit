@@ -1,0 +1,14 @@
+{
+  "name": "swolley-kit",
+  "owner": { "name": "swolley" },
+  "metadata": { "description": "swolley's Claude Code skills, agents and mods." },
+  "plugins": [
+    {
+      "name": "factory",
+      "source": "./plugins/factory",
+      "description": "Skills and agents to go from an idea to reviewed, merged code: brainstorm, plan, run.",
+      "version": "0.1.0",
+      "category": "skill"
+    }
+  ]
+}
