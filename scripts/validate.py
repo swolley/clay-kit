@@ -5,8 +5,8 @@ import re
 import sys
 from pathlib import Path
 
-MANUAL_ONLY = {"run", "task", "status", "approve", "rework", "answer"}
-AUTO_ALLOWED = {"brainstorm", "plan"}
+MANUAL_ONLY = {"factory-run", "factory-task", "factory-status", "factory-approve", "factory-rework", "factory-answer"}
+AUTO_ALLOWED = {"factory-brainstorm", "factory-plan"}
 
 
 def frontmatter(text: str) -> dict[str, str]:
@@ -59,6 +59,8 @@ def validate(root: Path) -> list[str]:
             if f.name == "SKILL.md":
                 disabled = fm.get("disable-model-invocation") == "true"
                 skill = f.parent.name
+                if fm.get("name") and fm["name"] != skill:
+                    problems.append(f"{rel(f)}: frontmatter name must match its folder ({skill})")
                 if skill in MANUAL_ONLY and not disabled:
                     problems.append(f"{rel(f)}: disable-model-invocation must be true")
                 if skill in AUTO_ALLOWED and disabled:

@@ -1,5 +1,5 @@
 ---
-name: brainstorm
+name: factory-brainstorm
 description: Use before creative work such as a new feature, component, behavior change or project. Turns an idea into an approved design through short questions, then hands over to the plan skill. Skip for pure bug fixes with a known cause.
 argument-hint: <idea or goal>
 ---
@@ -64,6 +64,6 @@ approves only what was actually shown. Reading the project is always allowed.
 
 ## 6. Hand over
 
-Architectural: invoke the `plan` skill of this tool. Nothing else.
+Architectural: invoke the `factory-plan` skill of this tool. Nothing else.
 Bounded: after the user says yes, implement through the repo's normal workflow.
 Spike: the report is the end.

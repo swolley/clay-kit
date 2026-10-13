@@ -1,6 +1,6 @@
 # Orchestrator reference
 
-Shared by the `run`, `task`, `status`, `approve` and `rework` skills. The skill that sent you
+Shared by the `factory-run`, `factory-task`, `factory-status`, `factory-approve`, `factory-rework` and `factory-answer` skills. The skill that sent you
 here states `<plugin root>`. Follow `<plugin root>/STYLE.md`. This file is read as plain text:
 the plugin-root variable is not substituted in it.
 
@@ -66,7 +66,7 @@ failure or escalation you stop and leave the changes in the tree for the user.
 ## Preconditions (run)
 
 1. The plan file exists. Parse it: `python3 <plugin root>/scripts/factory_plan.py <plan> --repo <name>`.
-   If there are no tasks, point to the `brainstorm` and `plan` skills and stop.
+   If there are no tasks, point to the `factory-brainstorm` and `factory-plan` skills and stop.
 2. Tell the user which defaults the parser applied (`defaults_applied`), in one line per task.
 3. The target repo is a git repo. Isolated mode needs a clean main checkout only for the final merge.
 4. Resume (below), then mode choice, then start.
@@ -140,7 +140,7 @@ The source of truth is a file, never the prompt. A subagent cannot ask the user;
    read `answers-<k>.md` and update build.md. This does not use up the review resumes.
 5. If the user says they do not know, set `needs-human` and quote the open questions.
 
-Say it plainly when a job is waiting: `003-rate-limit: waiting for you, 2 questions (use /factory:answer 003-rate-limit)`.
+Say it plainly when a job is waiting: `003-rate-limit: waiting for you, 2 questions (use /factory-answer 003-rate-limit)`.
 At the end of a run, and in `status`, list every job that is waiting for you.
 
 ## Completion

@@ -1,5 +1,5 @@
 ---
-name: plan
+name: factory-plan
 description: Use when a design or spec is approved and the work has several steps, before touching code. Writes an implementation plan of tasks and steps that the run command can execute.
 argument-hint: <spec path>
 ---
@@ -73,4 +73,4 @@ All fields are optional. When missing, the runner applies defaults and says so:
 ## Hand over
 
 Save, commit, and ask the user to review the plan (`STYLE.md` rule 1). Execution is the
-`run` command of this tool; do not pick an execution method for the user.
+`/factory-run` command of this tool; do not pick an execution method for the user.

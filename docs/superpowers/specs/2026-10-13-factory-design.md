@@ -30,7 +30,7 @@ Rules that follow:
 
 ### Success criteria
 
-- A user can go from `brainstorm` to a merged integration branch with one approval for the design and one for the plan, and no further prompts unless a job escalates.
+- A user can go from `factory-brainstorm` to a merged integration branch with one approval for the design and one for the plan, and no further prompts unless a job escalates.
 - No agent or skill output is longer than the task needs. Explanations are understandable without being stripped of technical context.
 - Questions to the user use the host's native structured-question tool; plain text is only a fallback.
 - Only the agents a job needs are run.
@@ -53,7 +53,7 @@ Every skill and agent file references `STYLE.md` instead of restating it, so a s
 
 ## 3. Design phase
 
-### 3.1 `brainstorm`
+### 3.1 `factory-brainstorm`
 
 Derived from superpowers `brainstorming`, kept: path classification (spike, bounded, architectural), hard gate before implementation, written spec for architectural work.
 
@@ -63,7 +63,7 @@ Changed:
 - No mandatory restatement of the request, no per-section approvals unless the design has more than one real decision.
 - Spec location follows the repo's own convention (read from `AGENTS.md`), defaulting to `docs/superpowers/specs/`.
 
-### 3.2 `plan` and the plan format
+### 3.2 `factory-plan` and the plan format
 
 **Why superpowers conventions are kept.** The folder layout (`docs/superpowers/{specs,plans}/`), the file name patterns and the plan syntax deliberately match those of superpowers. The reason is compatibility: projects already built with superpowers keep their specs and plans where tools expect them, can be executed by the factory without migration, and can still be read by superpowers or by tooling written for it. A change to these conventions is a compatibility break and must be recorded in this spec.
 
@@ -93,39 +93,39 @@ Rules:
 - Defaults when a field is missing, which is how an older superpowers plan runs: `Tier` medium, `Repo` the repo holding the plan, `Depends` none, `Accept` derived from the task's steps, `Verify` taken from the repo's own instructions. The orchestrator tells the user which defaults it applied.
 - Each task is a self-sufficient brief, because workers do not see the conversation. `Repo` is required in multi-repo workspaces. `Files` is a hint, not a contract: reviewer routing uses the real diff.
 - A task is done when all its non-cancelled steps are checked. The factory ticks the steps it completed and never edits cancelled ones.
-- The superpowers header line pointing to `subagent-driven-development` or `executing-plans` is not written: execution is `/factory:run`.
+- The superpowers header line pointing to `subagent-driven-development` or `executing-plans` is not written: execution is `/factory-run`.
 
 ### 3.3 Gates
 
-Two human gates only: design (spec or short chat design) and plan. After the plan is approved, `/factory:run` runs without further prompts.
+Two human gates only: design (spec or short chat design) and plan. After the plan is approved, `/factory-run` runs without further prompts.
 
 ## 4. Execution phase
 
 ### 4.0 Skills, names and invocation
 
-Every command is its own skill, so each one appears in the host's command autocompletion and nothing has to be remembered. Names read as one pipeline: `brainstorm` (idea to design), `plan` (design to plan), `run` (plan to code).
+Every command is its own skill, so each one appears in the host's command autocompletion and nothing has to be remembered. Every skill is named `factory-<verb>`, so the commands are typed `/factory-run` and so on and sit together under `/factory-` in the autocomplete; the namespaced form `/factory:factory-run` also works. Names read as one pipeline: `factory-brainstorm` (idea to design), `factory-plan` (design to plan), `factory-run` (plan to code).
 
 | Skill | Started by | Why |
 |-------|-----------|-----|
-| `brainstorm` | the user, or the model on its own when the user describes new work | conversational, ends at the user's approval gate |
-| `plan` | the user, or the model on its own after an approved design | conversational, ends at the user's review of the plan |
-| `run`, `task`, `approve`, `rework`, `answer` | the user only (model invocation disabled) | start autonomous work that spends tokens, creates branches and worktrees and can merge |
-| `status` | the user only | read-only, but kept explicit so it is never run by surprise |
+| `factory-brainstorm` | the user, or the model on its own when the user describes new work | conversational, ends at the user's approval gate |
+| `factory-plan` | the user, or the model on its own after an approved design | conversational, ends at the user's review of the plan |
+| `factory-run`, `factory-task`, `factory-approve`, `factory-rework`, `factory-answer` | the user only (model invocation disabled) | start autonomous work that spends tokens, creates branches and worktrees and can merge |
+| `factory-status` | the user only | read-only, but kept explicit so it is never run by surprise |
 
-Model invocation is controlled per skill. The orchestration logic shared by `run`, `task`, `approve`, `rework` and `status` (job loop, modes, resume, state) lives in one reference file of the plugin, which these skills read; how a skill points at a shared file is recorded in `docs/hosts.md`. Commands are namespaced by the plugin (`/factory:run`); the exact spelling per host is also in `docs/hosts.md`. The autocompletion behavior (one entry per skill, no sub-arguments) is observed from installed plugins, not yet tested for this tool.
+Model invocation is controlled per skill. The orchestration logic shared by `factory-run`, `factory-task`, `factory-approve`, `factory-rework`, `factory-answer` and `factory-status` (job loop, modes, resume, state) lives in one reference file of the plugin, which these skills read; how a skill points at a shared file is recorded in `docs/hosts.md`. Commands are namespaced by the plugin (`/factory-run`); the exact spelling per host is also in `docs/hosts.md`. The autocompletion behavior (one entry per skill, no sub-arguments) is observed from installed plugins, not yet tested for this tool.
 
 ### 4.1 Commands
 
 ```
-/factory:run <plan-file>         run the plan's open tasks
-/factory:task "<text>"           run one ad hoc task without a plan
-/factory:status                  list jobs and their stage
-/factory:approve <job-id>        merge a needs-human job into the integration branch
-/factory:rework <job-id> <note>  send a needs-human job back to its builder
-/factory:answer <job-id> [text]  answer the questions a job is waiting on (or see them again)
+/factory-run <plan-file>         run the plan's open tasks
+/factory-task "<text>"           run one ad hoc task without a plan
+/factory-status                  list jobs and their stage
+/factory-approve <job-id>        merge a needs-human job into the integration branch
+/factory-rework <job-id> <note>  send a needs-human job back to its builder
+/factory-answer <job-id> [text]  answer the questions a job is waiting on (or see them again)
 ```
 
-`/factory:task` is for small work that does not need a plan. Each command is a separate skill, so free text never collides with a command name.
+`/factory-task` is for small work that does not need a plan. Each command is a separate skill, so free text never collides with a command name.
 
 ### 4.2 Preconditions
 
@@ -133,7 +133,7 @@ At start the orchestrator checks that the plan exists and has checkbox tasks wit
 
 ### 4.3 Isolation mode: branches and worktrees
 
-At the start of `/factory:run` the orchestrator proposes a mode through the native question tool, with isolation as the recommended option, and records the choice in the plan's run state.
+At the start of `/factory-run` the orchestrator proposes a mode through the native question tool, with isolation as the recommended option, and records the choice in the plan's run state.
 
 **Isolated (recommended, default).**
 - One integration branch per plan and repo: `factory/<plan-slug>`, created from the repo's main branch.
@@ -194,14 +194,14 @@ recommended answer) in `build.md`. The orchestrator saves them to `questions-<k>
 before it asks, because the source of truth is a file and not the prompt. It asks through the native question tool,
 batching them, and writes `answers-<k>.md` only when answers were actually given. A dismissed prompt, a timeout or
 auto-continue, or an unrelated user message leaves the job waiting: no default and no recommended answer is ever applied,
-and independent jobs continue. `/factory:answer <job-id> [text]` asks the pending questions again, or takes written
+and independent jobs continue. `/factory-answer <job-id> [text]` asks the pending questions again, or takes written
 answers, at any later time, also from another session; resuming `run` re-asks them too. With answers the builder is
 restarted without using a review resume. "I do not know" moves the job to `needs-human`. `BLOCKED` is kept for faults no
 answer can fix.
 
 ### 4.8 Resuming an interrupted run
 
-There is no separate resume command: `/factory:run <plan>` is idempotent and resumes by itself.
+There is no separate resume command: `/factory-run <plan>` is idempotent and resumes by itself.
 
 At start the orchestrator reads the plan and `factory/jobs/` and classifies each task:
 
@@ -210,7 +210,7 @@ At start the orchestrator reads the plan and `factory/jobs/` and classifies each
 | Done | all non-cancelled steps checked | skip |
 | Merged but not ticked | `job.json` stage `merged` (or committed, in current-branch mode) | tick the steps, then skip |
 | Interrupted | `job.json` with stage `spec`, `build`, `review` or `approve` | resume from the recorded stage |
-| `needs-human` | `job.json` stage `needs-human` | do not touch; list it and wait for `/factory:approve` or `/factory:rework` |
+| `needs-human` | `job.json` stage `needs-human` | do not touch; list it and wait for `/factory-approve` or `/factory-rework` |
 | `waiting-input` | `job.json` stage `waiting-input` | ask the pending questions again from `questions-<k>.md` |
 | Not started | no job | start normally |
 
@@ -269,7 +269,7 @@ plugins/
   factory/                          this spec
     .claude-plugin/plugin.json
     .codex-plugin/plugin.json
-    skills/{brainstorm,plan,run,task,status,approve,rework}/SKILL.md
+    skills/factory-{brainstorm,plan,run,task,status,approve,rework,answer}/SKILL.md
     reference/orchestrator.md       shared logic read by run, task, status, approve, rework
     scripts/{factory_plan,route}.py plan parser and reviewer routing (stdlib only)
     hooks/{hooks.json,register.tsx,model.ts}  progress mod (Claude Code); types/index.d.ts is its state contract
@@ -297,7 +297,7 @@ No session-start hook in the factory. Skills trigger by `description`. If a hook
 - **Skills:** run each skill against a throwaway repo with scripted prompts; check the gate holds, questions use the native tool, and output length stays within the style contract.
 - **Factory:** a fixture repo with a three-task plan covering a backend-only task, a UI task and a task that must escalate. Expected: backend task runs no ui/ux reviewer; UI task runs them; escalation lands in `needs-human`.
 - **Routing:** unit-level check that `routing.md` patterns select the expected reviewers for sample diffs.
-- **Resume:** kill a run at each stage (`spec`, `build`, `review` with one reviewer done, `approve`) and in current-branch mode with uncommitted changes; rerun `/factory:run` and check that merged tasks are skipped, the interrupted job is resumed without a duplicate branch, and `needs-human` jobs are left alone.
+- **Resume:** kill a run at each stage (`spec`, `build`, `review` with one reviewer done, `approve`) and in current-branch mode with uncommitted changes; rerun `/factory-run` and check that merged tasks are skipped, the interrupted job is resumed without a duplicate branch, and `needs-human` jobs are left alone.
 
 ## 9. Open items
 

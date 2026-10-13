@@ -27,12 +27,12 @@ def test_parallel_only_when_declared():
 
 
 def test_adhoc_task_gets_completion_and_criterion():
-    assert "Completion" in read("skills/task/SKILL.md")
+    assert "Completion" in read("skills/factory-task/SKILL.md")
     assert "Accept" in read("agents/approver.md") and "empty" in read("agents/approver.md")
 
 
 def test_approve_warns_without_decision_and_points_to_rerun():
-    t = read("skills/approve/SKILL.md")
+    t = read("skills/factory-approve/SKILL.md")
     assert "no decision.md" in t and "rerun" in t
 
 
@@ -57,7 +57,7 @@ def test_waiting_jobs_are_reasked_on_resume_and_status():
 
 
 def test_answer_command_exists_and_points_to_reference():
-    t = read("skills/answer/SKILL.md")
+    t = read("skills/factory-answer/SKILL.md")
     assert "disable-model-invocation: true" in t and "reference/orchestrator.md" in t
 
 

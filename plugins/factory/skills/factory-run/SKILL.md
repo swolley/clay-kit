@@ -1,5 +1,5 @@
 ---
-name: run
+name: factory-run
 description: Run the open tasks of a plan: each task is built, reviewed by the lenses its diff needs, then approved or escalated. Resumes an interrupted run.
 disable-model-invocation: true
 argument-hint: <plan file>

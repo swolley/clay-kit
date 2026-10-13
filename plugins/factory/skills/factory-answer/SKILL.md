@@ -1,5 +1,5 @@
 ---
-name: answer
+name: factory-answer
 description: Answer the questions a job is waiting on, now or later: asks them again from the saved file, or takes your written answers.
 disable-model-invocation: true
 argument-hint: <job id> [your answers]
