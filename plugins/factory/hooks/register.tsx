@@ -33,11 +33,13 @@ const verdictBackground = (verdict: string | undefined) => (verdict === 'PASS' ?
 const byNeed = (a: PlanView, b: PlanView) => b.waiting.length - a.waiting.length || b.running.length - a.running.length
 
 const TRACK = '#343a48'
-const TILE = '#232834'
 const OK = '#3fb97c'
 const WAIT = '#f2c230'
 
 const INK = '#0c0f15'
+// Round ends for bars and badges. If the font draws them badly, set both to '' to get square ends.
+const CAP_L = '◖'
+const CAP_R = '◗'
 const SOFT = '#d8dde8'
 
 // A solid bar with its label written inside it: the part under the fill and the part past it are two
@@ -46,10 +48,14 @@ const SOFT = '#d8dde8'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const labeled = (Box: any, Text: any, label: string, done: number, total: number, width: number, color: string) => {
   const parts = labeledBar(label, done, total, width)
+  const left = parts.filled.length > 0 ? color : TRACK
+  const right = parts.empty.length > 0 ? TRACK : color
   return (
     <Box flexShrink={0}>
+      {CAP_L && <Text color={left}>{CAP_L}</Text>}
       {parts.filled.length > 0 && <Text bold color={INK} backgroundColor={color}>{parts.filled}</Text>}
       {parts.empty.length > 0 && <Text color={SOFT} backgroundColor={TRACK}>{parts.empty}</Text>}
+      {CAP_R && <Text color={right}>{CAP_R}</Text>}
     </Box>
   )
 }
@@ -61,9 +67,16 @@ const stateColor = (job: Job) =>
 
 // A reviewer as a small colored badge: the color is the verdict, the mark is the cue besides color.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const badge = (Text: any, name: string, verdict: string | undefined) => (
-  <Text bold color={INK} backgroundColor={verdictBackground(verdict)}>{` ${reviewerLabel(name)}${verdictMark(verdict)} `}</Text>
-)
+const badge = (Box: any, Text: any, name: string, verdict: string | undefined) => {
+  const color = verdictBackground(verdict)
+  return (
+    <Box flexShrink={0}>
+      {CAP_L && <Text color={color}>{CAP_L}</Text>}
+      <Text bold color={INK} backgroundColor={color}>{`${reviewerLabel(name)}${verdictMark(verdict)}`}</Text>
+      {CAP_R && <Text color={color}>{CAP_R}</Text>}
+    </Box>
+  )
+}
 
 export const register: Register = on => {
   let timer: { cancel: () => void } | undefined
@@ -165,14 +178,14 @@ export const register: Register = on => {
           </Box>
           <Box gap={1} paddingLeft={2}>
             {labeled(Box, Text, phaseLabel(job), stageStep(job), STAGE_STEPS, 30, color)}
-            {job.reviewers.map(r => badge(Text, r, job.reviews[r]))}
+            {job.reviewers.map(r => badge(Box, Text, r, job.reviews[r]))}
           </Box>
         </Box>
       )
     }
 
     const tile = (label: string, value: string, color?: string) => (
-      <Box flexDirection="column" backgroundColor={TILE} paddingX={1} minWidth={14}>
+      <Box flexDirection="column" borderStyle="round" borderColor={TRACK} paddingX={1} minWidth={14}>
         <Text dimColor>{label}</Text>
         <Text bold color={color}>{value}</Text>
       </Box>
@@ -222,9 +235,9 @@ export const register: Register = on => {
         </Box>
         <Box gap={1}>
           <Text dimColor>reviewers</Text>
-          {badge(Text, 'pass', 'PASS')}
-          {badge(Text, 'changes', 'CHANGES')}
-          {badge(Text, 'pending', 'pending')}
+          {badge(Box, Text, 'pass', 'PASS')}
+          {badge(Box, Text, 'changes', 'CHANGES')}
+          {badge(Box, Text, 'pending', 'pending')}
         </Box>
         {[...summary.plans].sort(byNeed).map(plan)}
       </Box>
