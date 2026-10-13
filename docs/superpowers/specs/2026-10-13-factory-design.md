@@ -62,22 +62,35 @@ Changed:
 - No mandatory restatement of the request, no per-section approvals unless the design has more than one real decision.
 - Spec location follows the repo's own convention (read from `AGENTS.md`), defaulting to `docs/superpowers/specs/`.
 
-### 3.2 `writing-plans`
+### 3.2 `writing-plans` and the plan format
 
-Output: a plan file with one checkbox per task. Each task is a self-sufficient brief, because workers do not see the conversation:
+Plans live in `docs/superpowers/plans/YYYY-MM-DD-<feature>.md` of the repo that owns the work (the same place and name pattern as superpowers). The format is a **compatible superset** of the superpowers plan format, so existing plans, and tooling that reads them such as a `plan-status` script, keep working.
+
+Kept from the superpowers format: the `# Title` heading, `Goal`, `Architecture`, `Spec` header lines, a `### Task N: <title>` heading per task, and `- [ ]` / `- [x]` / `- [-]` (open, done, cancelled) checkbox steps under each task. Tooling in the user's workspace treats a heading starting with Task, Phase, Step, Milestone or Wave as a task and each checkbox under it as a step, so the factory keeps exactly that structure.
+
+Added, per task, as plain (non-checkbox) lines directly under the task heading, all optional:
 
 ```markdown
-- [ ] 3. <title>
-  - repo: laraplate | laraplate-ui | ...
-  - tier: light | medium | careful | heavy | fable
-  - depends: 1, 2
-  - files: <paths expected to change>
-  - constraints: <what must hold; repo rules that matter>
-  - accept: <numbered, verifiable criteria>
-  - verify: <exact commands>
+### Task 3: <title>
+
+**Repo:** laraplate | laraplate-ui | ...
+**Tier:** light | medium | careful | heavy | fable
+**Depends:** 1, 2
+**Files:** <paths expected to change>
+**Constraints:** <what must hold; repo rules that matter>
+**Accept:** <numbered, verifiable criteria>
+**Verify:** <exact commands>
+
+- [ ] Step: write the failing test ...
+- [ ] Step: implement ...
 ```
 
-`repo` is required in multi-repo workspaces. `files` is a hint, not a contract: reviewer routing uses the real diff.
+Rules:
+- The field lines contain no checkbox, so a checkbox-counting tool never mistakes them for steps.
+- Defaults when a field is missing, which is how an older superpowers plan runs: `Tier` medium, `Repo` the repo holding the plan, `Depends` none, `Accept` derived from the task's steps, `Verify` taken from the repo's own instructions. The orchestrator tells the user which defaults it applied.
+- Each task is a self-sufficient brief, because workers do not see the conversation. `Repo` is required in multi-repo workspaces. `Files` is a hint, not a contract: reviewer routing uses the real diff.
+- A task is done when all its non-cancelled steps are checked. The factory ticks the steps it completed and never edits cancelled ones.
+- The superpowers header line pointing to `subagent-driven-development` or `executing-plans` is not written: execution is `/factory plan`.
 
 ### 3.3 Gates
 
@@ -150,7 +163,7 @@ Rule: the cheapest tier that gets the task right the first time; when unsure, th
 
 ### 4.6 Completion
 
-When every task is done, the orchestrator ticks the plan's checkboxes (so any plan-status tooling stays accurate). In isolated mode it then hands over to the finish step: the user chooses how the integration branch reaches main. In current-branch mode the commits are already on the branch and there is nothing to merge. The plugin never pushes.
+When every task is done, the orchestrator ticks the steps of each completed task in the plan (so any plan-status tooling stays accurate). In isolated mode it then hands over to the finish step: the user chooses how the integration branch reaches main. In current-branch mode the commits are already on the branch and there is nothing to merge. The plugin never pushes.
 
 ### 4.7 State
 
