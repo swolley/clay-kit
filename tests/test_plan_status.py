@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugins/clay/scripts"))
-from plan_status import discover, scan_plans  # noqa: E402
+from plan_status import discover, scan_plans, scan_specs, scan_todos  # noqa: E402
 
 KEYS = {"repo", "file", "path", "date", "title", "front_matter_status", "status_banner", "tasks", "total_steps",
         "checked_steps", "state", "inconsistency"}
@@ -147,3 +147,88 @@ def test_evidence_counts_the_declared_files_that_exist(tmp_path):
     assert (press["files_found"], press["stale"]) == (1, True)
     plain = scan_plans(tmp_path, discover(tmp_path), evidence=False)[0]["tasks"][0]
     assert (plain["files_found"], plain["files_missing"]) == (0, [])
+
+
+def _specs(root: Path) -> list[dict]:
+    repos = discover(root)
+    return scan_specs(root, repos, scan_plans(root, repos, evidence=False))
+
+
+def test_specs_take_one_of_four_states(tmp_path):
+    specs = tmp_path / "docs/superpowers/specs"
+    plans = tmp_path / "docs/superpowers/plans"
+    _write(specs / "2026-01-01-kiln-design.md", "# Kiln\n")
+    _write(specs / "2026-01-02-glaze-design.md", "# Glaze\n")
+    _write(specs / "2026-01-03-clay.md", "# Clay notes\n\n**Plan:** not required\n")
+    _write(specs / "2026-01-04-wheel.md", "# Wheel\n")
+    _write(specs / "INDEX.md", "# Index\n")
+    _plan(plans / "2026-01-01-kiln.md", "- [ ] a")
+    _plan(plans / "2026-01-02-glaze-work.md", "- [ ] a\n\nSee 2026-01-02-glaze-design.md")
+    found = {s["file"]: s for s in _specs(tmp_path)}
+    assert {f: s["state"] for f, s in found.items()} == {
+        "2026-01-01-kiln-design.md": "plan_uncited", "2026-01-02-glaze-design.md": "planned",
+        "2026-01-03-clay.md": "reference", "2026-01-04-wheel.md": "unplanned"}
+    kiln = found["2026-01-01-kiln-design.md"]
+    assert kiln["sibling_plan"] == "docs/superpowers/plans/2026-01-01-kiln.md" and kiln["has_plan"] is True
+    assert (found["2026-01-04-wheel.md"]["has_plan"], found["2026-01-03-clay.md"]["has_plan"]) == (False, False)
+    assert (kiln["kind"], kiln["repo"], kiln["title"], kiln["path"]) == (
+        "spec", tmp_path.name, "Kiln", "docs/superpowers/specs/2026-01-01-kiln-design.md")
+
+
+def test_a_reference_marker_may_be_a_bullet_without_bold(tmp_path):
+    _write(tmp_path / "docs/superpowers/specs/a.md", "# A\n- Plan: not required\n")
+    assert _specs(tmp_path)[0]["state"] == "reference"
+
+
+def test_a_spec_without_a_heading_is_titled_by_its_name(tmp_path):
+    _write(tmp_path / "docs/superpowers/specs/a.md", "text\n")
+    assert _specs(tmp_path)[0]["title"] == "a"
+
+
+def _todos(root: Path, limit: int = 100) -> list[dict]:
+    return scan_todos(root, discover(root), limit)
+
+
+def test_markers_count_only_in_comments(tmp_path):
+    _write(tmp_path / "docs/superpowers/plans/x.md", "- [ ] a")
+    _write(tmp_path / "app.ts", "\n".join([
+        "// TODO: sand the rim",
+        "const a = 1; /* FIXME glaze runs */",
+        "const s = 'see // TODO later';",
+        'const t = "# XXX not work";',
+        "const todo = 3; // todo lowercase prose",
+        " * @todo document the kiln",
+        "const label = `<!-- TODO in a template`;",
+        "# XXX shell style",
+    ]))
+    got = [(t["line"], t["marker"], t["text"]) for t in _todos(tmp_path)]
+    assert got == [(1, "TODO", "sand the rim"), (2, "FIXME", "glaze runs */"), (6, "@TODO", "document the kiln"),
+                   (8, "XXX", "shell style")]
+    assert _todos(tmp_path)[0].keys() >= {"kind", "repo", "marker", "path", "line", "text", "state"}
+
+
+def test_excluded_directories_hidden_ones_nested_repos_and_other_extensions_are_skipped(tmp_path):
+    _write(tmp_path / "docs/superpowers/plans/x.md", "- [ ] a")
+    _write(tmp_path / "orchard/docs/superpowers/plans/y.md", "- [ ] a")
+    for d in ("vendor", "node_modules", "dist", "public/build", "bootstrap/cache", ".hidden"):
+        _write(tmp_path / d / "a.js", "// TODO skipped")
+    _write(tmp_path / "other/bootstrap/cache/a.js", "// TODO kept: only the root level is excluded by path")
+    _write(tmp_path / "notes.md", "<!-- TODO not source -->")
+    _write(tmp_path / "scripts/plan-status.php", "// TODO the scanner itself")
+    _write(tmp_path / "orchard/tree.vue", "<!-- TODO prune -->")
+    _write(tmp_path / "root.sh", "# FIXME root")
+    got = sorted((t["repo"], t["path"]) for t in _todos(tmp_path))
+    assert got == sorted([(tmp_path.name, "other/bootstrap/cache/a.js"), (tmp_path.name, "root.sh"),
+                          ("orchard", "orchard/tree.vue")])
+
+
+def test_the_limit_stops_the_scan(tmp_path):
+    _write(tmp_path / "docs/superpowers/plans/x.md", "- [ ] a")
+    _write(tmp_path / "a.js", "// TODO 1\n// TODO 2\n// TODO 3\n")
+    assert len(_todos(tmp_path, 2)) == 2
+
+
+def test_markers_are_found_in_python_comments_but_not_in_python_strings(tmp_path):
+    _write(tmp_path / "docs/superpowers/plans/x.md", "- [ ] a")
+    _write(tmp_path / "a.py", '# TODO x\ns = "# TODO"\n')
+    assert [(t["path"], t["line"], t["text"]) for t in _todos(tmp_path)] == [("a.py", 1, "x")]

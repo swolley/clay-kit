@@ -10,6 +10,7 @@ the factory runner give a plan the same meaning. Standard library only.
 """
 import glob
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -18,6 +19,15 @@ from factory_plan import parse_plan, plan_date
 PLAN_DIRS = ("docs/superpowers/plans", ".cursor/plans", "Modules/*/docs/plans")
 SPEC_DIRS = ("docs/superpowers/specs", ".cursor/specs")
 SKIPPED = {"INDEX.md", "README.md"}
+TODO_EXTENSIONS = {"php", "ts", "tsx", "js", "mjs", "vue", "sh", "py"}
+TODO_EXCLUDED = {"vendor", "node_modules", ".git", "storage", "dist", "build", "coverage", ".pnpm-store",
+                 "public/build", "bootstrap/cache", ".nuxt", ".output"}
+# The scanner and its test mention the markers as data; they are not work left.
+TODO_SELF = ("scripts/plan-status.php", "scripts/tests/plan-status-test.sh")
+# A marker counts only in its conventional spelling (upper case, or a `@todo` tag) and only as the first word of a
+# comment (`//`, `#`, `/*`, a docblock `*`, `<!--`, `{{--`).
+TODO_PATTERN = re.compile(r"(?://|#|/\*+|^\s*\*|<!--|\{\{--)\s*(TODO|FIXME|XXX|@todo)\b:?\s*")
+REFERENCE_PATTERN = re.compile(r"^\s*(?:[-*]\s+)?(?:\*\*)?Plan:?(?:\*\*)?:?\s*not required\b", re.IGNORECASE)
 
 
 def discover(root: Path | str) -> dict[str, str]:
@@ -171,3 +181,119 @@ def scan_plans(root: Path | str, repos: dict[str, str], evidence: bool = True) -
                         continue
                     plans.append(_scan_plan(file, root, repo, relative, plan_dir, evidence))
     return plans
+
+
+def _head(file: Path, lines: int) -> list[str]:
+    try:
+        with file.open(errors="replace") as handle:
+            return [line for _, line in zip(range(lines), handle)]
+    except OSError:
+        return []
+
+
+def _spec_title(file: Path) -> str:
+    for line in _head(file, 20):
+        if m := re.match(r"#\s+(.+)$", line.strip()):
+            return m.group(1).strip()
+    return file.name.removesuffix(".md")
+
+
+def _sibling_plan(spec_file: str, plan_names: dict[str, str]) -> str | None:
+    """A plan for the same subject, found by stripping the spec's trailing marker: `x-design.md` -> `x.md`."""
+    stem = re.sub(r"-(design|review|gate|spec)\.md$", ".md", spec_file)
+    return None if stem == spec_file else plan_names.get(stem)
+
+
+def scan_specs(root: Path | str, repos: dict[str, str], plans: list[dict]) -> list[dict]:
+    """Every spec with one of four states: `reference` (declares `Plan: not required` in its first lines), `planned`
+    (a plan's text names the file), `plan_uncited` (a plan with the same subject exists but never names it) or
+    `unplanned`. `plans` is the result of `scan_plans`."""
+    root = Path(root).resolve()
+    blob = ""
+    plan_names = {}
+    for plan in plans:
+        try:
+            blob += (root / plan["path"]).read_text(errors="replace")
+        except OSError:
+            pass
+        plan_names[plan["file"]] = plan["path"]
+    specs = []
+    for repo, relative in repos.items():
+        for spec_dir in SPEC_DIRS:
+            d = os.path.join(glob.escape(str(root / relative)), spec_dir)
+            for file in (Path(d, name) for name in sorted(glob.glob("*.md", root_dir=d))) if os.path.isdir(d) else []:
+                if file.name in SKIPPED or not file.is_file():
+                    continue
+                cited = file.name in blob
+                sibling = None if cited else _sibling_plan(file.name, plan_names)
+                if any(REFERENCE_PATTERN.match(line) for line in _head(file, 30)):
+                    state = "reference"
+                elif cited:
+                    state = "planned"
+                else:
+                    state = "plan_uncited" if sibling else "unplanned"
+                specs.append({
+                    "kind": "spec",
+                    "repo": repo,
+                    "file": file.name,
+                    "path": file.relative_to(root).as_posix(),
+                    "title": _spec_title(file),
+                    "has_plan": state not in ("unplanned", "reference"),
+                    "sibling_plan": sibling,
+                    "state": state,
+                })
+    return sorted(specs, key=lambda s: (s["repo"], s["file"]))
+
+
+def _in_string(prefix: str) -> bool:
+    """Whether the end of `prefix` falls inside a quoted string: an odd number of unescaped quotes of one kind."""
+    return any(len(re.findall(rf"(?<!\\){q}", prefix)) % 2 for q in ("'", '"', "`"))
+
+
+def _marker(line: str) -> tuple[str, str] | None:
+    """The marker and its text when `line` carries one in a comment, not inside a string."""
+    for m in TODO_PATTERN.finditer(line):
+        if not _in_string(line[:m.start()]):
+            return m.group(1).upper(), line[m.end():].strip()[:120].strip()
+    return None
+
+
+def _source_files(base: Path, nested: list[Path]):
+    """Source files under `base`, pruning excluded, hidden and nested-repository directories before descending.
+    Entries with a slash are matched against the path from `base`, the others against the directory name."""
+    for current, dirs, names in os.walk(base):
+        here = Path(current)
+        dirs[:] = sorted(
+            d for d in dirs
+            if here / d not in nested and not d.startswith(".")
+            and d not in TODO_EXCLUDED and (here / d).relative_to(base).as_posix() not in TODO_EXCLUDED)
+        for name in sorted(names):
+            if name.rpartition(".")[2].lower() in TODO_EXTENSIONS and "." in name:
+                yield here / name
+
+
+def scan_todos(root: Path | str, repos: dict[str, str], limit: int) -> list[dict]:
+    """Markers (`TODO`, `FIXME`, `XXX`, `@todo`) in the comments of source files, at most `limit`. The root repository
+    does not walk into the repositories nested under it, so a marker is reported once."""
+    root = Path(root).resolve()
+    todos: list[dict] = []
+    for repo, relative in repos.items():
+        base = root / relative
+        if not base.is_dir():
+            continue
+        nested = [root / other for name, other in repos.items() if name != repo and other]
+        for file in _source_files(base, nested):
+            path = file.relative_to(root).as_posix()
+            if any(path.endswith("/" + s) or path == s for s in TODO_SELF):
+                continue
+            try:
+                lines = file.read_text(errors="replace").splitlines()
+            except OSError:
+                continue
+            for number, line in enumerate(lines, 1):
+                if found := _marker(line):
+                    todos.append({"kind": "todo", "repo": repo, "marker": found[0], "path": path, "line": number,
+                                  "text": found[1], "state": "open"})
+                    if len(todos) >= limit:
+                        return todos
+    return todos
