@@ -1,4 +1,4 @@
-# Factory tool: design (swolley-kit)
+# Factory tool: design (clay-kit)
 
 Status: draft for review. Plugin name: `clay` (the workflow it contains is called the factory), first package of a personal multi-tool repository (section 7).
 

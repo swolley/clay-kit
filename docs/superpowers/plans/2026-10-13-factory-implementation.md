@@ -1,6 +1,6 @@
 # Factory Tool Implementation Plan
 
-**Goal:** Build `plugins/clay/` in the swolley-kit marketplace: design skills, a plan-to-merge orchestrator with routed reviewers, tiers, isolation modes, resume and a dashboard.
+**Goal:** Build `plugins/clay/` in the clay-kit marketplace: design skills, a plan-to-merge orchestrator with routed reviewers, tiers, isolation modes, resume and a dashboard.
 
 **Architecture:** Prompts (skills and agents) hold the behavior; three small Python helpers hold the parts that must be deterministic and testable (plan parsing, reviewer routing, repository validation). Hand-off between agents is through files, as in the spec.
 
@@ -33,7 +33,7 @@
 
 ### Task 1: Repository scaffold and validator
 
-**Repo:** swolley-kit
+**Repo:** clay-kit
 **Tier:** light
 **Depends:** none
 **Files:** `.claude-plugin/marketplace.json`, `plugins/clay/.claude-plugin/plugin.json`, `.gitignore`, `README.md`, `plugins/clay/NOTICE.md`, `scripts/validate.py`, `tests/test_validate.py`
@@ -43,13 +43,13 @@
 - [ ] **Step 1: Write failing tests** in `tests/test_validate.py` using `tmp_path` fixtures: `test_valid_scaffold_passes`, `test_bad_json_fails_and_names_file`, `test_skill_without_description_fails`, `test_superpowers_reference_fails`, `test_missing_style_reference_fails`, `test_command_skills_must_disable_model_invocation`, `test_brainstorm_and_plan_must_allow_model_invocation`.
 - [ ] **Step 2: Run the tests; expect failure** (`scripts/validate.py` missing).
 - [ ] **Step 3: Implement `validate(root: Path) -> list[str]` and a `main()` returning 0/1** in `scripts/validate.py`; each returned string is `<relative path>: <problem>`.
-- [ ] **Step 4: Create the scaffold files.** `marketplace.json` follows the claude-kit shape (`name: swolley-kit`, `owner`, `metadata.description`, `plugins[]` with `name`, `source: ./plugins/clay`, `description`, `version: 0.1.0`, `category: skill`). `plugin.json` has name, description, version, author, license MIT. `NOTICE.md` lists superpowers and claude-kit (files added later) and states zazencodes is inspiration only, linking `licenses/README.md`.
+- [ ] **Step 4: Create the scaffold files.** `marketplace.json` follows the claude-kit shape (`name: clay-kit`, `owner`, `metadata.description`, `plugins[]` with `name`, `source: ./plugins/clay`, `description`, `version: 0.1.0`, `category: skill`). `plugin.json` has name, description, version, author, license MIT. `NOTICE.md` lists superpowers and claude-kit (files added later) and states zazencodes is inspiration only, linking `licenses/README.md`.
 - [ ] **Step 5: Run tests and `python3 scripts/validate.py`; expect pass.**
 - [ ] **Step 6: Commit** `feat: scaffold marketplace and validator`.
 
 ### Task 2: Plan parser
 
-**Repo:** swolley-kit
+**Repo:** clay-kit
 **Tier:** medium
 **Depends:** 1
 **Files:** `plugins/clay/scripts/factory_plan.py`, `tests/test_factory_plan.py`, `tests/fixtures/plan-superset.md`, `tests/fixtures/plan-legacy.md`
@@ -68,7 +68,7 @@
 
 ### Task 3: Reviewer routing
 
-**Repo:** swolley-kit
+**Repo:** clay-kit
 **Tier:** medium
 **Depends:** 1
 **Files:** `plugins/clay/routing.md`, `plugins/clay/scripts/route.py`, `tests/test_route.py`
@@ -87,7 +87,7 @@
 
 ### Task 4: Shared contracts (STYLE, tiers) and host research
 
-**Repo:** swolley-kit
+**Repo:** clay-kit
 **Tier:** careful
 **Depends:** 1
 **Files:** `plugins/clay/STYLE.md`, `plugins/clay/tiers.md`, `docs/hosts.md`
@@ -103,7 +103,7 @@
 
 ### Task 5: Skill `brainstorm`
 
-**Repo:** swolley-kit
+**Repo:** clay-kit
 **Tier:** careful
 **Depends:** 4
 **Files:** `plugins/clay/skills/brainstorm/SKILL.md`, `plugins/clay/NOTICE.md`
@@ -118,7 +118,7 @@
 
 ### Task 6: Skill `plan`
 
-**Repo:** swolley-kit
+**Repo:** clay-kit
 **Tier:** careful
 **Depends:** 2, 4
 **Files:** `plugins/clay/skills/plan/SKILL.md`, `plugins/clay/NOTICE.md`
@@ -133,7 +133,7 @@
 
 ### Task 7: Agents `builder`, `reviewer-code`, `approver`
 
-**Repo:** swolley-kit
+**Repo:** clay-kit
 **Tier:** careful
 **Depends:** 4
 **Files:** `plugins/clay/agents/builder.md`, `plugins/clay/agents/reviewer-code.md`, `plugins/clay/agents/approver.md`
@@ -148,7 +148,7 @@
 
 ### Task 8: Agents `reviewer-ui`, `reviewer-ux`, `reviewer-security`
 
-**Repo:** swolley-kit
+**Repo:** clay-kit
 **Tier:** medium
 **Depends:** 7
 **Files:** `plugins/clay/agents/reviewer-ui.md`, `plugins/clay/agents/reviewer-ux.md`, `plugins/clay/agents/reviewer-security.md`
@@ -161,7 +161,7 @@
 
 ### Task 9: Command skills and orchestrator reference
 
-**Repo:** swolley-kit
+**Repo:** clay-kit
 **Tier:** heavy
 **Depends:** 2, 3, 7, 8
 **Files:** `plugins/clay/reference/orchestrator.md`, `plugins/clay/skills/{run,task,status,approve,rework}/SKILL.md`
@@ -182,7 +182,7 @@
 
 ### Task 10: Dashboard
 
-**Repo:** swolley-kit
+**Repo:** clay-kit
 **Tier:** medium
 **Depends:** 9
 **Files:** `plugins/clay/factory/dashboard.html`, `tests/fixtures/jobs/` (sample `job.json` files)
@@ -196,7 +196,7 @@
 
 ### Task 11: End-to-end verification on a fixture repo
 
-**Repo:** swolley-kit
+**Repo:** clay-kit
 **Tier:** heavy
 **Depends:** 9, 10
 **Files:** `tests/e2e/make_fixture.sh`, `tests/e2e/CHECKLIST.md`
@@ -210,7 +210,7 @@
 
 ### Task 12: Codex manifest and README
 
-**Repo:** swolley-kit
+**Repo:** clay-kit
 **Tier:** medium
 **Depends:** 4, 11
 **Files:** `plugins/clay/.codex-plugin/plugin.json` (only if verified), `README.md`, `plugins/clay/README.md`

@@ -1,4 +1,4 @@
-# swolley-kit
+# clay-kit
 
 Personal marketplace of plugins, skills and tools for Claude Code, Codex and other agent hosts.
 
@@ -11,8 +11,8 @@ Personal marketplace of plugins, skills and tools for Claude Code, Codex and oth
 In Claude Code:
 
 ```
-/plugin marketplace add swolley/swolley-kit
-/plugin install clay@swolley-kit
+/plugin marketplace add swolley/clay-kit
+/plugin install clay@clay-kit
 ```
 
 Restart the session afterwards. Commands are named `factory-<verb>`, for example `/factory-run`; the namespaced form `/clay:factory-run` also works.
