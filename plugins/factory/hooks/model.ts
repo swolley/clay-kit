@@ -244,7 +244,7 @@ export function stageStep(job: Job): number {
   }
 }
 
-const TIER_COLORS: Record<string, string> = { light: 'green', medium: 'blue', careful: 'yellow', heavy: 'red', fable: 'magenta' }
+const TIER_COLORS: Record<string, string> = { light: '#3fb97c', medium: '#4f7cff', careful: '#e0a526', heavy: '#e5675c', fable: '#b56cf0' }
 
 export function tierColor(tier: string): string {
   return TIER_COLORS[tier] ?? TIER_COLORS.medium!

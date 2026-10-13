@@ -197,6 +197,7 @@ test('stageStep places a job on a five-step track', () => {
 test('tierColor gives each tier its own color and a fallback', () => {
   const colors = ['light', 'medium', 'careful', 'heavy', 'fable'].map(tierColor)
   assert.equal(new Set(colors).size, 5)
+  assert.ok(colors.every(c => /^#[0-9a-f]{6}$/i.test(c)), 'solid bars need hex colors')
   assert.equal(tierColor('unknown'), tierColor('medium'))
 })
 
