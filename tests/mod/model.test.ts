@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar, reviewerLabel, verdictMark } from '../../plugins/factory/hooks/model.ts'
+import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar, reviewerLabel, verdictMark, roleOf, jobIdFromPrompt, shortModel, workingNow } from '../../plugins/factory/hooks/model.ts'
 
 const job = (over: Record<string, unknown> = {}) =>
   parseJob(JSON.stringify({ id: '001-a', plan: 'p1', repo: 'api', tier: 'medium', stage: 'build', round: 0, reviewers: [], reviews: {}, ...over }))!
@@ -246,4 +246,60 @@ test('verdictMark adds a one-character cue so the color is not the only signal',
   assert.equal(verdictMark('CHANGES'), '!')
   assert.equal(verdictMark('pending'), '…')
   assert.equal(verdictMark(undefined), '…')
+})
+
+
+test('parseJob reads the agents recorded by the orchestrator', () => {
+  const j = job({ agents: { builder: { model: 'opus', effort: 'medium' }, ux: { model: 'sonnet' }, junk: 5 } })
+  assert.deepEqual(j.agents, { builder: { model: 'opus', effort: 'medium' }, ux: { model: 'sonnet', effort: '' } })
+  assert.deepEqual(job().agents, {})
+})
+
+test('roleOf turns an agent type into the role the job uses', () => {
+  assert.equal(roleOf('factory:builder'), 'builder')
+  assert.equal(roleOf('factory:reviewer-ux'), 'ux')
+  assert.equal(roleOf('reviewer-security'), 'security')
+  assert.equal(roleOf('factory:approver'), 'approver')
+  assert.equal(roleOf('general-purpose'), 'general-purpose')
+})
+
+test('jobIdFromPrompt finds the job in the coordinates that open an agent prompt', () => {
+  assert.equal(jobIdFromPrompt('Job folder: /r/factory/jobs/003-rate-limit/. Worktree: /w. Branch: b.'), '003-rate-limit')
+  assert.equal(jobIdFromPrompt('no coordinates here'), null)
+})
+
+test('shortModel drops the vendor prefix and a date suffix', () => {
+  assert.equal(shortModel('claude-opus-5-5'), 'opus-5-5')
+  assert.equal(shortModel('claude-haiku-4-5-20251001'), 'haiku-4-5')
+  assert.equal(shortModel('opus'), 'opus')
+})
+
+test('workingNow names the builder while a job builds, with the requested model', () => {
+  const j = job({ stage: 'build', agents: { builder: { model: 'opus', effort: 'medium' } } })
+  assert.deepEqual(workingNow(j), { text: 'builder · opus medium', mismatch: false })
+})
+
+test('workingNow lists only the reviewers still pending, grouped by model', () => {
+  const j = job({
+    stage: 'review', round: 1, reviewers: ['code', 'ux', 'ui'], reviews: { code: 'PASS', ux: 'pending', ui: 'pending' },
+    agents: { code: { model: 'sonnet', effort: 'medium' }, ux: { model: 'sonnet', effort: 'medium' }, ui: { model: 'sonnet', effort: 'medium' } },
+  })
+  assert.equal(workingNow(j).text, 'ux, ui · sonnet medium')
+})
+
+test('workingNow names the approver, and nobody when the job is waiting on a person', () => {
+  assert.equal(workingNow(job({ stage: 'approve', agents: { approver: { model: 'opus', effort: 'high' } } })).text, 'approver · opus high')
+  assert.equal(workingNow(job({ stage: 'needs-human' })).text, '')
+  assert.equal(workingNow(job({ stage: 'merged' })).text, '')
+})
+
+test('workingNow shows the observed model and flags a difference from the requested one', () => {
+  const j = job({ stage: 'build', agents: { builder: { model: 'opus', effort: 'high' } } })
+  assert.deepEqual(workingNow(j, { builder: { model: 'claude-opus-5-5' } }), { text: 'builder · opus-5-5 high', mismatch: false })
+  assert.deepEqual(workingNow(j, { builder: { model: 'claude-sonnet-5-5' } }), { text: 'builder · sonnet-5-5 high (asked opus)', mismatch: true })
+})
+
+test('workingNow still names the role when no model is known', () => {
+  assert.equal(workingNow(job({ stage: 'build' })).text, 'builder')
+  assert.equal(workingNow(job({ stage: 'waiting-input' })).text, 'builder')
 })

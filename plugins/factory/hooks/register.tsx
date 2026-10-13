@@ -5,11 +5,13 @@ import {
   STAGE_STEPS,
   activePlans,
   formatDuration,
+  jobIdFromPrompt,
   jobElapsed,
   labeledBar,
   phaseLabel,
   planElapsed,
   reviewerLabel,
+  roleOf,
   scan,
   stageStep,
   summarize,
@@ -17,6 +19,7 @@ import {
   verdictMark,
   waitingIds,
   waitingLabel,
+  workingNow,
 } from './model'
 import type { Fs, Job, PlanView, Summary } from './model'
 import { pillBar, slimBar, tilePill } from './svg'
@@ -27,6 +30,8 @@ const POLL_MS = 3000
 const view = atom({ plugin: 'factory', key: 'view' } as const, { plans: [], waiting: 0, running: 0 } as Summary)
 const isHidden = atom({ plugin: 'factory', key: 'isHidden' } as const, false)
 const isFinishedOpen = atom({ plugin: 'factory', key: 'isFinishedOpen' } as const, false)
+// The model each agent of a job really started on, as the engine reported it at spawn, by job id and role.
+const observed = atom({ plugin: 'factory', key: 'observed' } as const, {} as Record<string, Record<string, { model: string }>>)
 
 const ledColor = (verdict: string | undefined) => (verdict === 'PASS' ? '#3fb97c' : verdict === 'CHANGES' ? '#e5675c' : '#7d879a')
 
@@ -169,6 +174,17 @@ export const register: Register = on => {
     return next(e)
   })
 
+  on('agent.spawn', async ($, e, next) => {
+    const started = await next(e)
+    const jobId = jobIdFromPrompt(e.prompt)
+    if (jobId && 'model' in started && started.model) {
+      const model = started.model
+      const role = roleOf(e.subagentType)
+      await update($, observed, all => ({ ...all, [jobId]: { ...(all[jobId] ?? {}), [role]: { model } } }))
+    }
+    return started
+  })
+
   on('command.run', { command: 'factory-progress' }, async $ => {
     const hidden = await read($, isHidden)
     await update($, isHidden, () => !hidden)
@@ -215,10 +231,12 @@ export const register: Register = on => {
     if (summary.plans.length === 0) return <Text dimColor>No factory jobs found here.</Text>
     const now = await $.clock.now()
     const isOpen = await read($, isFinishedOpen)
+    const seen = await read($, observed)
 
     const jobLine = (job: Job) => {
       const spent = jobElapsed(job, now)
       const color = stateColor(job)
+      const now_ = workingNow(job, seen[job.id])
       return (
         <Box flexDirection="column">
           <Box gap={1} alignItems="center">
@@ -226,6 +244,7 @@ export const register: Register = on => {
             {mid(Box, <Text bold={job.stage === 'needs-human' || job.stage === 'waiting-input'}>{job.id}</Text>)}
             {mid(Box, <Text color={tierColor(job.tier)}>{job.tier}</Text>)}
             {mid(Box, <Text dimColor>{phaseLabel(job)}{spent === null ? '' : ` · ${formatDuration(spent)}`}</Text>)}
+            {now_.text && mid(Box, <Text color={now_.mismatch ? WAIT : undefined} dimColor={!now_.mismatch}>{now_.text}</Text>)}
           </Box>
           <Box gap={1} paddingLeft={2} alignItems="center">
             {slim(elements, stageStep(job), STAGE_STEPS, 180, tierColor(job.tier), 22)}

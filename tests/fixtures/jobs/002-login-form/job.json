@@ -20,5 +20,23 @@
     "ui": "pending"
   },
   "started": "2026-10-13T10:02:00Z",
-  "updated": "2026-10-13T10:09:00Z"
+  "updated": "2026-10-13T10:09:00Z",
+  "agents": {
+    "builder": {
+      "model": "opus",
+      "effort": "medium"
+    },
+    "code": {
+      "model": "sonnet",
+      "effort": "medium"
+    },
+    "ux": {
+      "model": "sonnet",
+      "effort": "medium"
+    },
+    "ui": {
+      "model": "sonnet",
+      "effort": "medium"
+    }
+  }
 }

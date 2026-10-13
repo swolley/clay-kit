@@ -11,6 +11,7 @@ export type FactoryJob = {
   round: number
   reviewers: string[]
   reviews: Record<string, string>
+  agents: Record<string, { model: string; effort: string }>
 }
 
 export type FactoryPlanTask = { n: number; title: string; tier: string; after: number[] }
@@ -31,6 +32,11 @@ export type FactorySummary = {
 
 declare module 'claude-code' {
   interface PluginState {
-    factory: { view: FactorySummary; isHidden: boolean; isFinishedOpen: boolean }
+    factory: {
+      view: FactorySummary
+      isHidden: boolean
+      isFinishedOpen: boolean
+      observed: Record<string, Record<string, { model: string }>>
+    }
   }
 }

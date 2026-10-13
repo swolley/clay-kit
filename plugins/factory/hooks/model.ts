@@ -2,6 +2,9 @@
 
 export type Stage = 'spec' | 'build' | 'waiting-input' | 'review' | 'approve' | 'merged' | 'committed' | 'needs-human'
 
+// What the orchestrator asked for when it spawned an agent of the job.
+export type AgentInfo = { model: string; effort: string }
+
 export type PlanTask = { n: number; title: string; tier: string; after: number[] }
 
 export type Job = {
@@ -16,6 +19,7 @@ export type Job = {
   round: number
   reviewers: string[]
   reviews: Record<string, string>
+  agents: Record<string, AgentInfo>
 }
 
 export type Run = { plan: string; total: number; done: number; tasks: PlanTask[] }
@@ -44,6 +48,17 @@ const toMs = (v: unknown): number | null => {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
+function parseAgents(raw: unknown): Record<string, AgentInfo> {
+  const out: Record<string, AgentInfo> = {}
+  if (!isRecord(raw)) return out
+  for (const [role, info] of Object.entries(raw)) {
+    if (isRecord(info) && typeof info.model === 'string') {
+      out[role] = { model: info.model, effort: typeof info.effort === 'string' ? info.effort : '' }
+    }
+  }
+  return out
+}
+
 export function parseJob(text: string): Job | null {
   let raw: unknown
   try {
@@ -66,6 +81,7 @@ export function parseJob(text: string): Job | null {
     round: typeof raw.round === 'number' ? raw.round : 0,
     reviewers: Array.isArray(raw.reviewers) ? raw.reviewers.map(String) : [],
     reviews,
+    agents: parseAgents(raw.agents),
   }
 }
 
@@ -289,4 +305,46 @@ export function reviewerLabel(name: string): string {
 // A cue besides color for a reviewer badge: `!` for requested changes, `…` while nothing came back yet.
 export function verdictMark(verdict: string | undefined): string {
   return verdict === 'PASS' ? '' : verdict === 'CHANGES' ? '!' : '…'
+}
+
+// `factory:reviewer-ux` -> `ux`, `factory:builder` -> `builder`.
+export function roleOf(subagentType: string): string {
+  return subagentType.slice(subagentType.lastIndexOf(':') + 1).replace(/^reviewer-/, '')
+}
+
+// Every prompt the run command sends starts with the job's folder, which holds its id.
+export function jobIdFromPrompt(prompt: string): string | null {
+  return /factory\/jobs\/(\d{3}-[^/\s]+)\//.exec(prompt)?.[1] ?? null
+}
+
+export function shortModel(id: string): string {
+  return id.replace(/^claude-/, '').replace(/-\d{8}$/, '')
+}
+
+const sameModel = (asked: string, seen: string) => {
+  const a = asked.toLowerCase()
+  const b = seen.toLowerCase()
+  return b.includes(a) || a.includes(b)
+}
+
+// Who has the job right now, with the model they run on. `observed` is what the engine reported at spawn.
+export function workingNow(job: Job, observed: Record<string, { model: string }> = {}): { text: string; mismatch: boolean } {
+  let roles: string[] = []
+  if (job.stage === 'spec' || job.stage === 'build' || job.stage === 'waiting-input') roles = ['builder']
+  else if (job.stage === 'approve') roles = ['approver']
+  else if (job.stage === 'review') roles = job.reviewers.filter(r => job.reviews[r] !== 'PASS' && job.reviews[r] !== 'CHANGES')
+
+  const groups = new Map<string, string[]>()
+  let mismatch = false
+  for (const role of roles) {
+    const asked = job.agents[role]
+    const seen = observed[role]?.model
+    const differs = Boolean(asked && seen && !sameModel(asked.model, seen))
+    mismatch = mismatch || differs
+    const model = seen ? shortModel(seen) : asked?.model
+    const key = model ? `${model}${asked?.effort ? ` ${asked.effort}` : ''}${differs ? ` (asked ${asked!.model})` : ''}` : ''
+    groups.set(key, [...(groups.get(key) ?? []), role])
+  }
+  const text = [...groups].map(([key, who]) => (key ? `${who.join(', ')} · ${key}` : who.join(', '))).join(' · ')
+  return { text, mismatch }
 }

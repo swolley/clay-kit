@@ -32,10 +32,12 @@ session got there first, so try the next counter value. `job.json`:
 ```json
 { "id": "003-rate-limit", "plan": "2026-10-13-x", "task": 3, "repo": "api", "mode": "isolated",
   "tier": "careful", "branch": "factory/x/003-rate-limit", "worktree": "/abs/path",
-  "stage": "review", "round": 2, "started": "2026-10-13T10:00:00Z", "updated": "2026-10-13T10:12:30Z", "reviewers": ["code", "security"],
+  "agents": { "builder": { "model": "opus", "effort": "high" }, "code": { "model": "sonnet", "effort": "medium" } }, "stage": "review", "round": 2, "started": "2026-10-13T10:00:00Z", "updated": "2026-10-13T10:12:30Z", "reviewers": ["code", "security"],
   "reviews": { "code": "PASS", "security": "pending" } }
 ```
 
+`agents` records, per role (`builder`, `code`, `security`, `ux`, `ui`, `approver`), the `model` and `effort` you passed when
+you spawned that agent; write it right after each spawn. The progress mod shows who has the job and on which model.
 `started` and `updated` are ISO 8601 UTC timestamps: set `started` when the job is created and refresh `updated`
 on every change (the progress mod shows elapsed time from them).
 `stage` is `spec`, `build`, `waiting-input`, `review`, `approve`, `merged`, `committed` or `needs-human`. Replace

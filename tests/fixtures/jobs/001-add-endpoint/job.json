@@ -12,5 +12,11 @@
   "reviewers": [],
   "reviews": {},
   "started": "2026-10-13T10:00:00Z",
-  "updated": "2026-10-13T10:12:00Z"
+  "updated": "2026-10-13T10:12:00Z",
+  "agents": {
+    "builder": {
+      "model": "opus",
+      "effort": "medium"
+    }
+  }
 }

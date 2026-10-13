@@ -261,6 +261,12 @@ in the working folder and one level below it (a workspace root with several repo
   timestamps, so the mod never parses plans and can show elapsed time. Cost and tokens are not shown: the factory
   does not record them. The pure logic (parsing, summary, bar,
   scan of the folders with an injected file system) is in `hooks/model.ts` and tested with Node's runner.
+- **Who is working, and on which model.** On each job's header the pane writes the roles that have the job now (the builder; the
+  reviewers whose verdict is still pending; the approver) with their model and effort, e.g. `ux, ui · sonnet medium`. The data comes
+  from two places: `job.json` `agents`, the model and effort the orchestrator passed at spawn, and the mod's own observation of
+  `agent.spawn` events, which carry the model the engine resolved (not the effort). When the observed model differs from the one
+  asked for, the pane shows the observed one with `(asked X)` highlighted. Observation covers only agents started in the
+  session that loaded the mod.
 - Hosts without mods ignore the folder; nothing else depends on it.
 
 ### 6.2 Optional savvy-progress hook

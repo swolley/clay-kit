@@ -16,5 +16,11 @@
     "code": "PASS"
   },
   "started": "2026-10-13T10:00:00Z",
-  "updated": "2026-10-13T10:04:00Z"
+  "updated": "2026-10-13T10:04:00Z",
+  "agents": {
+    "builder": {
+      "model": "opus",
+      "effort": "low"
+    }
+  }
 }
