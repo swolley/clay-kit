@@ -169,6 +169,32 @@ When every task is done, the orchestrator ticks the steps of each completed task
 
 Runtime state in `factory/jobs/<job-id>/` of the main checkout, gitignored: `job.json` (written only by the orchestrator), `build.md`, `round-N/review-*.md`, `decision.md`, `rework-K.md`. `job.json` fields: `id`, `plan`, `task`, `repo`, `mode`, `tier`, `branch`, `worktree`, `stage`, `round`, `reviewers`, `reviews`.
 
+### 4.8 Resuming an interrupted run
+
+There is no separate resume command: `/factory plan <plan>` is idempotent and resumes by itself.
+
+At start the orchestrator reads the plan and `factory/jobs/` and classifies each task:
+
+| Task state | Found | Action |
+|------------|-------|--------|
+| Done | all non-cancelled steps checked | skip |
+| Merged but not ticked | `job.json` stage `merged` (or committed, in current-branch mode) | tick the steps, then skip |
+| Interrupted | `job.json` with stage `spec`, `build`, `review` or `approve` | resume from the recorded stage |
+| `needs-human` | `job.json` stage `needs-human` | do not touch; list it and wait for `/factory approve` or `/factory rework` |
+| Not started | no job | start normally |
+
+Resuming a stage:
+- `spec` or `build` with no `build.md`: keep the worktree and branch, start a fresh builder with the task brief and the commits already on the branch.
+- `build` with `build.md`, or `review` with some `review-*.md` present: keep the finished files, rerun only the missing parts of the current round. A reviewer that did not finish is rerun.
+- A named builder does not survive its session. A resumed builder is a new agent that reads `build.md`, the round folders and the git log of the job branch, as in a rework.
+- `approve` with no `decision.md`: rerun the approver.
+
+Safety:
+- The worktree and branch of a job are reused, never recreated. If they are missing or the branch has diverged from what `job.json` records, the job goes to `needs-human` with the reason.
+- Current-branch mode: a job interrupted mid-build leaves uncommitted changes. The orchestrator shows them and asks whether to continue from them, stash them or stop. It never resets them on its own.
+- `job.json` is rewritten only by the orchestrator on each transition, so after a crash it is at worst one transition behind. A step that is repeated must therefore be safe to repeat; the orchestrator checks for existing output before redoing it.
+- The orchestrator reports what it found and what it will resume, in one line per job, before it continues.
+
 ## 5. Dashboard
 
 Single static `dashboard.html`, no build step, served by a plain static server, polling `job.json` files. Groups jobs by plan and repo, shows tier and only the selected reviewers per job, highlights `needs-human`. Same approach as the original factory.
@@ -213,7 +239,7 @@ No session-start hook in the factory. Skills trigger by `description`. If a hook
 - **Skills:** run each skill against a throwaway repo with scripted prompts; check the gate holds, questions use the native tool, and output length stays within the style contract.
 - **Factory:** a fixture repo with a three-task plan covering a backend-only task, a UI task and a task that must escalate. Expected: backend task runs no ui/ux reviewer; UI task runs them; escalation lands in `needs-human`.
 - **Routing:** unit-level check that `routing.md` patterns select the expected reviewers for sample diffs.
-- **Idempotence:** rerunning `/factory plan` skips tasks already merged.
+- **Resume:** kill a run at each stage (`spec`, `build`, `review` with one reviewer done, `approve`) and in current-branch mode with uncommitted changes; rerun `/factory plan` and check that merged tasks are skipped, the interrupted job is resumed without a duplicate branch, and `needs-human` jobs are left alone.
 
 ## 9. Open items
 
