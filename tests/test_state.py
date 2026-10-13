@@ -556,3 +556,66 @@ def test_a_check_stays_current_when_the_same_code_is_committed_again(repo):
     git(repo, "commit", "-q", "--amend", "-m", "same code, new message")
     again = state.run_check(repo, j["id"], "true", reuse=True)
     assert again["reused"] is True and again["n"] == first["n"] and again["current"] is True
+
+
+# ---- composite commands: fewer round trips for the same bookkeeping ----
+
+
+def test_begin_job_creates_the_job_and_moves_it_to_build(repo):
+    state.setup(repo, repo)
+    out = state.begin_job(repo, PLAN_FILE, 1, repo_name="demo", mode="current-branch", branch="main", worktree=str(repo))
+    job = state.read_job(repo, out["id"])
+    assert out["stage"] == "build" and job["stage"] == "build"
+    assert [p["stage"] for p in job["phases"]] == ["spec", "build"] and job["phases"][0]["end"] is not None
+    assert (repo / "factory/jobs" / out["id"] / "task.md").exists()
+
+
+def test_after_agent_records_several_agents_in_one_call(repo):
+    state.setup(repo, repo)
+    j = new(repo, 2)
+    state.record_agents(repo, j["id"], [
+        {"role": "code", "model": "sonnet", "effort": "medium", "tokens": 9000, "ms": 20000, "tools": 5},
+        {"role": "security", "model": "opus", "tokens": 12000, "ms": 30000, "tools": 7},
+    ])
+    state.record_agents(repo, j["id"], [{"role": "code", "model": "sonnet", "tokens": 1000, "ms": 2000, "tools": 1}])
+    agents = state.read_job(repo, j["id"])["agents"]
+    assert (agents["code"]["tokens"], agents["code"]["runs"], agents["security"]["model"]) == (10000, 2, "opus")
+
+
+def test_preflight_without_a_plan_lists_the_plans_with_open_steps(repo):
+    out = state.preflight(repo)
+    assert [p["path"] for p in out["plans"]] == [PLAN_FILE] and out["plans"][0]["open"] == 2 and out["unclassified"] == []
+
+
+def test_preflight_with_a_plan_gives_the_parse_the_jobs_and_the_audit(repo):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    state.set_stage(repo, j["id"], "build")
+    out = state.preflight(repo, PLAN_FILE, "demo")
+    assert [t["title"] for t in out["plan"]["tasks"]] == ["Add slugify helper", "Extend the session lifetime"]
+    assert out["plan"]["tasks"][1]["defaults_applied"] is not None and "done_signals" in out["plan"]["tasks"][0]
+    assert [(x["id"], x["task"], x["stage"]) for x in out["jobs"]] == [(j["id"], 1, "build")]
+    assert out["audit"] == []
+    assert "plans" not in out
+
+
+def test_preflight_audit_names_only_the_chosen_plan(repo):
+    other = repo / "docs/superpowers/plans/2026-01-02-other.md"
+    other.write_text("---\nstatus: completed\n---\n# Other\n\n### Task 1: Create the thing\n\n**Files:**\n- Create: `app/never.py`\n\n- [x] **Step 1: Done**\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "other plan")
+    everything = state.preflight(repo, "docs/superpowers/plans/2026-01-02-other.md", "demo")["audit"]
+    mine = state.preflight(repo, PLAN_FILE, "demo")["audit"]
+    assert mine == [] and all(f["path"].endswith("2026-01-02-other.md") for f in everything)
+
+
+def test_cli_runs_the_composite_commands(repo, capsys):
+    state.setup(repo, repo)
+    assert state.main(["preflight", "--root", str(repo), "--plan-file", PLAN_FILE, "--repo-name", "demo"]) == 0
+    assert json.loads(capsys.readouterr().out)["plan"]["title"]
+    assert state.main(["begin-job", "--root", str(repo), "--plan-file", PLAN_FILE, "--task", "1", "--repo-name", "demo", "--mode", "current-branch", "--branch", "main", "--worktree", str(repo)]) == 0
+    began = json.loads(capsys.readouterr().out)
+    assert began["stage"] == "build"
+    agents = json.dumps([{"role": "builder", "model": "sonnet", "tokens": 5, "ms": 6, "tools": 7}])
+    assert state.main(["after-agent", began["id"], "--agents", agents, "--root", str(repo)]) == 0
+    assert json.loads(capsys.readouterr().out)["builder"]["tokens"] == 5

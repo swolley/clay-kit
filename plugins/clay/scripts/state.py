@@ -5,9 +5,12 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
 
   state.py setup --root DIR --plugin-root DIR
   state.py run --root DIR --plan-file P --mode M --pace step|auto
+  state.py preflight --root DIR [--plan-file P --repo-name R]
   state.py new-job --root DIR --plan-file P --task N --repo-name R --mode M --branch B --worktree W
+  state.py begin-job --root DIR --plan-file P --task N --repo-name R --mode M --branch B --worktree W
   state.py stage JOB STAGE --root DIR
   state.py agent JOB ROLE --model M --effort E --tokens N --ms N --tools N --root DIR
+  state.py after-agent JOB --agents JSON --root DIR
   state.py route JOB --root DIR [--table FILE]
   state.py verdicts JOB --root DIR
   state.py verify JOB --cmd COMMAND [--reuse] [--timeout S] --root DIR
@@ -27,7 +30,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from factory_plan import parse_plan
+from factory_plan import describe_plan, parse_plan
+from resolve import PLANS_DIR, audit_plans, list_plans, list_unclassified, load_jobs
 from route import load_rules, route
 
 TERMINAL = ("merged", "committed")
@@ -129,6 +133,31 @@ def new_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, b
     return {"id": job_id, "folder": str(folder)}
 
 
+def begin_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, branch: str, worktree: str, base: str | None = None) -> dict:
+    """new_job and the move to the build stage in one step."""
+    out = new_job(root, plan_file, task_number, repo_name, mode, branch, worktree, base)
+    set_stage(root, out["id"], "build")
+    return {**out, "stage": "build"}
+
+
+def preflight(root, plan_file: str | None = None, repo_name: str = "") -> dict:
+    """What a run needs to know before it starts, in one call. Without a plan: the plans with open steps and the unclassified ones.
+    With a plan: the plan as parsed (defaults, warnings, signs of work already done), the jobs it already has, and what the audit says about it."""
+    root = Path(root)
+    out: dict = {"unclassified": list_unclassified(root)}
+    if not plan_file:
+        out["plans"] = list_plans(root)
+        return out
+    path = Path(plan_file) if Path(plan_file).is_absolute() else root / plan_file
+    out["plan"] = describe_plan(path.read_text(), repo_name, root)
+    out["jobs"] = [
+        {k: j.get(k) for k in ("id", "task", "stage", "round", "build_round", "head", "branch", "worktree")}
+        for j in load_jobs(root) if j.get("plan") == path.stem
+    ]
+    out["audit"] = [f for f in audit_plans(root) if Path(f["path"]).name == path.name]
+    return out
+
+
 def set_stage(root, job_id: str, stage: str) -> dict:
     job = read_job(root, job_id)
     t = now()
@@ -151,6 +180,11 @@ def record_agent(root, job_id: str, role: str, model: str = "", effort: str = ""
     }
     write_job(root, job)
     return job["agents"][role]
+
+
+def record_agents(root, job_id: str, agents: list[dict]) -> dict:
+    """The usage of several agents that finished together, each as record_agent takes it."""
+    return {a["role"]: record_agent(root, job_id, a["role"], a.get("model", ""), a.get("effort", ""), int(a.get("tokens", 0)), int(a.get("ms", 0)), int(a.get("tools", 0))) for a in agents}
 
 
 def changed(job: dict, root) -> tuple[list[str], int]:
@@ -579,23 +613,28 @@ def main(argv: list[str]) -> int:
     cl = sub.add_parser("clean")
     cl.add_argument("--root", default=".")
     cl.add_argument("--plan", required=True)
-    for name in ("setup", "run", "new-job", "stage", "agent", "route", "verdicts", "land", "verify", "checks"):
+    for name in ("setup", "run", "preflight", "new-job", "begin-job", "stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks"):
         sp = sub.add_parser(name)
         sp.add_argument("--root", default=".")
-        if name in ("stage", "agent", "route", "verdicts", "land", "verify", "checks"):
+        if name in ("stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks"):
             sp.add_argument("job")
+        if name == "after-agent":
+            sp.add_argument("--agents", required=True, help='JSON list of {"role","model","effort","tokens","ms","tools"}')
+        if name == "preflight":
+            sp.add_argument("--plan-file")
+            sp.add_argument("--repo-name", default="")
         if name == "verify":
             sp.add_argument("--cmd", dest="check_cmd", required=True)
             sp.add_argument("--reuse", action="store_true")
             sp.add_argument("--timeout", type=int, default=1800)
         if name == "setup":
             sp.add_argument("--plugin-root", required=True)
-        if name in ("run", "new-job"):
+        if name in ("run", "new-job", "begin-job"):
             sp.add_argument("--plan-file", required=True)
             sp.add_argument("--mode", required=True)
         if name == "run":
             sp.add_argument("--pace", default="step")
-        if name == "new-job":
+        if name in ("new-job", "begin-job"):
             sp.add_argument("--task", type=int, required=True)
             sp.add_argument("--repo-name", required=True)
             sp.add_argument("--branch", required=True)
@@ -640,8 +679,14 @@ def main(argv: list[str]) -> int:
         out: dict = {"ok": True}
     elif a.cmd == "run":
         out = write_run(a.root, a.plan_file, a.mode, a.pace)
+    elif a.cmd == "preflight":
+        out = preflight(a.root, a.plan_file, a.repo_name)
     elif a.cmd == "new-job":
         out = new_job(a.root, a.plan_file, a.task, a.repo_name, a.mode, a.branch, a.worktree, a.base)
+    elif a.cmd == "begin-job":
+        out = begin_job(a.root, a.plan_file, a.task, a.repo_name, a.mode, a.branch, a.worktree, a.base)
+    elif a.cmd == "after-agent":
+        out = record_agents(a.root, a.job, json.loads(a.agents))
     elif a.cmd == "stage":
         out = {"id": a.job, "stage": set_stage(a.root, a.job, a.stage_name)["stage"]}
     elif a.cmd == "agent":

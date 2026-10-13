@@ -11,19 +11,21 @@ Open every agent prompt with the job's coordinates (`<paths>` below): its folder
 worktree path, the branch, the mode and the base, then `State: python3 <plugin root>/scripts/state.py`, the job id and the repo root `<repo>`: the agents run
 and read checks with them (`verify`, `checks`). A reviewer and the approver also get `Diff: <path>`, the `diff` that `state.py route` printed.
 
-When an agent finishes, the spawn result carries its usage (`subagent_tokens`, `tool_uses`, `duration_ms`). Record it at once:
-`state.py agent <job-id> <role> --model <m> --effort <e> --tokens <n> --ms <n> --tools <n>` (roles `builder`, `code`, `security`,
-`ux`, `ui`, `approver`; leave `--effort` empty when the host did not accept one). The progress views show who has the job, on which
+When an agent finishes, the spawn result carries its usage (`subagent_tokens`, `tool_uses`, `duration_ms`). Record it at once, with all the agents that finished together in one call:
+`state.py after-agent <job-id> --agents '[{"role":"code","model":"sonnet","effort":"medium","tokens":9000,"ms":20000,"tools":5}]'` (roles `builder`, `code`,
+`security`, `ux`, `ui`, `approver`; leave `effort` empty when the host did not accept one; `state.py agent <job-id> <role> --model <m> --effort <e> --tokens <n>
+--ms <n> --tools <n>` records one agent). The progress views show who has the job, on which
 model, and what it cost in time and tokens. The usage of your own session is not included: it is not reported to you.
 
 0. **Once per run.** Take the run lock (see `lock.md`), then `state.py setup --plugin-root <plugin root>` (creates `factory/jobs/`, ignored by git, and copies the
    dashboard) and `state.py run --plan-file <plan> --mode <mode> --pace <pace>` (writes the run state: total, tasks, and `done`
    counted from the landed jobs).
 1. **Create** the job. In isolated mode create the branch and worktree first, and only then write `job.json`:
-   `state.py new-job --plan-file <plan> --task <n> --repo-name <name> --mode <mode> --branch <b> --worktree <w>` claims the next job
-   id, writes `task.md` and `job.json` and prints the id, so a crash never leaves a job without its worktree. A job folder that has
+   `state.py begin-job --plan-file <plan> --task <n> --repo-name <name> --mode <mode> --branch <b> --worktree <w>` claims the next job
+   id, writes `task.md` and `job.json`, moves the job to `build` and prints the id, so a crash never leaves a job without its worktree
+   (`new-job` does the same without the move). A job folder that has
    no `job.json` is an abandoned claim: start the task fresh.
-2. **Build.** `state.py stage <job> build`. Spawn the `builder` with the model and effort of the task's tier in `<plugin root>/tiers.md`,
+2. **Build.** The job is in `build` already; on a resume or a rework set it with `state.py stage <job> build`. Spawn the `builder` with the model and effort of the task's tier in `<plugin root>/tiers.md`,
    prompt `<paths> Build round 1.` plus `Port: <5100+10n>` (n = job number), and name it `builder-<job-id>` where the host allows it.
    Some hosts' spawn tool takes the model but does not accept an effort or a name: pass what it accepts, and in `agents` record
    the model and leave `effort` empty, never one that was not applied. Keep the agent id the spawn returns; it replaces the name

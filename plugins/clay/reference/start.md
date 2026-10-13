@@ -4,22 +4,23 @@ Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is t
 
 ## Resolving a plan
 
-For `factory-run` without a plan, run `python3 <plugin root>/scripts/resolve.py plans --root <repo>`: one plan with open
-steps is the plan; none, point to `factory-brainstorm` and `factory-plan`. Several: the question tool shows at most 4
+For `factory-run` without a plan, run `python3 <plugin root>/scripts/state.py preflight --root <repo>` (it lists `plans`, the plans with open steps, and `unclassified`;
+`resolve.py plans` is the script behind it): one plan with open steps is the plan; none, point to `factory-brainstorm` and `factory-plan`. Several: the question tool shows at most 4
 options, so list the 4 most recent (by the date in the file name) as path and open over total tasks, say how many more
 there are, and accept a fragment of a name typed by the user (match it the same way as a job token).
 
 A plan's declared `status:` (completed, done, shipped, superseded) closes it whatever its checkboxes say (the convention of
-plan tools that keep a front matter status); a task with no steps is not runnable. Two more calls guard the lists:
-`resolve.py plans --unclassified` lists plans with no steps and no declared status (never offered to run; tell the user how
-many there are), and `resolve.py plans --audit` is the second check: a plan declared closed whose planned commits and created
-files are not in the repo, or an open plan whose tasks all show them. Run the audit when a plan is chosen and, if it names
+plan tools that keep a front matter status); a task with no steps is not runnable. Two more checks guard the lists, both part of the preflight:
+`unclassified` lists plans with no steps and no declared status (never offered to run; tell the user how
+many there are), and `audit` is the second check (`resolve.py plans --unclassified` and `--audit` print them alone): a plan declared closed whose planned commits and created
+files are not in the repo, or an open plan whose tasks all show them. The preflight with a plan returns the audit for that plan only: if it names
 that plan, tell the user in one line and ask before running.
 
 ## Preconditions (run)
 
-1. The plan file exists. Parse it: `python3 <plugin root>/scripts/factory_plan.py <plan> --repo <name> --root <repo>`.
-   If there are no tasks, point to the `factory-brainstorm` and `factory-plan` skills and stop.
+1. The plan file exists. One call gathers what the start needs: `python3 <plugin root>/scripts/state.py preflight --root <repo> --plan-file <plan> --repo-name <name>`.
+   It returns `plan` (the plan parsed, as `factory_plan.py <plan> --repo <name> --root <repo>` prints it), `jobs` (the jobs the plan already has, for Resume), `audit` (what
+   the audit says about this plan) and `unclassified`. If there are no tasks, point to the `factory-brainstorm` and `factory-plan` skills and stop.
 2. Tell the user which defaults the parser applied (`defaults_applied`) and any `warnings`, in one line per task.
    Then look for work that may already be done: a task that has no job and carries `done_signals` (its planned commit
    is already in the git history, or every file it creates exists) may already be implemented, for instance a plan that
@@ -31,7 +32,7 @@ that plan, tell the user in one line and ask before running.
 
 ## Resume
 
-`run` is idempotent. Read the plan and `factory/jobs/`, then classify each task:
+`run` is idempotent. Take the plan and the `jobs` from the preflight, then classify each task:
 
 | State | Found | Action |
 |-------|-------|--------|

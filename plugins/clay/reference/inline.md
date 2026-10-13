@@ -4,7 +4,7 @@ Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is t
 
 `/factory-run <plan> inline` builds in this session instead of in a `builder` subagent, to save the start-up of one agent per task
 (about 12 seconds and 12 thousand tokens). It is allowed only when every runnable task has tier `light`; otherwise say which task
-is not and run normally. Do everything of the Job loop (`job-loop.md`) except step 2: set `state.py stage <job> build`, read
+is not and run normally. Do everything of the Job loop (`job-loop.md`) except step 2: make sure the job is in `build`, read
 `<plugin root>/agents/builder.md`, and do that agent's work yourself in the job's worktree, writing `build.md` as it says. Record no
 `builder` usage. Then go on at step 3: routing decides as usual, so the short path (approver only) applies when `lite` is true, and a
 task whose diff grew past it gets its reviewers after the fact. The `approver` and every reviewer stay subagents: the change must

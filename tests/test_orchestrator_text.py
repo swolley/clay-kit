@@ -181,7 +181,7 @@ def test_approver_model_depends_on_risk():
 
 def test_run_uses_the_state_script_for_bookkeeping():
     t = reference()
-    for cmd in ("state.py new-job", "state.py route", "state.py verdicts", "state.py agent", "state.py land", "state.py stage"):
+    for cmd in ("state.py begin-job", "state.py route", "state.py verdicts", "state.py after-agent", "state.py land", "state.py stage"):
         assert cmd in t, cmd
 
 
@@ -288,3 +288,10 @@ def test_agents_read_the_diff_file_and_the_recorded_checks():
     assert "verify" in read("agents/builder.md") and "--reuse" in read("agents/reviewer-code.md")
     approver = read("agents/approver.md")
     assert "current: true" in approver and "without `--reuse`" in approver and "carried" in approver
+
+
+def test_the_composite_commands_replace_the_step_by_step_calls_in_the_loop():
+    loop, start = read("reference/job-loop.md"), read("reference/start.md")
+    assert "state.py begin-job" in loop and "state.py after-agent" in loop and "in one call" in loop
+    assert "state.py preflight" in start and "`jobs`" in start and "`audit`" in start
+    assert "state.py new-job" not in start and "factory_plan.py <plan> --repo <name> --root <repo>` prints it" in start
