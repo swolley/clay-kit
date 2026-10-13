@@ -1,1 +1,16 @@
-{ "id": "001-add-endpoint", "plan": "2026-10-13-api-work", "task": 1, "repo": "api", "mode": "isolated", "tier": "careful", "branch": "factory/api-work/001-add-endpoint", "worktree": "/tmp/x", "stage": "build", "round": 0, "reviewers": [], "reviews": {} }
+{
+  "id": "001-add-endpoint",
+  "plan": "2026-10-13-api-work",
+  "task": 1,
+  "repo": "api",
+  "mode": "isolated",
+  "tier": "careful",
+  "branch": "factory/api-work/001-add-endpoint",
+  "worktree": "/tmp/x",
+  "stage": "build",
+  "round": 0,
+  "reviewers": [],
+  "reviews": {},
+  "started": "2026-10-13T10:00:00Z",
+  "updated": "2026-10-13T10:12:00Z"
+}

@@ -2,9 +2,14 @@
 
 export type Stage = 'spec' | 'build' | 'waiting-input' | 'review' | 'approve' | 'merged' | 'committed' | 'needs-human'
 
+export type PlanTask = { n: number; title: string; tier: string; after: number[] }
+
 export type Job = {
   id: string
   plan: string
+  task: number
+  started: number | null
+  updated: number | null
   repo: string
   tier: string
   stage: Stage
@@ -13,15 +18,29 @@ export type Job = {
   reviews: Record<string, string>
 }
 
-export type Run = { plan: string; total: number; done: number }
+export type Run = { plan: string; total: number; done: number; tasks: PlanTask[] }
 
-export type PlanView = { plan: string; total: number; done: number; running: Job[]; waiting: Job[] }
+export type PlanView = {
+  plan: string
+  total: number
+  done: number
+  running: Job[]
+  waiting: Job[]
+  finished: Job[]
+  planned: PlanTask[]
+}
 
 export type Summary = { plans: PlanView[]; waiting: number; running: number }
 
 const STAGES: readonly string[] = ['spec', 'build', 'waiting-input', 'review', 'approve', 'merged', 'committed', 'needs-human']
 const LANDED: readonly string[] = ['merged', 'committed']
 const NEEDS_USER: readonly string[] = ['needs-human', 'waiting-input']
+
+const toMs = (v: unknown): number | null => {
+  if (typeof v !== 'string') return null
+  const t = Date.parse(v)
+  return Number.isNaN(t) ? null : t
+}
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
@@ -38,6 +57,9 @@ export function parseJob(text: string): Job | null {
   return {
     id: raw.id,
     plan: raw.plan,
+    task: typeof raw.task === 'number' ? raw.task : 0,
+    started: toMs(raw.started),
+    updated: toMs(raw.updated),
     repo: typeof raw.repo === 'string' ? raw.repo : '',
     tier: typeof raw.tier === 'string' ? raw.tier : 'medium',
     stage: raw.stage as Stage,
@@ -55,7 +77,20 @@ export function parseRun(text: string): Run | null {
     return null
   }
   if (!isRecord(raw) || typeof raw.plan !== 'string') return null
-  return { plan: raw.plan, total: typeof raw.total === 'number' ? raw.total : 0, done: typeof raw.done === 'number' ? raw.done : 0 }
+  const tasks: PlanTask[] = []
+  if (Array.isArray(raw.tasks)) {
+    for (const t of raw.tasks) {
+      if (isRecord(t) && typeof t.n === 'number' && typeof t.title === 'string') {
+        tasks.push({
+          n: t.n,
+          title: t.title,
+          tier: typeof t.tier === 'string' ? t.tier : 'medium',
+          after: Array.isArray(t.after) ? t.after.filter((x): x is number => typeof x === 'number') : [],
+        })
+      }
+    }
+  }
+  return { plan: raw.plan, total: typeof raw.total === 'number' ? raw.total : 0, done: typeof raw.done === 'number' ? raw.done : 0, tasks }
 }
 
 export function summarize(runs: Run[], jobs: Job[]): Summary {
@@ -67,12 +102,15 @@ export function summarize(runs: Run[], jobs: Job[]): Summary {
   for (const [plan, list] of plans) {
     const run = runs.find(r => r.plan === plan)
     const landed = list.filter(j => LANDED.includes(j.stage)).length
+    const started = new Set(list.map(j => j.task))
     views.push({
       plan,
-      total: run && run.total > 0 ? run.total : list.length,
+      total: run && run.total > 0 ? run.total : run && run.tasks.length > 0 ? run.tasks.length : list.length,
       done: Math.max(run?.done ?? 0, landed),
       running: list.filter(j => !LANDED.includes(j.stage) && !NEEDS_USER.includes(j.stage)),
       waiting: list.filter(j => NEEDS_USER.includes(j.stage)),
+      finished: list.filter(j => LANDED.includes(j.stage)),
+      planned: (run?.tasks ?? []).filter(t => !started.has(t.n)),
     })
   }
   return {
@@ -178,4 +216,63 @@ export async function scan(fs: Fs): Promise<{ runs: Run[]; jobs: Job[] }> {
     }
   }
   return { runs, jobs }
+}
+
+export function percent(done: number, total: number): number {
+  if (total <= 0) return 0
+  return Math.min(100, Math.max(0, Math.round((100 * done) / total)))
+}
+
+export const STAGE_STEPS = 5
+
+// Where a job sits on a five-step track: spec, build, review, approve, landed.
+export function stageStep(job: Job): number {
+  switch (job.stage) {
+    case 'spec':
+      return 1
+    case 'build':
+    case 'waiting-input':
+      return 2
+    case 'review':
+      return 3
+    case 'approve':
+      return 4
+    case 'needs-human':
+      return job.round > 0 ? 4 : 2
+    default:
+      return 5
+  }
+}
+
+const TIER_COLORS: Record<string, string> = { light: 'green', medium: 'blue', careful: 'yellow', heavy: 'red', fable: 'magenta' }
+
+export function tierColor(tier: string): string {
+  return TIER_COLORS[tier] ?? TIER_COLORS.medium!
+}
+
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const sec = String(total % 60).padStart(2, '0')
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`
+}
+
+// A live job counts up to now; a landed one stops at its last update.
+export function jobElapsed(job: Job, now: number): number | null {
+  if (job.started === null) return null
+  const end = LANDED.includes(job.stage) && job.updated !== null ? job.updated : now
+  return Math.max(0, end - job.started)
+}
+
+// From the first start to now, or to the last landing once every job has landed.
+export function planElapsed(view: PlanView, now: number): number | null {
+  const jobs = [...view.running, ...view.waiting, ...view.finished]
+  const starts = jobs.map(j => j.started).filter((t): t is number => t !== null)
+  if (starts.length === 0) return null
+  const first = Math.min(...starts)
+  const allLanded = view.running.length === 0 && view.waiting.length === 0 && view.finished.length > 0
+  const ends = view.finished.map(j => j.updated).filter((t): t is number => t !== null)
+  const end = allLanded && ends.length > 0 ? Math.max(...ends) : now
+  return Math.max(0, end - first)
 }

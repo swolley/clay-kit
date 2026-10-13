@@ -79,3 +79,9 @@ def test_progress_mod_is_wired_into_the_plugin():
     assert "factory-progress" in reg and "factory-agents" in reg
     assert "factory:progress" not in reg and "factory:agents" not in reg
     assert (PLUGIN / "types/index.d.ts").exists()
+
+
+def test_job_state_carries_times_and_run_state_carries_the_task_list():
+    t = read("reference/orchestrator.md")
+    assert "`started`" in t and "`updated`" in t and "ISO 8601" in t
+    assert "`tasks`" in t and "`after`" in t

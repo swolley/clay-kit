@@ -1,7 +1,22 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import { activePlans, bar, barParts, phaseLabel, scan, summarize, waitingIds, waitingLabel } from './model'
+import {
+  STAGE_STEPS,
+  activePlans,
+  barParts,
+  formatDuration,
+  jobElapsed,
+  percent,
+  phaseLabel,
+  planElapsed,
+  scan,
+  stageStep,
+  summarize,
+  tierColor,
+  waitingIds,
+  waitingLabel,
+} from './model'
 import type { Fs, Job, PlanView, Summary } from './model'
 
 const PANE = 'factory-agents'
@@ -9,8 +24,12 @@ const POLL_MS = 3000
 
 const view = atom({ plugin: 'factory', key: 'view' } as const, { plans: [], waiting: 0, running: 0 } as Summary)
 const isHidden = atom({ plugin: 'factory', key: 'isHidden' } as const, false)
+const isFinishedOpen = atom({ plugin: 'factory', key: 'isFinishedOpen' } as const, false)
 
 const verdictColor = (verdict: string | undefined) => (verdict === 'PASS' ? 'green' : verdict === 'CHANGES' ? 'red' : undefined)
+
+// Plans that need the user first, then the ones running, then the rest.
+const byNeed = (a: PlanView, b: PlanView) => b.waiting.length - a.waiting.length || b.running.length - a.running.length
 
 export const register: Register = on => {
   let timer: { cancel: () => void } | undefined
@@ -73,9 +92,11 @@ export const register: Register = on => {
     const active = activePlans(summary)
     const lead = active[0]
     if (!lead) return next(e)
+    const now = await $.clock.now()
     const more = active.length > 1 ? ` +${active.length - 1} plans` : ''
     const phases = [...new Set(lead.running.map(phaseLabel))].join(', ')
     const parts = barParts(lead.done, lead.total)
+    const elapsed = planElapsed(lead, now)
 
     return (
       <Box>
@@ -83,7 +104,8 @@ export const register: Register = on => {
         <Text color="green">{parts.filled}</Text>
         <Text dimColor>{parts.empty}</Text>
         <Text bold> {lead.done}/{lead.total} </Text>
-        <Text dimColor>{lead.plan}{more}{phases ? ` · ${phases}` : ''} </Text>
+        <Text>{percent(lead.done, lead.total)}% </Text>
+        <Text dimColor>{lead.plan}{more}{elapsed === null ? '' : ` · ${formatDuration(elapsed)}`}{phases ? ` · ${phases}` : ''} </Text>
         {summary.waiting > 0 && <Text bold color="yellow">· waiting for you: {waitingLabel(summary)} </Text>}
         <Button key="hide" label="Hide" onPress={() => update($, isHidden, () => true)} />
       </Box>
@@ -91,28 +113,64 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
     const summary = await read($, view)
     if (summary.plans.length === 0) return <Text dimColor>No factory jobs found here.</Text>
+    const now = await $.clock.now()
+    const isOpen = await read($, isFinishedOpen)
 
-    const line = (job: Job) => (
-      <Box>
-        <Text bold={job.stage === 'needs-human' || job.stage === 'waiting-input'}>{job.id} </Text>
-        <Text dimColor>{job.tier} · {phaseLabel(job)} </Text>
-        {job.reviewers.map(r => (
-          <Text color={verdictColor(job.reviews[r])}>{r}:{job.reviews[r] ?? 'pending'} </Text>
-        ))}
-      </Box>
-    )
+    const jobLine = (job: Job) => {
+      const bar = barParts(stageStep(job), STAGE_STEPS, STAGE_STEPS)
+      const spent = jobElapsed(job, now)
+      return (
+        <Box>
+          <Text bold={job.stage === 'needs-human' || job.stage === 'waiting-input'}>  {job.id} </Text>
+          <Text color={tierColor(job.tier)}>{job.tier} </Text>
+          <Text color={tierColor(job.tier)}>{bar.filled}</Text>
+          <Text dimColor>{bar.empty} {phaseLabel(job)}{spent === null ? '' : ` · ${formatDuration(spent)}`} </Text>
+          {job.reviewers.map(r => (
+            <Text color={verdictColor(job.reviews[r])}>{r}:{job.reviews[r] ?? 'pending'} </Text>
+          ))}
+        </Box>
+      )
+    }
+
+    const plan = (p: PlanView) => {
+      const parts = barParts(p.done, p.total)
+      const elapsed = planElapsed(p, now)
+      return (
+        <Box flexDirection="column">
+          <Box>
+            <Text bold>{p.plan} </Text>
+            <Text color="green">{parts.filled}</Text>
+            <Text dimColor>{parts.empty}</Text>
+            <Text bold> {p.done}/{p.total} </Text>
+            <Text>{percent(p.done, p.total)}%</Text>
+            <Text dimColor>{elapsed === null ? '' : ` · ${formatDuration(elapsed)}`}</Text>
+          </Box>
+          {p.waiting.length > 0 && <Text bold color="yellow">Waiting for you · {p.waiting.length}</Text>}
+          {p.waiting.map(jobLine)}
+          {p.running.length > 0 && <Text bold>Running · {p.running.length}</Text>}
+          {p.running.map(jobLine)}
+          {p.finished.length > 0 && (
+            <Button key={`fin-${p.plan}`} label={`${isOpen ? '▾' : '▸'} Finished · ${p.finished.length}`} onPress={() => update($, isFinishedOpen, () => !isOpen)} />
+          )}
+          {isOpen && p.finished.map(jobLine)}
+          {p.planned.length > 0 && <Text bold>Planned · {p.planned.length}</Text>}
+          {p.planned.map(t => (
+            <Box>
+              <Text dimColor>  {t.n}. {t.title} </Text>
+              <Text color={tierColor(t.tier)}>{t.tier}</Text>
+              <Text dimColor>{t.after.length > 0 ? ` · after ${t.after.join(', ')}` : ''}</Text>
+            </Box>
+          ))}
+        </Box>
+      )
+    }
 
     return (
-      <Box flexDirection="column">
-        {summary.plans.map((p: PlanView) => (
-          <Box flexDirection="column">
-            <Text bold>{p.plan} {bar(p.done, p.total)} {p.done}/{p.total}</Text>
-            {[...p.waiting, ...p.running].map(line)}
-          </Box>
-        ))}
+      <Box flexDirection="column" gap={1}>
+        {[...summary.plans].sort(byNeed).map(plan)}
       </Box>
     )
   })

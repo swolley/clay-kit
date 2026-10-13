@@ -15,7 +15,7 @@ runtime sits under `<repo>/factory/jobs/`, which git never tracks:
 
 | Path under `factory/jobs/` | Written by | Holds |
 |---|---|---|
-| `_runs/<plan-slug>.json` | you | the mode chosen for the run, the integration branch, the plan path, and the task counts `total` and `done` (set at the start, `done` raised each time a job lands); the progress band reads them |
+| `_runs/<plan-slug>.json` | you | the mode chosen for the run, the integration branch, the plan path, the task counts `total` and `done` (set at the start, `done` raised each time a job lands), and `tasks`, the planned tasks as `{ "n", "title", "tier", "after" }` written at the start (`after` lists the task numbers it waits for); the progress mod reads them |
 | `<job-id>/job.json` | you, only you | the job's state; the dashboard reads it |
 | `<job-id>/task.md` | you | the task brief, copied from the plan |
 | `<job-id>/build.md` | builder | what was built and the proof |
@@ -32,10 +32,12 @@ session got there first, so try the next counter value. `job.json`:
 ```json
 { "id": "003-rate-limit", "plan": "2026-10-13-x", "task": 3, "repo": "api", "mode": "isolated",
   "tier": "careful", "branch": "factory/x/003-rate-limit", "worktree": "/abs/path",
-  "stage": "review", "round": 2, "reviewers": ["code", "security"],
+  "stage": "review", "round": 2, "started": "2026-10-13T10:00:00Z", "updated": "2026-10-13T10:12:30Z", "reviewers": ["code", "security"],
   "reviews": { "code": "PASS", "security": "pending" } }
 ```
 
+`started` and `updated` are ISO 8601 UTC timestamps: set `started` when the job is created and refresh `updated`
+on every change (the progress mod shows elapsed time from them).
 `stage` is `spec`, `build`, `waiting-input`, `review`, `approve`, `merged`, `committed` or `needs-human`. Replace
 the file as a whole each time it changes. `reviews` holds the current round; earlier rounds stay in their folders.
 Before the first job, create `factory/jobs/` with a `factory/jobs/.gitignore` containing `*` (it ignores itself, so

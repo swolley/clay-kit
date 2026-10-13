@@ -244,11 +244,15 @@ in the working folder and one level below it (a workspace root with several repo
   highlighted, the ids of the jobs waiting for the user (three at most, then `+N`). A Hide button, and the `factory-progress` command, toggle it.
 - **Toast** when a job starts waiting for the user (`needs-human` or `waiting-input`), and once at start-up if
   some already are.
-- **Pane** with the plans, their jobs and each job's reviewer verdicts, opened by the `factory-agents` command.
+- **Pane** (`factory-agents`) with, per plan, the same bar with percentage and elapsed time and these sections: Waiting for
+  you, Running, Finished (collapsible) and Planned (task title, tier, `after` dependencies). Each job line shows its tier
+  in a color, a five-step track (spec, build, review, approve, landed), the phase, the elapsed time and the reviewer verdicts.
 - Commands are `factory-progress` and `factory-agents`. A mod command name may only hold letters, digits, `_` and `-`:
   the engine refused `factory:progress` in a live session (verified 2026-10-13), so the colon form that skills get from
   their plugin namespace is not available to mod commands.
-- The run file carries `total` and `done` so the mod never parses plans. The pure logic (parsing, summary, bar,
+- The run file carries `total`, `done` and the planned `tasks`, and each `job.json` carries `started` and `updated`
+  timestamps, so the mod never parses plans and can show elapsed time. Cost and tokens are not shown: the factory
+  does not record them. The pure logic (parsing, summary, bar,
   scan of the folders with an injected file system) is in `hooks/model.ts` and tested with Node's runner.
 - Hosts without mods ignore the folder; nothing else depends on it.
 

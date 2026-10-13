@@ -2,6 +2,9 @@
 export type FactoryJob = {
   id: string
   plan: string
+  task: number
+  started: number | null
+  updated: number | null
   repo: string
   tier: string
   stage: 'spec' | 'build' | 'waiting-input' | 'review' | 'approve' | 'merged' | 'committed' | 'needs-human'
@@ -10,14 +13,24 @@ export type FactoryJob = {
   reviews: Record<string, string>
 }
 
+export type FactoryPlanTask = { n: number; title: string; tier: string; after: number[] }
+
 export type FactorySummary = {
-  plans: { plan: string; total: number; done: number; running: FactoryJob[]; waiting: FactoryJob[] }[]
+  plans: {
+    plan: string
+    total: number
+    done: number
+    running: FactoryJob[]
+    waiting: FactoryJob[]
+    finished: FactoryJob[]
+    planned: FactoryPlanTask[]
+  }[]
   waiting: number
   running: number
 }
 
 declare module 'claude-code' {
   interface PluginState {
-    factory: { view: FactorySummary; isHidden: boolean }
+    factory: { view: FactorySummary; isHidden: boolean; isFinishedOpen: boolean }
   }
 }

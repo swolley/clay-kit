@@ -1,1 +1,24 @@
-{ "id": "002-login-form", "plan": "2026-10-13-api-work", "task": 2, "repo": "ui", "mode": "isolated", "tier": "medium", "branch": "factory/api-work/002-login-form", "worktree": "/tmp/y", "stage": "review", "round": 1, "reviewers": ["code", "ux", "ui"], "reviews": { "code": "PASS", "ux": "CHANGES", "ui": "pending" } }
+{
+  "id": "002-login-form",
+  "plan": "2026-10-13-api-work",
+  "task": 2,
+  "repo": "ui",
+  "mode": "isolated",
+  "tier": "medium",
+  "branch": "factory/api-work/002-login-form",
+  "worktree": "/tmp/y",
+  "stage": "review",
+  "round": 1,
+  "reviewers": [
+    "code",
+    "ux",
+    "ui"
+  ],
+  "reviews": {
+    "code": "PASS",
+    "ux": "CHANGES",
+    "ui": "pending"
+  },
+  "started": "2026-10-13T10:02:00Z",
+  "updated": "2026-10-13T10:09:00Z"
+}
