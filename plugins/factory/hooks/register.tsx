@@ -70,7 +70,11 @@ const fillFor = (job: Job) =>
 const bar = (elements: any, label: string, done: number, total: number, px: number, fill: string, glyph: string, cols: number) => {
   const Svg = 'Svg' in elements ? elements.Svg : undefined
   if (!Svg) return labeled(elements.Box, elements.Text, label, done, total, cols, glyph)
-  return <Svg source={pillBar({ label, done, total, width: px, fill, track: TRACK })} alt={label} width={px} height={20} />
+  return (
+    <Box alignSelf="center" flexShrink={0}>
+      <Svg source={pillBar({ label, done, total, width: px, fill, track: TRACK })} alt={label} width={px} height={20} />
+    </Box>
+  )
 }
 
 // A summary tile: a rounded SVG where vector art is drawn, a bordered box elsewhere.
@@ -79,7 +83,11 @@ const tile = (elements: any, label: string, value: string, color?: string) => {
   const { Box, Text } = elements
   const Svg = 'Svg' in elements ? elements.Svg : undefined
   if (Svg) {
-    return <Svg source={tilePill({ label, value, valueColor: color, bg: '#1b2029', border: TRACK })} alt={`${label} ${value}`} width={118} height={46} />
+    return (
+      <Box alignSelf="center" flexShrink={0}>
+        <Svg source={tilePill({ label, value, valueColor: color, bg: '#1b2029', border: TRACK })} alt={`${label} ${value}`} width={118} height={46} />
+      </Box>
+    )
   }
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={TRACK} paddingX={1} minWidth={14}>

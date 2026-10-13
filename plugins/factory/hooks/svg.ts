@@ -47,7 +47,7 @@ export function pillBar(o: PillBar): string {
     `<svg xmlns="http://www.w3.org/2000/svg" width="${o.width}" height="${h}" viewBox="0 0 ${o.width} ${h}">` +
     `<defs><clipPath id="shape"><rect width="${o.width}" height="${h}" rx="${r}"/></clipPath></defs>` +
     `<rect width="${o.width}" height="${h}" rx="${r}" fill="${o.track}"/>${fill}` +
-    `<text x="${r}" y="${r}" dominant-baseline="central" font-family="${FONT}" font-size="12" font-weight="600" fill="#ffffff">${escapeXml(label)}</text>` +
+    `<text x="${r}" y="${r + 0.5}" dominant-baseline="central" font-family="${FONT}" font-size="12" font-weight="600" fill="#ffffff">${escapeXml(label)}</text>` +
     `</svg>`
   )
 }
