@@ -241,7 +241,7 @@ in the working folder and one level below it (a workspace root with several repo
 - **Band above the prompt**, on a single row, while any job is running or waiting: a small factory icon (vector art, only
   on surfaces that draw it), a status dot, the plan that needs the user most (`+N` for other active plans), one solid
   bar with its label written inside it (`Tasks 1/5 · build, review r1 1/3`: the done part green, the rest dark), the
-  the first waiting job id highlighted (`+N` for more), `×N` for the running jobs, and a `×` button to
+  first waiting job id highlighted (`+N` for more), `×N` for the running jobs, and a `×` button to
   hide it. Elapsed time is not shown here, only in the pane.
 - **Toast** when a job starts waiting for the user (`needs-human` or `waiting-input`), and once at start-up if
   some already are.
