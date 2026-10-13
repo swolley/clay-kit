@@ -238,6 +238,10 @@ A Claude Code mod in `plugins/factory/hooks/` draws the progress inside the inte
 files the run command already writes: every few seconds it reads `factory/jobs/*/job.json` and `factory/jobs/_runs/*.json`
 in the working folder and one level below it (a workspace root with several repos).
 
+- **Rounded shapes.** Where the surface draws vector art (desktop, editor, mobile) the bars and the summary tiles are SVG
+  documents with truly rounded ends, built by `hooks/svg.ts` (every label is XML-escaped and truncated to fit); where it does
+  not (terminal) they fall back to colored text cells and a box-drawing border. Half-circle glyphs as caps were tried and
+  rejected: they render as stray dots.
 - **Band above the prompt**, on a single row, while any job is running or waiting: a status dot, the plan that needs the user most (`+N` for other active plans), one solid
   bar with its label written inside it (`Tasks 1/5 · build, review r1 1/3`: the done part green, the rest dark), the
   first waiting job id highlighted (`+N` for more), `×N` for the running jobs, and a `×` button to
@@ -247,8 +251,8 @@ in the working folder and one level below it (a workspace root with several repo
 - **Pane** (`factory-agents`) with, per plan, the same bar with the elapsed time and these sections: Waiting for
   you, Running, Finished (collapsible) and Planned (task title, tier, `after` dependencies). Each job is a two-line card: status icon,
   id, tier in a color and elapsed time, then a bar on a five-step track (spec, build, review, approve, landed) with the
-  phase written inside it, and the reviewers as small badges (green `PASS`, red `CHANGES` marked `!`, gray pending marked `…`,
-  `security` shortened to `sec`; the mark is a cue besides color), with a legend under the tiles. The top of the pane has summary tiles (running, waiting, landed,
+  phase written inside it, and the reviewers as LEDs: a colored dot (green `PASS`, red `CHANGES`, gray pending) with the name beside it
+  (`security` shortened to `sec`; a `!` or `…` after the name is a cue besides color), with a legend under the tiles. The top of the pane has summary tiles (running, waiting, landed,
   elapsed).
 - Commands are `factory-progress` and `factory-agents`. A mod command name may only hold letters, digits, `_` and `-`:
   the engine refused `factory:progress` in a live session (verified 2026-10-13), so the colon form that skills get from

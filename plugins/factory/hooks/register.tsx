@@ -19,6 +19,7 @@ import {
   waitingLabel,
 } from './model'
 import type { Fs, Job, PlanView, Summary } from './model'
+import { pillBar, tierFill, tilePill } from './svg'
 
 const PANE = 'factory-agents'
 const POLL_MS = 3000
@@ -27,19 +28,18 @@ const view = atom({ plugin: 'factory', key: 'view' } as const, { plans: [], wait
 const isHidden = atom({ plugin: 'factory', key: 'isHidden' } as const, false)
 const isFinishedOpen = atom({ plugin: 'factory', key: 'isFinishedOpen' } as const, false)
 
-const verdictBackground = (verdict: string | undefined) => (verdict === 'PASS' ? '#3fb97c' : verdict === 'CHANGES' ? '#e5675c' : '#4a5163')
+const ledColor = (verdict: string | undefined) => (verdict === 'PASS' ? '#3fb97c' : verdict === 'CHANGES' ? '#e5675c' : '#7d879a')
 
 // Plans that need the user first, then the ones running, then the rest.
 const byNeed = (a: PlanView, b: PlanView) => b.waiting.length - a.waiting.length || b.running.length - a.running.length
 
 const TRACK = '#343a48'
 const OK = '#3fb97c'
+const OK_FILL = '#2a8f5f'
+const WAIT_FILL = '#a87415'
 const WAIT = '#f2c230'
 
 const INK = '#0c0f15'
-// Round ends for bars and badges. If the font draws them badly, set both to '' to get square ends.
-const CAP_L = ''
-const CAP_R = ''
 const SOFT = '#d8dde8'
 
 // A solid bar with its label written inside it: the part under the fill and the part past it are two
@@ -48,14 +48,10 @@ const SOFT = '#d8dde8'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const labeled = (Box: any, Text: any, label: string, done: number, total: number, width: number, color: string) => {
   const parts = labeledBar(label, done, total, width)
-  const left = parts.filled.length > 0 ? color : TRACK
-  const right = parts.empty.length > 0 ? TRACK : color
   return (
     <Box flexShrink={0}>
-      {CAP_L && <Text color={left}>{CAP_L}</Text>}
       {parts.filled.length > 0 && <Text bold color={INK} backgroundColor={color}>{parts.filled}</Text>}
       {parts.empty.length > 0 && <Text color={SOFT} backgroundColor={TRACK}>{parts.empty}</Text>}
-      {CAP_R && <Text color={right}>{CAP_R}</Text>}
     </Box>
   )
 }
@@ -65,18 +61,44 @@ const stateIcon = (job: Job) => (job.stage === 'merged' || job.stage === 'commit
 const stateColor = (job: Job) =>
   job.stage === 'merged' || job.stage === 'committed' ? OK : job.stage === 'needs-human' || job.stage === 'waiting-input' ? WAIT : tierColor(job.tier)
 
-// A reviewer as a small colored badge: the color is the verdict, the mark is the cue besides color.
+const fillFor = (job: Job) =>
+  job.stage === 'merged' || job.stage === 'committed' ? OK_FILL : job.stage === 'needs-human' || job.stage === 'waiting-input' ? WAIT_FILL : tierFill(job.tier)
+
+// A progress bar with its label inside. On surfaces that draw vector art it is a rounded SVG pill; elsewhere the
+// bar is built from colored text cells (`cols` wide). `elements` is what `$.ui.resolve` returned.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const badge = (Box: any, Text: any, name: string, verdict: string | undefined) => {
-  const color = verdictBackground(verdict)
+const bar = (elements: any, label: string, done: number, total: number, px: number, fill: string, glyph: string, cols: number) => {
+  const Svg = 'Svg' in elements ? elements.Svg : undefined
+  if (!Svg) return labeled(elements.Box, elements.Text, label, done, total, cols, glyph)
+  return <Svg source={pillBar({ label, done, total, width: px, fill, track: TRACK })} alt={label} width={px} height={20} />
+}
+
+// A summary tile: a rounded SVG where vector art is drawn, a bordered box elsewhere.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const tile = (elements: any, label: string, value: string, color?: string) => {
+  const { Box, Text } = elements
+  const Svg = 'Svg' in elements ? elements.Svg : undefined
+  if (Svg) {
+    return <Svg source={tilePill({ label, value, valueColor: color, bg: '#1b2029', border: TRACK })} alt={`${label} ${value}`} width={118} height={46} />
+  }
   return (
-    <Box flexShrink={0}>
-      {CAP_L && <Text color={color}>{CAP_L}</Text>}
-      <Text bold color={INK} backgroundColor={color}>{`${reviewerLabel(name)}${verdictMark(verdict)}`}</Text>
-      {CAP_R && <Text color={color}>{CAP_R}</Text>}
+    <Box flexDirection="column" borderStyle="round" borderColor={TRACK} paddingX={1} minWidth={14}>
+      <Text dimColor>{label}</Text>
+      <Text bold color={color}>{value}</Text>
     </Box>
   )
 }
+
+// A reviewer as a colored LED with its name beside it. The mark is a cue besides color.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const led = (Box: any, Text: any, name: string, verdict: string | undefined) => (
+  <Box flexShrink={0}>
+    <Text color={ledColor(verdict)}>●</Text>
+    <Text>{` ${reviewerLabel(name)}${verdictMark(verdict)}`}</Text>
+  </Box>
+)
+
+
 
 export const register: Register = on => {
   let timer: { cancel: () => void } | undefined
@@ -147,10 +169,10 @@ export const register: Register = on => {
 
     // One row, never wrapped. The time stays in the pane.
     return (
-      <Box flexWrap="nowrap" gap={1}>
+      <Box flexWrap="nowrap" gap={1} alignItems="center">
         <Text bold color={dot}>●</Text>
         <Text bold>{lead.plan.slice(0, 20)}{more}</Text>
-        {labeled(Box, Text, label, lead.done, lead.total, 46, OK)}
+        {bar(elements, label, lead.done, lead.total, 340, OK_FILL, OK, 46)}
         {summary.waiting > 0 && <Text bold color={WAIT}>waiting: {waitingLabel(summary, 1)}</Text>}
         <Text dimColor>×{summary.running}</Text>
         <Button key="hide" label="×" onPress={() => update($, isHidden, () => true)} />
@@ -159,7 +181,8 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const elements = $.ui.resolve(e)
+    const { Box, Button, Text } = elements
     const summary = await read($, view)
     if (summary.plans.length === 0) return <Text dimColor>No factory jobs found here.</Text>
     const now = await $.clock.now()
@@ -176,28 +199,21 @@ export const register: Register = on => {
             <Text color={tierColor(job.tier)}>{job.tier}</Text>
             <Text dimColor>{spent === null ? '' : formatDuration(spent)}</Text>
           </Box>
-          <Box gap={1} paddingLeft={2}>
-            {labeled(Box, Text, phaseLabel(job), stageStep(job), STAGE_STEPS, 30, color)}
-            {job.reviewers.map(r => badge(Box, Text, r, job.reviews[r]))}
+          <Box gap={1} paddingLeft={2} alignItems="center">
+            {bar(elements, phaseLabel(job), stageStep(job), STAGE_STEPS, 220, fillFor(job), color, 30)}
+            {job.reviewers.map(r => led(Box, Text, r, job.reviews[r]))}
           </Box>
         </Box>
       )
     }
 
-    const tile = (label: string, value: string, color?: string) => (
-      <Box flexDirection="column" borderStyle="round" borderColor={TRACK} paddingX={1} minWidth={14}>
-        <Text dimColor>{label}</Text>
-        <Text bold color={color}>{value}</Text>
-      </Box>
-    )
-
     const plan = (p: PlanView) => {
       const elapsed = planElapsed(p, now)
       return (
         <Box flexDirection="column">
-          <Box gap={1}>
+          <Box gap={1} alignItems="center">
             <Text bold>{p.plan}</Text>
-            {labeled(Box, Text, `Tasks ${p.done}/${p.total}`, p.done, p.total, 30, OK)}
+            {bar(elements, `Tasks ${p.done}/${p.total}`, p.done, p.total, 220, OK_FILL, OK, 30)}
             <Text dimColor>{elapsed === null ? '' : formatDuration(elapsed)}</Text>
           </Box>
           {p.waiting.length > 0 && <Text bold color={WAIT}>Waiting for you · {p.waiting.length}</Text>}
@@ -227,17 +243,17 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" gap={1}>
-        <Box gap={1}>
-          {tile('Running', String(summary.running))}
-          {tile('Waiting', String(summary.waiting), summary.waiting > 0 ? WAIT : undefined)}
-          {tile('Landed', `${landed}/${total}`, OK)}
-          {tile('Elapsed', leadElapsed === null ? '-' : formatDuration(leadElapsed))}
+        <Box gap={1} alignItems="center">
+          {tile(elements, 'Running', String(summary.running))}
+          {tile(elements, 'Waiting', String(summary.waiting), summary.waiting > 0 ? WAIT : undefined)}
+          {tile(elements, 'Landed', `${landed}/${total}`, OK)}
+          {tile(elements, 'Elapsed', leadElapsed === null ? '-' : formatDuration(leadElapsed))}
         </Box>
         <Box gap={1}>
           <Text dimColor>reviewers</Text>
-          {badge(Box, Text, 'pass', 'PASS')}
-          {badge(Box, Text, 'changes', 'CHANGES')}
-          {badge(Box, Text, 'pending', 'pending')}
+          {led(Box, Text, 'pass', 'PASS')}
+          {led(Box, Text, 'changes', 'CHANGES')}
+          {led(Box, Text, 'pending', 'pending')}
         </Box>
         {[...summary.plans].sort(byNeed).map(plan)}
       </Box>
