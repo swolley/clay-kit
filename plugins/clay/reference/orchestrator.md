@@ -205,8 +205,16 @@ question tool, listing each as its id and stage. With no match, say the `reason`
 nothing (the only eligible job), the full id, `002`, a task number, or a fragment of the id.
 
 For `factory-run` without a plan, run `python3 <plugin root>/scripts/resolve.py plans --root <repo>`: one plan with open
-steps is the plan; several, ask with the question tool, each as its path and open over total tasks; none, point to
-`factory-brainstorm` and `factory-plan`.
+steps is the plan; none, point to `factory-brainstorm` and `factory-plan`. Several: the question tool shows at most 4
+options, so list the 4 most recent (by the date in the file name) as path and open over total tasks, say how many more
+there are, and accept a fragment of a name typed by the user (match it the same way as a job token).
+
+A plan's declared `status:` (completed, done, shipped, superseded) closes it whatever its checkboxes say (the convention of
+plan tools that keep a front matter status); a task with no steps is not runnable. Two more calls guard the lists:
+`resolve.py plans --unclassified` lists plans with no steps and no declared status (never offered to run; tell the user how
+many there are), and `resolve.py plans --audit` is the second check: a plan declared closed whose planned commits and created
+files are not in the repo, or an open plan whose tasks all show them. Run the audit when a plan is chosen and, if it names
+that plan, tell the user in one line and ask before running.
 
 ## Questions from agents
 

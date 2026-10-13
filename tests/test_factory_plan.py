@@ -183,3 +183,26 @@ def test_spec_path_is_read_from_the_plan_header():
 def test_a_plan_without_a_real_spec_has_an_empty_spec():
     assert parse_plan("# P\n\n**Spec:** none (fixture)\n\n### Task 1: A\n\n- [ ] **Step 1: do**\n").spec == ""
     assert parse_plan("# P\n\n### Task 1: A\n\n- [ ] **Step 1: do**\n").spec == ""
+
+
+def test_git_subjects_include_checked_out_submodules(tmp_path):
+    import subprocess
+
+    from factory_plan import git_subjects
+
+    def git(cwd, *a):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "protocol.file.allow=always", *a], cwd=cwd, check=True, capture_output=True)
+
+    sub, main = tmp_path / "sub", tmp_path / "main"
+    for d in (sub, main):
+        d.mkdir()
+        git(d, "init", "-q")
+    (sub / "a").write_text("1")
+    git(sub, "add", "a")
+    git(sub, "commit", "-q", "-m", "feat: inside the submodule")
+    (main / "b").write_text("1")
+    git(main, "add", "b")
+    git(main, "commit", "-q", "-m", "feat: in the root")
+    git(main, "submodule", "add", "-q", str(sub), "Modules/X")
+    got = git_subjects(main)
+    assert {"feat: in the root", "feat: inside the submodule"} <= got

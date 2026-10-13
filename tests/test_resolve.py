@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugins/clay/scripts"))
-from resolve import list_plans, main, resolve_job  # noqa: E402
+from resolve import audit_plans, list_plans, list_unclassified, main, resolve_job  # noqa: E402
 
 JOBS = [
     {"id": "001-add-slugify-helper", "task": 1, "stage": "committed"},
@@ -93,3 +93,46 @@ def test_plan_with_every_task_landed_by_jobs_is_not_listed(tmp_path):
     job.mkdir(parents=True)
     (job / "job.json").write_text(json.dumps({"id": "001-x", "plan": "2026-01-02-all", "task": 1, "stage": "committed"}))
     assert list_plans(tmp_path) == []
+
+
+def _raw(root: Path, name: str, text: str):
+    d = root / "docs/superpowers/plans"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / name).write_text(text)
+
+
+def test_declared_status_closes_a_plan_whatever_its_checkboxes_say(tmp_path):
+    _raw(tmp_path, "2026-01-01-closed.md", "---\nstatus: completed\n---\n# C\n\n### Task 1: A\n\n- [ ] **Step 1: do**\n")
+    _raw(tmp_path, "2026-01-02-dropped.md", "---\nstatus: superseded\n---\n# D\n\n### Task 1: A\n\n- [ ] **Step 1: do**\n")
+    assert list_plans(tmp_path) == []
+
+
+def test_task_without_steps_is_not_open_work(tmp_path):
+    _raw(tmp_path, "2026-01-01-mixed.md", "# M\n\n### Task 1: A\n\n- [x] **Step 1: do**\n\n### Task 2: B\n\nprose only\n")
+    assert list_plans(tmp_path) == []
+
+
+def test_plan_without_steps_or_status_is_unclassified_not_open(tmp_path):
+    _raw(tmp_path, "2026-01-01-retro.md", "# R\n\n### Task 1: A\n\nprose only\n")
+    _raw(tmp_path, "2026-01-02-retro-closed.md", "---\nstatus: completed\n---\n# R\n\n### Task 1: A\n\nprose\n")
+    assert list_plans(tmp_path) == []
+    assert [p["path"] for p in list_unclassified(tmp_path)] == ["docs/superpowers/plans/2026-01-01-retro.md"]
+
+
+def test_audit_flags_declared_closed_plan_with_no_trace_in_the_repo(tmp_path):
+    _raw(
+        tmp_path,
+        "2026-01-01-claim.md",
+        "---\nstatus: completed\n---\n# C\n\n### Task 1: A\n\n**Files:**\n- Create: `src/new.py`\n\n- [ ] **Step 1: do**\n",
+    )
+    assert audit_plans(tmp_path)[0]["finding"].startswith("declared completed")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/new.py").write_text("x")
+    assert audit_plans(tmp_path) == []
+
+
+def test_audit_flags_open_plan_whose_tasks_all_show_their_files(tmp_path):
+    _raw(tmp_path, "2026-01-01-late.md", "# L\n\n### Task 1: A\n\n**Files:**\n- Create: `src/new.py`\n\n- [ ] **Step 1: do**\n")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/new.py").write_text("x")
+    assert "already show" in audit_plans(tmp_path)[0]["finding"]

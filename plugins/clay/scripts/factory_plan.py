@@ -44,11 +44,29 @@ class Task:
         return bool(states) and "open" not in states
 
 
+CLOSED = {"completed", "done", "shipped"}
+DROPPED = {"superseded", "abandoned", "cancelled"}
+
+
 @dataclass
 class Plan:
     title: str
     tasks: list[Task]
     spec: str = ""
+    status: str = ""  # the `status:` of the YAML front matter, lowercased; empty when absent
+
+    @property
+    def state(self) -> str:
+        """done, dropped, open or unclassified. A declared status wins over the checkboxes, since plans are
+        often closed in their header only; a plan with no steps and no declared status cannot be told apart, so it is unclassified."""
+        if self.status in CLOSED:
+            return "done"
+        if self.status in DROPPED:
+            return "dropped"
+        stepped = [t for t in self.tasks if t.steps]
+        if not stepped:
+            return "unclassified"
+        return "open" if any(not t.done for t in stepped) else "done"
 
 
 def _clean(text: str) -> str:
@@ -85,7 +103,20 @@ def _apply_field(task: Task, name: str, value: str) -> None:
         task.verify = value
 
 
+def front_status(text: str) -> str:
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return ""
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        if m := re.match(r"^status:\s*(.+)$", line, re.I):
+            return m.group(1).strip().strip("\"'").lower()
+    return ""
+
+
 def parse_plan(text: str, default_repo: str = "") -> Plan:
+    status = front_status(text)
     title = ""
     tasks: list[Task] = []
     current: Task | None = None
@@ -143,7 +174,7 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
             t.repo = default_repo
         if "accept" not in t.fields_seen:
             t.accept = [s.text for s in t.steps if s.state != "cancelled"]
-    return Plan(title=title, tasks=tasks, spec=spec)
+    return Plan(title=title, tasks=tasks, spec=spec, status=status)
 
 
 def check_files(files: list[str], root: Path) -> tuple[list[str], list[str]]:
@@ -166,9 +197,22 @@ def done_signals(task: Task, root: Path, subjects: set[str]) -> list[str]:
     return signals
 
 
-def git_subjects(root: Path) -> set[str]:
-    done = subprocess.run(["git", "-C", str(root), "log", "--format=%s"], capture_output=True, text=True)
+def _log_subjects(repo: Path) -> set[str]:
+    done = subprocess.run(["git", "-C", str(repo), "log", "--format=%s"], capture_output=True, text=True)
     return set(done.stdout.splitlines()) if done.returncode == 0 else set()
+
+
+def git_subjects(root: Path) -> set[str]:
+    """Commit subjects of the repo and of its checked-out submodules, since a plan's commits often land in a submodule."""
+    subjects = _log_subjects(root)
+    listed = subprocess.run(["git", "-C", str(root), "submodule", "status"], capture_output=True, text=True)
+    if listed.returncode == 0:
+        for line in listed.stdout.splitlines():
+            parts = line.split()
+            # A leading "-" marks a submodule that is not checked out: nothing to read there.
+            if len(parts) >= 2 and not line.startswith("-"):
+                subjects |= _log_subjects(root / parts[1])
+    return subjects
 
 
 def main(argv: list[str]) -> int:
@@ -179,7 +223,7 @@ def main(argv: list[str]) -> int:
     root = Path(argv[argv.index("--root") + 1]) if "--root" in argv else None
     plan = parse_plan(Path(argv[0]).read_text(), default_repo=repo)
     subjects = git_subjects(root) if root is not None else set()
-    out = {"title": plan.title, "tasks": []}
+    out = {"title": plan.title, "status": plan.status, "state": plan.state, "tasks": []}
     for t in plan.tasks:
         d = asdict(t)
         d.pop("fields_seen")

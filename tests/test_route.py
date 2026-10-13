@@ -50,7 +50,7 @@ REAL = load_rules(HERE.parent / "plugins/clay/routing.md")
 
 
 def test_nested_manifests_and_env_route_to_security():
-    for p in ["frontend/package.json", "apps/web/.env", "laraplate/routes/api.php", "svc/go.mod"]:
+    for p in ["frontend/package.json", "apps/web/.env", "backend/routes/api.php", "svc/go.mod"]:
         assert "security" in route([p], REAL), p
 
 
