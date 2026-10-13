@@ -8,10 +8,10 @@ Personal marketplace of plugins, skills and tools for Claude Code, Codex and oth
 
 ## Install (Claude Code)
 
-The repository has not been published yet. Once it is, in Claude Code:
+In Claude Code:
 
 ```
-/plugin marketplace add <owner>/swolley-kit
+/plugin marketplace add swolley/swolley-kit
 /plugin install factory@swolley-kit
 ```
 
