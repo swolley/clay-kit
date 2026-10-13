@@ -94,7 +94,7 @@ def test_orchestrator_records_the_model_and_effort_of_each_agent():
 
 def test_run_warns_about_tasks_that_may_already_be_implemented():
     t = read("reference/orchestrator.md")
-    assert "--root" in t and "files_present" in t and "already be implemented" in t
+    assert "--root" in t and "done_signals" in t and "already be implemented" in t
 
 
 def test_no_undefined_build_check_step():

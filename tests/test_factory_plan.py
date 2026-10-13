@@ -110,3 +110,66 @@ def test_indented_field_lines_are_still_fields():
 def test_unknown_tier_falls_back_to_medium_with_a_warning():
     t = parse_plan("# P\n\n### Task 1: A\n\n**Tier:** high\n\n- [ ] **Step 1: do**\n").tasks[0]
     assert t.tier == "medium" and any("high" in w for w in t.warnings)
+
+
+def test_commit_messages_are_read_from_inline_and_fenced_commit_steps():
+    text = (
+        "# P\n\n### Task 1: A\n\n- [ ] **Step 1: Commit** `feat: add parse`\n\n"
+        "### Task 2: B\n\n- [ ] **Step 1: Commit**\n\n```bash\ngit add a\ngit commit -m \"fix: handle empty input\"\n```\n"
+    )
+    plan = parse_plan(text)
+    assert plan.tasks[0].commits == ["feat: add parse"]
+    assert plan.tasks[1].commits == ["fix: handle empty input"]
+
+
+def test_create_bullets_are_told_apart_from_modify_bullets():
+    text = "# P\n\n### Task 1: A\n\n**Files:**\n- Create: `new.py`\n- Modify: `old.py:10-20`\n- Test: `t.py`\n\n- [ ] **Step 1: do**\n"
+    t = parse_plan(text).tasks[0]
+    assert t.files == ["new.py", "old.py", "t.py"] and t.files_create == ["new.py"]
+
+
+def _git(root, *args):
+    import subprocess
+
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=root, check=True, capture_output=True)
+
+
+def test_done_signals_come_from_commits_and_created_files_only(tmp_path, capsys):
+    import json
+
+    from factory_plan import main
+
+    _git(tmp_path, "init", "-q")
+    (tmp_path / "old.py").write_text("x")
+    (tmp_path / "made.py").write_text("x")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "feat: add parse")
+    plan = tmp_path / "plan.md"
+    plan.write_text(
+        "# P\n\n"
+        "### Task 1: Done by commit\n\n- [ ] **Step 1: Commit** `feat: add parse`\n\n"
+        "### Task 2: Done by created file\n\n**Files:**\n- Create: `made.py`\n\n- [ ] **Step 1: do**\n\n"
+        "### Task 3: Only modifies an existing file\n\n**Files:** `old.py`\n\n- [ ] **Step 1: do**\n\n"
+        "### Task 4: Not done\n\n**Files:**\n- Create: `nope.py`\n\n- [ ] **Step 1: Commit** `feat: other`\n"
+    )
+    assert main([str(plan), "--root", str(tmp_path)]) == 0
+    tasks = json.loads(capsys.readouterr().out)["tasks"]
+    assert [bool(t["done_signals"]) for t in tasks] == [True, True, False, False]
+    assert "feat: add parse" in tasks[0]["done_signals"][0]
+
+
+def test_a_commit_message_with_a_longer_subject_still_counts(tmp_path, capsys):
+    import json
+
+    from factory_plan import main
+
+    _git(tmp_path, "init", "-q")
+    (tmp_path / "f").write_text("x")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "feat: add dashboard and fixture jobs")
+    plan = tmp_path / "plan.md"
+    plan.write_text("# P\n\n### Task 1: A\n\n- [ ] **Step 1: Commit** `feat: add dashboard`\n\n### Task 2: B\n\n- [ ] **Step 1: Commit** `feat: add dash`\n")
+    main([str(plan), "--root", str(tmp_path)])
+    tasks = json.loads(capsys.readouterr().out)["tasks"]
+    assert bool(tasks[0]["done_signals"]) is True
+    assert bool(tasks[1]["done_signals"]) is True  # prefix match is deliberate; the user is asked, never skipped silently

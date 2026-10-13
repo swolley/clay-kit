@@ -131,6 +131,8 @@ Model invocation is controlled per skill. The orchestration logic shared by `fac
 
 At start the orchestrator checks that the plan exists and has checkbox tasks with the fields above. If not, it stops and points to `brainstorm` and `plan`. It checks that the target repo is a git repository with a clean main checkout.
 
+It also looks for work that may already be done, because a plan carried out by hand is never ticked and would otherwise be built a second time. A task that has no job gets `done_signals` from the parser when its planned commit message (from its Commit step, inline or in a fenced `git commit -m`) is already in the git history, or when every file it declares with `Create:` exists. Merely modifying a file that exists is not a signal. When any task has a signal the orchestrator says so and asks: skip and tick those tasks, build them anyway, or stop. The parser also warns about an unknown tier (it falls back to `medium`) and accepts indented field lines.
+
 ### 4.3 Isolation mode: branches and worktrees
 
 At the start of `/factory-run` the orchestrator proposes a mode through the native question tool, with isolation as the recommended option, and records the choice in the plan's run state.

@@ -73,10 +73,11 @@ failure or escalation you stop and leave the changes in the tree for the user.
 1. The plan file exists. Parse it: `python3 <plugin root>/scripts/factory_plan.py <plan> --repo <name> --root <repo>`.
    If there are no tasks, point to the `factory-brainstorm` and `factory-plan` skills and stop.
 2. Tell the user which defaults the parser applied (`defaults_applied`) and any `warnings`, in one line per task.
-   Then look for work that may already be done: a task that has no job, declares `Files`, and has all of them in
-   `files_present` (none in `files_missing`) may already be implemented, for instance a plan that was carried out by
-   hand and never ticked. Before you start anything, say so and ask with the question tool: skip those tasks (and tick
-   their steps), build them anyway, or stop. Never start such a task silently.
+   Then look for work that may already be done: a task that has no job and carries `done_signals` (its planned commit
+   is already in the git history, or every file it creates exists) may already be implemented, for instance a plan that
+   was carried out by hand and never ticked. Before you start anything, say so and ask with the question tool: skip
+   those tasks (and tick their steps), build them anyway, or stop. Never start such a task silently. Modifying a file
+   that exists is not a signal, so ordinary tasks are not questioned.
 3. The target repo is a git repo. Isolated mode needs a clean main checkout only for the final merge.
 4. Resume (below), then mode choice, then start.
 

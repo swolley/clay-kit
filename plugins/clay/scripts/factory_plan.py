@@ -2,6 +2,7 @@
 """Parse a plan in the superpowers-compatible superset format into tasks and steps."""
 import json
 import re
+import subprocess
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -30,6 +31,8 @@ class Task:
     constraints: str = ""
     accept: list[str] = field(default_factory=list)
     verify: str = ""
+    commits: list[str] = field(default_factory=list)
+    files_create: list[str] = field(default_factory=list)
     steps: list[Step] = field(default_factory=list)
     defaults_applied: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -92,6 +95,9 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
             in_fence = not in_fence
             continue
         if in_fence:
+            # A commit step often shows its message in a fenced `git commit -m "..."`.
+            if current is not None and (c := re.search(r"git commit(?: -\w+)* -m\s+[\"'](.+?)[\"']", line)):
+                current.commits.append(c.group(1))
             continue
         if not title and (m := re.match(r"^#\s+(.+)$", line)):
             title = m.group(1).strip()
@@ -111,10 +117,16 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
             _apply_field(current, m.group(1), m.group(2).strip())
             last_field = m.group(1).lower()
         elif last_field == "files" and (m := re.match(r"^\s*[-*]\s+(?!\[[ xX-]\])(.*)$", line)):
-            current.files += [re.sub(r":\d+(?:-\d+)?$", "", p) for p in re.findall(r"`([^`]+)`", m.group(1))]
+            paths = [re.sub(r":\d+(?:-\d+)?$", "", p) for p in re.findall(r"`([^`]+)`", m.group(1))]
+            current.files += paths
+            if re.match(r"\s*Create\b", m.group(1), re.I):
+                current.files_create += paths
         elif m := STEP.match(line):
             last_field = ""
-            current.steps.append(Step(STATES[m.group(1)], _clean(re.sub(r"^Step \d+:\s*", "", _clean(m.group(2))))))
+            text = _clean(re.sub(r"^Step \d+:\s*", "", _clean(m.group(2))))
+            current.steps.append(Step(STATES[m.group(1)], text))
+            if c := re.match(r"Commit\b.*?`([^`]+)`", text):
+                current.commits.append(c.group(1))
     for t in tasks:
         if t.tier not in TIERS:
             t.warnings.append(f"unknown tier '{t.tier}', using medium")
@@ -140,6 +152,20 @@ def check_files(files: list[str], root: Path) -> tuple[list[str], list[str]]:
     return present, missing
 
 
+def done_signals(task: Task, root: Path, subjects: set[str]) -> list[str]:
+    """Hints that a task was already carried out: its planned commit is in the history, or every file it
+    creates exists. Modifying a file that exists is not a signal, since almost every task does that."""
+    signals = [f"commit already in history: {c}" for c in task.commits if any(s == c or s.startswith(c) for s in subjects)]
+    if task.files_create and all((root / f).exists() for f in task.files_create):
+        signals.append("all files it creates already exist")
+    return signals
+
+
+def git_subjects(root: Path) -> set[str]:
+    done = subprocess.run(["git", "-C", str(root), "log", "--format=%s"], capture_output=True, text=True)
+    return set(done.stdout.splitlines()) if done.returncode == 0 else set()
+
+
 def main(argv: list[str]) -> int:
     if not argv:
         print("usage: factory_plan.py <plan.md> [--repo NAME] [--root DIR]", file=sys.stderr)
@@ -147,6 +173,7 @@ def main(argv: list[str]) -> int:
     repo = argv[argv.index("--repo") + 1] if "--repo" in argv else ""
     root = Path(argv[argv.index("--root") + 1]) if "--root" in argv else None
     plan = parse_plan(Path(argv[0]).read_text(), default_repo=repo)
+    subjects = git_subjects(root) if root is not None else set()
     out = {"title": plan.title, "tasks": []}
     for t in plan.tasks:
         d = asdict(t)
@@ -154,6 +181,7 @@ def main(argv: list[str]) -> int:
         d["done"] = t.done
         if root is not None:
             d["files_present"], d["files_missing"] = check_files(t.files, root)
+            d["done_signals"] = done_signals(t, root, subjects)
         out["tasks"].append(d)
     print(json.dumps(out, indent=2))
     return 0

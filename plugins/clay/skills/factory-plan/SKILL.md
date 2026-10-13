@@ -44,7 +44,7 @@ built with that tool keep working here without migration, and the reverse.
 - [ ] **Step 5: Commit** `feat: add parse`
 ```
 
-All fields are optional. When missing, the runner applies defaults and says so:
+All fields are optional. Give each task a Commit step with its message (`**Step N: Commit** `feat: ...``) and mark the files it creates with `Create:` when you list them as bullets: the run command uses both to notice work that is already done. When missing, the runner applies defaults and says so:
 `Tier` medium, `Repo` the repo holding the plan, no `Depends`, `Accept` taken from the steps.
 
 ## How to size and word tasks
