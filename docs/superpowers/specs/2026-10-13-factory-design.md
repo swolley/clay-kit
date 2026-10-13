@@ -1,4 +1,4 @@
-# Factory plugin: design
+# Factory tool: design (swolley-kit)
 
 Status: draft for review. Tool name: `factory` (placeholder, see Open items), first package of a personal multi-tool repository (section 7).
 
@@ -187,5 +187,5 @@ No session-start hook in the factory. Skills trigger by `description`. If a hook
 3. Whether `fable` maps to a real model on the user's setup; otherwise `tiers.md` points it elsewhere.
 4. Parallel tasks: confirm the file-overlap rule is enough or whether the plan should mark parallel groups explicitly.
 5. Codex support for subagents with per-agent model and effort: verify before promising tiers on Codex.
-6. Repository name and how shared content (`STYLE.md`) is distributed to installed tools: copy at build time or `shared/` with a sync step.
+6. How shared content (`STYLE.md`) is distributed to installed tools: copy at build time or `shared/` with a sync step.
 7. Marketplace manifest fields for Codex and other hosts: verify each host's format before writing it; only the Claude Code format has been checked (against claude-kit).
