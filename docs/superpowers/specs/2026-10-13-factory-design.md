@@ -9,13 +9,23 @@ One plugin that covers the whole path from an idea to merged code, for Claude Co
 1. **Design phase (interactive):** brainstorming and planning with human gates.
 2. **Execution phase (autonomous):** each task of the approved plan runs as an isolated job that is built, reviewed from several angles and approved or escalated.
 
-It replaces the use of the `superpowers` plugin alongside a factory. It is a derivative of
-[obra/superpowers](https://github.com/obra/superpowers) (MIT) and of the structure of
-[zazencodes software-factory-claude-code](https://github.com/zazencodes/zazencodes-season-3/tree/main/src/software-factory-claude-code).
-Tiering, self-contained briefs and `filemap.md` come from
-[savvy-flow](https://github.com/JohnnyVizz/claude-kit/tree/main/plugins/savvy-flow); the optional progress
-reporting targets [savvy-progress](https://github.com/JohnnyVizz/claude-kit/tree/main/plugins/savvy-progress)
-(both MIT, claude-kit, checked at commit `272a877`). Attribution and the MIT notices are kept in `LICENSE` and `NOTICE.md`.
+It replaces the use of the `superpowers` plugin alongside a factory.
+
+### Sources and licensing
+
+Checked on 2026-10-13. What may be reused depends on each source's license.
+
+| Source | License (verified) | What we may do | What we take |
+|--------|--------------------|----------------|--------------|
+| [obra/superpowers](https://github.com/obra/superpowers) v6.4.2 | MIT, Copyright (c) 2025 Jesse Vincent | Derive and adapt text, keeping the copyright and permission notice | Skill wording of `brainstorming` and `writing-plans` as a base, then rewritten |
+| [JohnnyVizz/claude-kit](https://github.com/JohnnyVizz/claude-kit) (`savvy-flow`, `savvy-progress`), commit `272a877` | MIT, Copyright (c) 2026 johnnyvizz | Derive and adapt text, keeping the notice | Tier model, self-contained briefs, `filemap.md` idea; progress tool names for the optional integration |
+| [zazencodes/zazencodes-season-3](https://github.com/zazencodes/zazencodes-season-3/tree/main/src/software-factory-claude-code) `software-factory-claude-code` | **No license** (GitHub reports none; no LICENSE file in the repo). All rights reserved by default | **Ideas only.** Do not copy or closely paraphrase its files (skill, agents, dashboard, README, BUILD_PROMPT) | The general pattern: orchestrator plus agents, file-based hand-off, parallel reviewers, escalate-or-merge. Patterns and ideas are not protected; its expression is |
+
+Rules that follow:
+- Everything derived from the zazencodes factory is written from scratch from the pattern above. No text, prompt wording, code or HTML is carried over, and the dashboard is original code.
+- MIT-derived files carry the original copyright and permission notice in the tool's `NOTICE.md`, naming the source and version.
+- The zazencodes project is credited in the README as inspiration only, with no claim of derivation, and that wording avoids implying a license.
+- Before publishing the repository, re-check each source's license, and ask the zazencodes author for permission if any of their content is ever wanted verbatim.
 
 ### Success criteria
 
@@ -158,11 +168,11 @@ plugins/
     agents/{builder,reviewer-code,reviewer-ui,reviewer-ux,reviewer-security,approver}.md
     factory/dashboard.html
     STYLE.md  routing.md  tiers.md
-    NOTICE.md                       attribution for superpowers, zazencodes, claude-kit
+    NOTICE.md                       MIT notices for superpowers and claude-kit (zazencodes: credit only, see Sources and licensing)
   <future tools>/
 shared/                             optional: content reused by several tools (for example STYLE.md)
 docs/superpowers/specs/             design record for the whole repo
-LICENSE                             MIT, covers the repo; per-tool NOTICE.md for derived work
+LICENSE                             MIT (own work), covers the repo; per-tool NOTICE.md for MIT-derived work
 ```
 
 Rules for the toolkit:
