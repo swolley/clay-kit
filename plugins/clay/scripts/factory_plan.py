@@ -12,6 +12,7 @@ FIELD = re.compile(r"^\s*\*\*(Repo|Tier|Depends|Files|Constraints|Accept|Verify)
 TIERS = {"light", "medium", "careful", "heavy", "fable"}
 STEP = re.compile(r"^\s*[-*] \[([ xX-])\]\s*(.*)$")
 STATES = {" ": "open", "x": "done", "X": "done", "-": "cancelled"}
+BANNER = re.compile(r"^(?:>\s*)?(?:\*\*Status:\*\*|Status:)\s*(.+)$")
 
 
 @dataclass
@@ -43,6 +44,24 @@ class Task:
         states = [s.state for s in self.steps]
         return bool(states) and "open" not in states
 
+    def counts(self) -> tuple[int, int, int]:
+        """Open, done and cancelled steps."""
+        states = [s.state for s in self.steps]
+        return states.count("open"), states.count("done"), states.count("cancelled")
+
+    @property
+    def state(self) -> str:
+        """empty, cancelled, done, partial or open. Cancelled steps count as resolved; a task whose steps are
+        all cancelled is cancelled rather than done."""
+        open_, done, cancelled = self.counts()
+        if not self.steps:
+            return "empty"
+        if cancelled == len(self.steps):
+            return "cancelled"
+        if open_ == 0:
+            return "done"
+        return "open" if done + cancelled == 0 else "partial"
+
 
 CLOSED = {"completed", "done", "shipped"}
 DROPPED = {"superseded", "abandoned", "cancelled"}
@@ -54,6 +73,7 @@ class Plan:
     tasks: list[Task]
     spec: str = ""
     status: str = ""  # the `status:` of the YAML front matter, lowercased; empty when absent
+    banner: str = ""  # a `**Status:** ...` or `Status: ...` line above the first task; empty when absent
 
     @property
     def state(self) -> str:
@@ -115,6 +135,19 @@ def front_status(text: str) -> str:
     return ""
 
 
+def _front_matter_end(lines: list[str]) -> int:
+    """Index of the first line after the YAML front matter; 0 when there is none."""
+    if not lines or lines[0].strip() != "---":
+        return 0
+    return next((i + 1 for i, line in enumerate(lines[1:], 1) if line.strip() == "---"), 0)
+
+
+def plan_date(name: str) -> str:
+    """The YYYY-MM-DD a plan's file name starts with; empty when it has none."""
+    m = re.match(r"\d{4}-\d{2}-\d{2}", Path(name).name)
+    return m.group() if m else ""
+
+
 def parse_plan(text: str, default_repo: str = "") -> Plan:
     status = front_status(text)
     title = ""
@@ -122,8 +155,11 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
     current: Task | None = None
     in_fence = False
     spec = ""
+    banner = ""
     last_field = ""
-    for line in text.splitlines():
+    lines = text.splitlines()
+    body = _front_matter_end(lines)
+    for i, line in enumerate(lines):
         if re.match(r"^\s*(```|~~~)", line):
             in_fence = not in_fence
             continue
@@ -148,6 +184,8 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
             if m := re.match(r"^\*\*Spec:\*\*\s*(.*)$", line):
                 found = re.search(r"`([^`]+)`", m.group(1))
                 spec = found.group(1) if found else ""
+            elif not banner and i >= body and (m := BANNER.match(line)):
+                banner = m.group(1).strip()
             continue
         if m := FIELD.match(line):
             _apply_field(current, m.group(1), m.group(2).strip())
@@ -174,7 +212,7 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
             t.repo = default_repo
         if "accept" not in t.fields_seen:
             t.accept = [s.text for s in t.steps if s.state != "cancelled"]
-    return Plan(title=title, tasks=tasks, spec=spec, status=status)
+    return Plan(title=title, tasks=tasks, spec=spec, status=status, banner=banner)
 
 
 def check_files(files: list[str], root: Path) -> tuple[list[str], list[str]]:

@@ -206,3 +206,39 @@ def test_git_subjects_include_checked_out_submodules(tmp_path):
     git(main, "submodule", "add", "-q", str(sub), "Modules/X")
     got = git_subjects(main)
     assert {"feat: in the root", "feat: inside the submodule"} <= got
+
+
+def test_task_counts_open_done_and_cancelled_steps():
+    t = parse_plan("# P\n\n### Task 1: A\n\n- [ ] a\n- [x] b\n- [X] c\n- [-] d\n- [ ] e\n").tasks[0]
+    assert t.counts() == (2, 2, 1)
+    assert parse_plan("# P\n\n### Task 1: A\n").tasks[0].counts() == (0, 0, 0)
+
+
+def test_task_state_follows_its_steps_and_cancelled_steps_count_as_resolved():
+    text = (
+        "# P\n\n### Task 1: A\n\n- [-] a\n- [-] b\n\n### Task 2: B\n\n- [x] a\n- [-] b\n\n"
+        "### Task 3: C\n\n- [x] a\n- [ ] b\n\n### Task 4: D\n\n- [ ] a\n\n### Task 5: E\n"
+    )
+    assert [t.state for t in parse_plan(text).tasks] == ["cancelled", "done", "partial", "open", "empty"]
+
+
+def test_status_banner_is_read_from_the_top_of_the_plan():
+    assert parse_plan("# P\n\n> **Status:** completed 2026-10-01\n\n### Task 1: A\n\n- [ ] a\n").banner == "completed 2026-10-01"
+    assert parse_plan("# P\n\nStatus: in progress\n\n### Task 1: A\n\n- [ ] a\n").banner == "in progress"
+    assert parse_plan("# P\n\n**Status:** draft\n\n### Task 1: A\n\n- [ ] a\n").banner == "draft"
+
+
+def test_status_banner_is_absent_without_a_banner_line():
+    assert parse_plan("---\nstatus: completed\n---\n# P\n\n### Task 1: A\n\n- [ ] a\n").banner == ""
+    assert parse_plan("---\nStatus: completed\n---\n# P\n\n### Task 1: A\n\n- [ ] a\n").banner == ""
+    assert parse_plan("# P\n\n### Task 1: A\n\nStatus: inside a task\n\n- [ ] a\n").banner == ""
+    assert parse_plan("# P\n\n```\nStatus: in a fence\n```\n\n### Task 1: A\n").banner == ""
+
+
+def test_plan_date_comes_from_the_file_name():
+    from factory_plan import plan_date
+
+    assert plan_date("2026-10-13-factory-backlog.md") == "2026-10-13"
+    assert plan_date("docs/superpowers/plans/2026-01-02-x.md") == "2026-01-02"
+    assert plan_date("factory-backlog-2026-10-13.md") == ""
+    assert plan_date("2026-1-3-short.md") == ""
