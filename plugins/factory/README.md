@@ -1,0 +1,62 @@
+# factory
+
+Take an idea to reviewed, merged code. You design and plan with the model in a conversation, then
+run the plan: each task is built, reviewed by the lenses its change needs, and approved or handed back to you.
+
+## Commands
+
+Commands are namespaced by the plugin (`/factory:run`); the exact spelling per host is in [docs/hosts.md](../../docs/hosts.md).
+
+| Command | Started by | What it does |
+|---------|-----------|--------------|
+| `brainstorm` | you, or the model when you describe new work | idea to approved design (spec for big work, short chat design for small work) |
+| `plan` | you, or the model after an approved design | design to a plan of tasks and steps |
+| `run <plan>` | you only | runs the plan's open tasks; resumes an interrupted run |
+| `task "<text>"` | you only | one ad hoc task, no plan file |
+| `status` | you only | jobs, stages, verdicts, what waits for you |
+| `approve <job>` | you only | lands a job that was waiting for you |
+| `rework <job> <note>` | you only | sends a waiting job back to its builder |
+
+## Workflow
+
+1. `brainstorm`: questions, approaches, design. You approve it.
+2. `plan`: a plan with tasks, tiers and acceptance criteria. You review it.
+3. `run <plan>`: for each task a builder works at the task's tier, up to four reviewers check the real diff
+   (code always; ui, ux and security only when the changed paths call for them, see `routing.md`), then an
+   approver lands it or escalates it. Reviewer findings are checked, not applied blindly; a builder is
+   resumed at most twice.
+4. When all tasks have landed, you choose how the work reaches your main branch. Nothing is ever pushed.
+
+Isolation: `run` recommends a development branch per plan with one worktree per job, so your checkout
+is untouched. You can instead confirm working on the current branch; jobs then run one at a time and are
+committed after approval.
+
+State lives in `factory/jobs/` (add it to `.gitignore`). A static dashboard shows it:
+`run` copies the page to `factory/jobs/dashboard.html`; serve that folder with
+`cd factory/jobs && python3 -m http.server` and open `/dashboard.html`.
+
+## Plan format and why it follows superpowers
+
+Plans live in `docs/superpowers/plans/YYYY-MM-DD-<feature>.md` and specs in `docs/superpowers/specs/`, with
+`### Task N:` headings and `- [ ]` steps. This matches the superpowers conventions on purpose, for compatibility
+with projects already built with that tool: their plans run here without migration. Per-task fields
+(`Repo`, `Tier`, `Depends`, `Files`, `Constraints`, `Accept`, `Verify`) are optional; missing ones get defaults
+and `run` tells you which.
+
+## Requirements
+
+Claude Code, `git`, and `python3` (standard library only) for the plan parser and reviewer routing.
+The target repo's own `AGENTS.md` or `CLAUDE.md` must say how to set up a checkout and run its tests.
+Optional: with the `savvy-progress` mod installed, `run` also reports progress to its bar; nothing depends on it.
+
+## Hosts
+
+Claude Code is supported. Codex is **pending**: whether a Codex plugin can bundle custom agents and read
+shared files is not documented, and its question tool is unverified (see [docs/hosts.md](../../docs/hosts.md)).
+
+## Credits
+
+Derived from [obra/superpowers](https://github.com/obra/superpowers) (MIT) and
+[JohnnyVizz/claude-kit](https://github.com/JohnnyVizz/claude-kit) (MIT); see [NOTICE.md](NOTICE.md).
+The idea of a spec, build, review and approve loop was inspired by zazencodes
+`software-factory-claude-code`, which publishes no license; none of its content is used here.

@@ -37,10 +37,10 @@
 **Tier:** light
 **Depends:** none
 **Files:** `.claude-plugin/marketplace.json`, `plugins/factory/.claude-plugin/plugin.json`, `.gitignore`, `README.md`, `plugins/factory/NOTICE.md`, `scripts/validate.py`, `tests/test_validate.py`
-**Accept:** 1. `python3 scripts/validate.py` exits 0 on the scaffold. 2. It exits 1 and names the file when a skill lacks `name`/`description` frontmatter, a manifest is invalid JSON, a plugin file references `superpowers:`, or a plugin file lacks a `STYLE.md` reference (skills and agents only). 3. `.gitignore` ignores `factory/jobs/`. 4. It fails if the `factory` skill lacks `disable-model-invocation: true` or if `brainstorm` or `plan` sets it.
+**Accept:** 1. `python3 scripts/validate.py` exits 0 on the scaffold. 2. It exits 1 and names the file when a skill lacks `name`/`description` frontmatter, a manifest is invalid JSON, a plugin file references `superpowers:`, or a plugin file lacks a `STYLE.md` reference (skills and agents only). 3. `.gitignore` ignores `factory/jobs/`. 4. It fails if any of `run`, `task`, `status`, `approve`, `rework` lacks `disable-model-invocation: true` or if `brainstorm` or `plan` sets it.
 **Verify:** `python3 -m pytest tests/test_validate.py -v`
 
-- [ ] **Step 1: Write failing tests** in `tests/test_validate.py` using `tmp_path` fixtures: `test_valid_scaffold_passes`, `test_bad_json_fails_and_names_file`, `test_skill_without_description_fails`, `test_superpowers_reference_fails`, `test_missing_style_reference_fails`, `test_factory_skill_must_disable_model_invocation`, `test_brainstorm_and_plan_must_allow_model_invocation`.
+- [ ] **Step 1: Write failing tests** in `tests/test_validate.py` using `tmp_path` fixtures: `test_valid_scaffold_passes`, `test_bad_json_fails_and_names_file`, `test_skill_without_description_fails`, `test_superpowers_reference_fails`, `test_missing_style_reference_fails`, `test_command_skills_must_disable_model_invocation`, `test_brainstorm_and_plan_must_allow_model_invocation`.
 - [ ] **Step 2: Run the tests; expect failure** (`scripts/validate.py` missing).
 - [ ] **Step 3: Implement `validate(root: Path) -> list[str]` and a `main()` returning 0/1** in `scripts/validate.py`; each returned string is `<relative path>: <problem>`.
 - [ ] **Step 4: Create the scaffold files.** `marketplace.json` follows the claude-kit shape (`name: swolley-kit`, `owner`, `metadata.description`, `plugins[]` with `name`, `source: ./plugins/factory`, `description`, `version: 0.1.0`, `category: skill`). `plugin.json` has name, description, version, author, license MIT. `NOTICE.md` lists superpowers and claude-kit (files added later) and states zazencodes is inspiration only, linking `licenses/README.md`.
@@ -52,8 +52,8 @@
 **Repo:** swolley-kit
 **Tier:** medium
 **Depends:** 1
-**Files:** `scripts/factory_plan.py`, `tests/test_factory_plan.py`, `tests/fixtures/plan-superset.md`, `tests/fixtures/plan-legacy.md`
-**Accept:** 1. `parse_plan(text) -> Plan` returns tasks from `### Task N:` headings (also Phase, Step, Milestone, Wave, as the user's `plan-status` does). 2. Field lines (`**Tier:**` and the rest) are never steps. 3. `- [x]` done, `- [ ]` open, `- [-]` cancelled; a task is done when it has at least one step and no open step. 4. Missing fields get defaults (`tier: medium`, `repo` from an argument, `depends: []`, `accept` from step texts) and are listed in `defaults_applied`. 5. Lines inside code fences are ignored. 6. CLI `python3 scripts/factory_plan.py <file> [--repo NAME]` prints JSON.
+**Files:** `plugins/factory/scripts/factory_plan.py`, `tests/test_factory_plan.py`, `tests/fixtures/plan-superset.md`, `tests/fixtures/plan-legacy.md`
+**Accept:** 1. `parse_plan(text) -> Plan` returns tasks from `### Task N:` headings (also Phase, Step, Milestone, Wave, as the user's `plan-status` does). 2. Field lines (`**Tier:**` and the rest) are never steps. 3. `- [x]` done, `- [ ]` open, `- [-]` cancelled; a task is done when it has at least one step and no open step. 4. Missing fields get defaults (`tier: medium`, `repo` from an argument, `depends: []`, `accept` from step texts) and are listed in `defaults_applied`. 5. Lines inside code fences are ignored. 6. CLI `python3 plugins/factory/scripts/factory_plan.py <file> [--repo NAME]` prints JSON.
 **Verify:** `python3 -m pytest tests/test_factory_plan.py -v`; then run the CLI on `/home/swolley/Scaricati/marco/laraplate-stack/docs/superpowers/plans/2026-06-17-ai-assist.md` and read the output.
 
 **Interfaces:**
@@ -71,7 +71,7 @@
 **Repo:** swolley-kit
 **Tier:** medium
 **Depends:** 1
-**Files:** `plugins/factory/routing.md`, `scripts/route.py`, `tests/test_route.py`
+**Files:** `plugins/factory/routing.md`, `plugins/factory/scripts/route.py`, `tests/test_route.py`
 **Accept:** 1. `routing.md` is a markdown table `| glob | reviewer |` with reviewers among `ui`, `ux`, `security`. 2. `route(paths, rules)` always includes `code`, includes each other reviewer once if any path matches, and returns them in fixed order `code, security, ux, ui`. 3. Docs-only and config-only diffs return `["code"]`. 4. CLI reads paths from stdin and prints a JSON list.
 **Verify:** `python3 -m pytest tests/test_route.py -v`
 
@@ -123,7 +123,7 @@
 **Depends:** 2, 4
 **Files:** `plugins/factory/skills/plan/SKILL.md`, `plugins/factory/NOTICE.md`
 **Accept:** 1. Instructs writing plans to `docs/superpowers/plans/YYYY-MM-DD-<feature>.md` in the superset format of spec section 3.2, including the compatibility reason in one sentence. 2. Includes the per-task fields and defaults rule. 3. Ends by asking the user to review the plan, never by choosing an execution method of another tool; execution is `/factory run`. 4. A plan the skill produces for a sample spec passes `factory_plan.py` with no `defaults_applied` other than intentional ones. 5. `description` lets the model start it after an approved design (model invocation enabled). 6. `NOTICE.md` records derivation from superpowers `writing-plans`.
-**Verify:** `python3 scripts/validate.py`; generate a plan from `docs/superpowers/specs/2026-10-13-factory-design.md` section 4.8 and run `python3 scripts/factory_plan.py` on it.
+**Verify:** `python3 scripts/validate.py`; generate a plan from `docs/superpowers/specs/2026-10-13-factory-design.md` section 4.8 and run `python3 plugins/factory/scripts/factory_plan.py` on it.
 
 - [ ] **Step 1: Write the skill** (task right-sizing, step granularity, self-review kept; rest shortened).
 - [ ] **Step 2: Update `NOTICE.md`.**
@@ -137,7 +137,7 @@
 **Tier:** careful
 **Depends:** 4
 **Files:** `plugins/factory/agents/builder.md`, `plugins/factory/agents/reviewer-code.md`, `plugins/factory/agents/approver.md`
-**Accept:** 1. Each file has frontmatter `name`, `description`, `tools`, and references `STYLE.md`. 2. `builder` writes only `build.md` plus commits; first line `STATUS: READY|BLOCKED`; contains short sections for test-first work, systematic debugging and verification before claiming done; updates `filemap.md` when files move. 3. `reviewer-code` first line `VERDICT:`; treats the builder report as a claim to verify against the diff. 4. `approver` first line `APPROVE` or `ESCALATE`; escalation list matches spec 4.4, including repo-declared licensing and ownership boundaries. 5. No agent file names a model; the orchestrator sets model and effort from the task tier, and the reviewers and approver use fixed settings read from `tiers.md`.
+**Accept:** 1. Each file has frontmatter `name`, `description`, `tools`, and references `STYLE.md`. 2. `builder` writes only `build.md` plus commits; first line `STATUS: READY|BLOCKED`; contains short sections for test-first work, systematic debugging and verification before claiming done; updates `filemap.md` when files move. 3. `reviewer-code` first line `VERDICT:`; treats the builder report as a claim to verify against the diff. 4. `builder` treats reviewer findings as claims to verify before acting (fix what is confirmed, answer in `build.md` with evidence what is not), never as orders to apply blindly. 5. `approver` first line `APPROVE` or `ESCALATE`; escalation list matches spec 4.4, including repo-declared licensing and ownership boundaries. 6. No agent file names a model; the orchestrator sets model and effort from the task tier, and the reviewers and approver use fixed settings read from `tiers.md`.
 **Verify:** `python3 scripts/validate.py`; read each file for the three first-line contracts.
 
 - [ ] **Step 1: Write `builder.md`** with the job-folder and worktree path convention, branch check, acceptance-criteria evidence in `build.md`, commit rules (explicit paths, one-line messages), rework and resume inputs.
@@ -159,25 +159,26 @@
 - [ ] **Step 2: Run the validator; expect pass.**
 - [ ] **Step 3: Commit** `feat: add ui, ux and security reviewers`.
 
-### Task 9: Skill `factory` (orchestrator)
+### Task 9: Command skills and orchestrator reference
 
 **Repo:** swolley-kit
 **Tier:** heavy
 **Depends:** 2, 3, 7, 8
-**Files:** `plugins/factory/skills/factory/SKILL.md`
-**Accept:** 1. Defines `run`, `task`, `status`, `approve`, `rework` as fixed subcommands, with model invocation disabled in the frontmatter (user-started only). 2. Preconditions of spec 4.2, mode choice of 4.3 through the native question tool, job loop of 4.4 including routing through `scripts/route.py`, tiers of 4.5, completion of 4.6, state of 4.7. 3. Resume table of 4.8 implemented as written, using `scripts/factory_plan.py` for task state. 4. The orchestrator is the only writer of `job.json`. 5. Optional progress calls to `mcp__savvy-progress__progress` and `step` guarded by "if the tool exists", skipped silently otherwise. 6. Never pushes; never resets user changes.
+**Files:** `plugins/factory/reference/orchestrator.md`, `plugins/factory/skills/{run,task,status,approve,rework}/SKILL.md`
+**Accept:** 1. Five skills, one per command, each with `disable-model-invocation: true`, an `argument-hint`, and a body of at most 30 lines that reads `reference/orchestrator.md` for the shared logic. 2. Preconditions of spec 4.2, mode choice of 4.3 through the native question tool, job loop of 4.4 including routing through `plugins/factory/scripts/route.py`, tiers of 4.5, completion of 4.6, state of 4.7. 3. Resume table of 4.8 implemented as written, using `scripts/factory_plan.py` for task state. 4. The orchestrator is the only writer of `job.json`. 5. Optional progress calls to `mcp__savvy-progress__progress` and `step` guarded by "if the tool exists", skipped silently otherwise. 6. Never pushes; never resets user changes. 7. Defines the finish step: when all tasks are done, in isolated mode it asks the user (native question tool) how the integration branch reaches main (merge, pull request prepared but not pushed, keep the branch, discard) and performs only the chosen local action.
 **Verify:** `python3 scripts/validate.py`; Task 11 exercises it end to end.
 
 **Interfaces:**
 - Consumes: `factory_plan.parse_plan` and `route.route` through their CLIs; agent first-line contracts from Tasks 7 and 8.
 - Produces: `factory/jobs/<job-id>/job.json` with the fields listed in spec 4.7, read by the dashboard.
 
-- [ ] **Step 1: Write the skill** in the order of the spec sections, with the job-id pattern `NNN-<slug>` and the prompt convention `Job folder: ... Worktree: ... Branch: ...` for every agent.
+- [ ] **Step 1: Write `reference/orchestrator.md`** in the order of the spec sections, with the job-id pattern `NNN-<slug>` and the prompt convention `Job folder: ... Worktree: ... Branch: ...` for every agent.
 - [ ] **Step 2: Add the resume procedure** as a numbered list mirroring the table, including the `needs-human` outcomes for missing or diverged worktree.
 - [ ] **Step 3: Add the current-branch mode rules** (clean tree, branch confirmation, `main` warning, sequential only, stop on failure without reset).
 - [ ] **Step 4: Add the progress integration paragraph.**
-- [ ] **Step 5: Run the validator; expect pass.**
-- [ ] **Step 6: Commit** `feat: add factory orchestrator skill`.
+- [ ] **Step 5: Write the five thin command skills.**
+- [ ] **Step 6: Run the validator; expect pass.**
+- [ ] **Step 7: Commit** `feat: add command skills and orchestrator reference`.
 
 ### Task 10: Dashboard
 

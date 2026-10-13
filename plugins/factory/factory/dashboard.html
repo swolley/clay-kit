@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<title>Factory board</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root {
+  --page: #f4f5f7; --surface: #ffffff; --text: #20242d; --soft: #6b7385; --rule: #d9dde5;
+  --ok: #18794a; --bad: #b3261e; --idle: #8b93a5; --attn: #b45309; --accent: #2d5ad7;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --page: #101319; --surface: #1a1f28; --text: #e6e9ef; --soft: #98a1b3; --rule: #2b3240;
+          --ok: #4cc287; --bad: #f4786d; --idle: #7d879a; --attn: #f2a24f; --accent: #82a6ff; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--text); font: 14px/1.5 system-ui, sans-serif; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 14px; padding: 12px 18px; border-bottom: 1px solid var(--rule); }
+h1 { margin: 0; font-size: 16px; }
+#status { color: var(--soft); font-size: 12px; }
+main { max-width: 1100px; margin: 0 auto; padding: 18px; }
+.plan { margin-bottom: 26px; }
+.plan > h2 { margin: 0 0 8px; color: var(--soft); font-size: 12px; letter-spacing: .05em; text-transform: uppercase; }
+.repo > h3 { margin: 10px 0 6px; font-size: 13px; }
+.cards { display: flex; flex-wrap: wrap; gap: 8px; }
+.card { flex: 1 1 250px; max-width: 340px; padding: 10px 12px; text-align: left; font: inherit; color: inherit;
+        background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; cursor: pointer; }
+.card:hover { border-color: var(--accent); }
+.card.needs-human { border-color: var(--attn); outline: 2px solid color-mix(in srgb, var(--attn) 30%, transparent); }
+.line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+.line:first-child { margin-top: 0; }
+.name { font-weight: 600; }
+.pill { padding: 0 7px; font-size: 11px; color: var(--soft); border: 1px solid var(--rule); border-radius: 99px; }
+.pill.stage-needs-human { color: var(--attn); border-color: var(--attn); }
+.pill.stage-merged, .pill.stage-committed { color: var(--ok); border-color: var(--ok); }
+.lens { padding: 0 7px; font-size: 11px; border: 1px solid currentColor; border-radius: 4px; }
+.lens.PASS { color: var(--ok); } .lens.CHANGES { color: var(--bad); } .lens.pending { color: var(--idle); }
+#detail { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100%); display: none; overflow: auto;
+          padding: 14px 16px; background: var(--surface); border-left: 1px solid var(--rule); }
+#detail.shown { display: block; }
+#detail button { float: right; }
+#detail h2 { margin: 0 0 10px; font-size: 15px; }
+.fname { margin: 12px 0 4px; color: var(--soft); font-size: 12px; font-weight: 600; }
+pre { margin: 0; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, monospace;
+      background: var(--page); border: 1px solid var(--rule); border-radius: 6px; }
+.none { padding: 22px 0; color: var(--soft); }
+</style>
+</head>
+<body>
+<header><h1>Factory board</h1><span id="status">loading</span></header>
+<main id="plans"></main>
+<aside id="detail"></aside>
+<script>
+const REFRESH_MS = 2000
+// The run command copies this page into factory/jobs/ (served as the root); opened from factory/ it uses jobs/.
+let ROOT = null
+const $plans = document.getElementById('plans')
+const $detail = document.getElementById('detail')
+const $status = document.getElementById('status')
+
+const make = (tag, cls, text) => {
+  const node = document.createElement(tag)
+  if (cls) node.className = cls
+  if (text != null) node.textContent = text
+  return node
+}
+
+async function readText(path) {
+  const res = await fetch(path, { headers: { 'Cache-Control': 'no-cache' } })
+  if (!res.ok) throw new Error(path + ': ' + res.status)
+  return res.text()
+}
+
+// A static server answers a folder URL with an HTML index; take the relative hrefs from it.
+async function entries(folder) {
+  const html = await readText(folder)
+  return [...html.matchAll(/href="([^"?#]+)"/g)].map(m => m[1]).filter(h => !h.startsWith('/') && !h.startsWith('.'))
+}
+
+async function findRoot() {
+  try { await entries('jobs/'); return 'jobs/' } catch { return './' }
+}
+
+async function readJobs() {
+  if (ROOT === null) ROOT = await findRoot()
+  const folders = (await entries(ROOT)).map(h => h.replace(/\/$/, '')).filter(h => /^\d{3}-/.test(h))
+  const settled = await Promise.allSettled(folders.map(async f => JSON.parse(await readText(ROOT + f + '/job.json'))))
+  return settled.filter(r => r.status === 'fulfilled').map(r => r.value)
+}
+
+function groupBy(list, key) {
+  const out = new Map()
+  for (const item of list) {
+    const k = key(item)
+    if (!out.has(k)) out.set(k, [])
+    out.get(k).push(item)
+  }
+  return out
+}
+
+function cardFor(job) {
+  const card = make('button', 'card ' + job.stage)
+  card.type = 'button'
+  const head = make('div', 'line')
+  head.append(make('span', 'name', job.id), make('span', 'pill stage-' + job.stage, job.stage))
+  const facts = make('div', 'line')
+  facts.append(make('span', 'pill', job.tier || 'medium'))
+  if (job.round) facts.append(make('span', 'pill', 'round ' + job.round))
+  if (job.mode) facts.append(make('span', 'pill', job.mode))
+  const lenses = make('div', 'line')
+  for (const lens of job.reviewers || []) {
+    const verdict = (job.reviews && job.reviews[lens]) || 'pending'
+    lenses.append(make('span', 'lens ' + verdict, lens + ' ' + verdict))
+  }
+  card.append(head, facts, lenses)
+  card.addEventListener('click', () => showJob(job))
+  return card
+}
+
+function draw(jobs) {
+  $plans.replaceChildren()
+  if (jobs.length === 0) { $plans.append(make('div', 'none', 'No jobs yet. Start one with the run command.')); return }
+  for (const [plan, inPlan] of groupBy(jobs, j => j.plan || 'adhoc')) {
+    const section = make('section', 'plan')
+    section.append(make('h2', '', plan))
+    for (const [repo, inRepo] of groupBy(inPlan, j => j.repo || 'repo')) {
+      const block = make('div', 'repo')
+      const cards = make('div', 'cards')
+      for (const job of inRepo.sort((a, b) => a.id.localeCompare(b.id))) cards.append(cardFor(job))
+      block.append(make('h3', '', repo), cards)
+      section.append(block)
+    }
+    $plans.append(section)
+  }
+}
+
+async function showJob(job) {
+  const close = make('button', '', 'Close')
+  close.addEventListener('click', () => $detail.classList.remove('shown'))
+  $detail.replaceChildren(close, make('h2', '', job.id))
+  $detail.classList.add('shown')
+  const dir = ROOT + job.id + '/'
+  const names = []
+  for (const entry of await entries(dir)) {
+    if (entry.endsWith('.md')) names.push(entry)
+    else if (/^round-\d+\/$/.test(entry)) for (const inner of await entries(dir + entry)) if (inner.endsWith('.md')) names.push(entry + inner)
+  }
+  if (names.length === 0) $detail.append(make('div', 'none', 'No files yet.'))
+  for (const name of names.sort()) {
+    $detail.append(make('div', 'fname', name))
+    let body
+    try { body = await readText(dir + name) } catch { body = '(unreadable)' }
+    $detail.append(make('pre', '', body))
+  }
+}
+
+async function refresh() {
+  try {
+    const jobs = await readJobs()
+    draw(jobs)
+    const waiting = jobs.filter(j => j.stage === 'needs-human').length
+    $status.textContent = jobs.length + ' jobs' + (waiting ? ', ' + waiting + ' waiting for you' : '')
+  } catch {
+    $status.textContent = 'cannot read the jobs folder; serve it with a static server'
+  }
+}
+refresh()
+setInterval(refresh, REFRESH_MS)
+</script>
+</body>
+</html>
