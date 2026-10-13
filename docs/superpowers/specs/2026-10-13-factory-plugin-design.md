@@ -1,6 +1,6 @@
 # Factory plugin: design
 
-Status: draft for review. Working name: `factory` (placeholder, see Open items).
+Status: draft for review. Tool name: `factory` (placeholder, see Open items), first package of a personal multi-tool repository (section 7).
 
 ## 1. Purpose
 
@@ -142,30 +142,36 @@ Single static `dashboard.html`, no build step, served by a plain static server, 
 
 If the tools `mcp__savvy-progress__progress` and `mcp__savvy-progress__step` are available, the orchestrator and builders call them (task titles identical to the Agent `description`, as that plugin requires). If absent, calls are skipped silently. No dependency.
 
-## 7. Plugin layout
+## 7. Repository and plugin layout
+
+The repository is a personal toolkit that will hold several installable tools (plugins, skills, mods) for IDEs
+and agent hosts, not only this one. It follows the marketplace layout used by claude-kit: a manifest at the
+root and one folder per tool under `plugins/`. The factory is the first tool, `plugins/factory/`.
 
 ```
-.claude-plugin/plugin.json
-.codex-plugin/plugin.json
-skills/brainstorming/SKILL.md
-skills/writing-plans/SKILL.md
-skills/factory/SKILL.md
-agents/builder.md
-agents/reviewer-code.md
-agents/reviewer-ui.md
-agents/reviewer-ux.md
-agents/reviewer-security.md
-agents/approver.md
-factory/dashboard.html
-STYLE.md
-routing.md
-tiers.md
-LICENSE
-NOTICE.md
-docs/superpowers/specs/
+.claude-plugin/marketplace.json     name, owner, plugins[] (name, source, version, category)
+plugins/
+  factory/                          this spec
+    .claude-plugin/plugin.json
+    .codex-plugin/plugin.json
+    skills/{brainstorming,writing-plans,factory}/SKILL.md
+    agents/{builder,reviewer-code,reviewer-ui,reviewer-ux,reviewer-security,approver}.md
+    factory/dashboard.html
+    STYLE.md  routing.md  tiers.md
+    NOTICE.md                       attribution for superpowers, zazencodes, claude-kit
+  <future tools>/
+shared/                             optional: content reused by several tools (for example STYLE.md)
+docs/superpowers/specs/             design record for the whole repo
+LICENSE                             MIT, covers the repo; per-tool NOTICE.md for derived work
 ```
 
-No session-start hook. Skills trigger by `description`. If a hook proves necessary, it stays under a few lines.
+Rules for the toolkit:
+- Each tool is self-contained and installable on its own; no tool requires another.
+- Shared content (the style contract) is either copied at build time into each tool or lives in `shared/` with a documented sync step, so an installed tool never depends on a path outside its folder. The choice is an open item.
+- `category` in the manifest distinguishes kinds of tool (`skill`, `mod`, and so on).
+- Derived work keeps its original copyright notice in the tool's `NOTICE.md`.
+
+No session-start hook in the factory. Skills trigger by `description`. If a hook proves necessary, it stays under a few lines.
 
 ## 8. Verification
 
@@ -181,3 +187,5 @@ No session-start hook. Skills trigger by `description`. If a hook proves necessa
 3. Whether `fable` maps to a real model on the user's setup; otherwise `tiers.md` points it elsewhere.
 4. Parallel tasks: confirm the file-overlap rule is enough or whether the plan should mark parallel groups explicitly.
 5. Codex support for subagents with per-agent model and effort: verify before promising tiers on Codex.
+6. Repository name and how shared content (`STYLE.md`) is distributed to installed tools: copy at build time or `shared/` with a sync step.
+7. Marketplace manifest fields for Codex and other hosts: verify each host's format before writing it; only the Claude Code format has been checked (against claude-kit).
