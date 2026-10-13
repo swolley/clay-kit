@@ -1,5 +1,5 @@
 ---
-name: status
+name: factory-status
 description: Show every job with its stage, round and review verdicts, and which ones are waiting for the user. Read-only.
 disable-model-invocation: true
 argument-hint: 

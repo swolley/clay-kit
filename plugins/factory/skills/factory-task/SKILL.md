@@ -1,5 +1,5 @@
 ---
-name: task
+name: factory-task
 description: Run one ad hoc task through the same build, review and approval loop, without a written plan.
 disable-model-invocation: true
 argument-hint: "<what to do>"

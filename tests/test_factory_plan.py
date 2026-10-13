@@ -55,7 +55,7 @@ def test_phase_headings_are_tasks():
 def test_plan_skill_template_parses():
     import re
 
-    skill = (HERE.parent / "plugins/factory/skills/plan/SKILL.md").read_text()
+    skill = (HERE.parent / "plugins/factory/skills/factory-plan/SKILL.md").read_text()
     m = re.search(r"## Task template\n+```markdown\n(.*?)\n```", skill, re.S)
     assert m, "plan skill must contain a '## Task template' markdown block"
     plan = parse_plan(m.group(1), default_repo="x")

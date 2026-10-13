@@ -1,5 +1,5 @@
 ---
-name: rework
+name: factory-rework
 description: Send a job that is waiting for the user back to its builder with feedback.
 disable-model-invocation: true
 argument-hint: <job id> <note>

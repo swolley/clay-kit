@@ -4,7 +4,7 @@ Personal marketplace of plugins, skills and tools for Claude Code, Codex and oth
 
 | Tool | What it does |
 |------|--------------|
-| [factory](plugins/factory) | From an idea to merged code: `brainstorm`, `plan`, then `run`, with routed review and approval. |
+| [factory](plugins/factory) | From an idea to merged code: `/factory-brainstorm`, `/factory-plan`, then `/factory-run`, with routed review and approval. |
 
 ## Install (Claude Code)
 
@@ -15,7 +15,7 @@ In Claude Code:
 /plugin install factory@swolley-kit
 ```
 
-Restart the session afterwards. Commands are namespaced by the plugin, for example `/factory:run`.
+Restart the session afterwards. Commands are named `factory-<verb>`, for example `/factory-run`; the namespaced form `/factory:factory-run` also works.
 
 ## Development
 

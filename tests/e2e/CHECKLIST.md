@@ -11,7 +11,7 @@ cd /tmp/factory-fixture   # open Claude Code here
 
 Tick each line with what you observed. Failures become fixes in the file that owns the behavior.
 
-## A. Routing and escalation (`/factory:run docs/superpowers/plans/2026-10-13-fixture-plan.md`)
+## A. Routing and escalation (`/factory-run docs/superpowers/plans/2026-10-13-fixture-plan.md`)
 
 - [ ] The run states which defaults it applied (task 1 has no `Depends`) and asks for the mode; isolated is recommended.
 - [ ] Choose isolated. A worktree folder `<name>-factory/_integration-...` and job worktrees appear next to the repo; the checkout of `main` is untouched.
@@ -21,12 +21,12 @@ Tick each line with what you observed. Failures become fixes in the file that ow
 - [ ] Jobs 1 and 2 are merged into the integration branch; each has `decision.md` starting `APPROVE`.
 - [ ] Nothing was pushed (`git remote -v` is empty).
 - [ ] The dashboard (`cd factory/jobs && python3 -m http.server`, open `/dashboard.html`) shows the three jobs grouped under the plan, with only the selected reviewers, and job 3 highlighted.
-- [ ] `/factory:status` lists the same states.
-- [ ] `/factory:approve 003-...` lands job 3 in the integration branch; the run's Completion step then asks how the integration branch reaches `main`, and does only that local action.
+- [ ] `/factory-status` lists the same states.
+- [ ] `/factory-approve 003-...` lands job 3 in the integration branch; the run's Completion step then asks how the integration branch reaches `main`, and does only that local action.
 
 ## B. Resume (fresh fixture, isolated mode)
 
-For each stage, stop the session at that point, reopen it, and rerun `/factory:run <plan>`:
+For each stage, stop the session at that point, reopen it, and rerun `/factory-run <plan>`:
 
 - [ ] While the builder runs: the same job is resumed, no second branch or worktree for that task.
 - [ ] With one reviewer done and others missing: only the missing reviewers rerun.
@@ -36,7 +36,7 @@ For each stage, stop the session at that point, reopen it, and rerun `/factory:r
 
 ## C. Legacy plan
 
-- [ ] `/factory:run docs/superpowers/plans/2026-10-13-fixture-legacy.md` runs and reports the defaults (tier `medium`, accept taken from steps).
+- [ ] `/factory-run docs/superpowers/plans/2026-10-13-fixture-legacy.md` runs and reports the defaults (tier `medium`, accept taken from steps).
 
 ## D. Current-branch mode (fresh fixture)
 
@@ -57,6 +57,15 @@ Use a task whose brief leaves a real choice open (for example "add a cache" with
 - [ ] The builder ends with `STATUS: NEEDS_INPUT` and numbered questions with a recommended answer; the job shows `waiting-input`.
 - [ ] `questions-1.md` exists before the question is asked, and the dashboard shows the job as waiting for you.
 - [ ] Dismiss the prompt or type an unrelated message: the job stays `waiting-input`, no `answers-1.md` is written, other jobs continue.
-- [ ] `/factory:status` and the end of the run list the job as waiting for you.
-- [ ] `/factory:answer <job-id>` asks the same questions again; answering writes `answers-1.md` and a fresh builder continues without using a review resume.
+- [ ] `/factory-status` and the end of the run list the job as waiting for you.
+- [ ] `/factory-answer <job-id>` asks the same questions again; answering writes `answers-1.md` and a fresh builder continues without using a review resume.
 - [ ] Answering "I do not know" moves the job to `needs-human`.
+
+## G. Progress mod (Claude Code)
+
+- [ ] With the plugin loaded and jobs present, the band above the prompt shows the plan, the bar and the running phases.
+- [ ] `/factory-progress` hides and shows the band.
+- [ ] `/factory-agents` opens the pane with the jobs and their reviewer verdicts.
+- [ ] A job moving to `needs-human` or `waiting-input` raises a toast and the band shows "waiting for you".
+- [ ] With no `factory/jobs` folder, nothing is drawn and no error appears in the transcript.
+- [ ] Started from a workspace root with the jobs in `<repo>/factory/jobs`, the band still appears.

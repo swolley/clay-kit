@@ -27,12 +27,12 @@ def test_parallel_only_when_declared():
 
 
 def test_adhoc_task_gets_completion_and_criterion():
-    assert "Completion" in read("skills/task/SKILL.md")
+    assert "Completion" in read("skills/factory-task/SKILL.md")
     assert "Accept" in read("agents/approver.md") and "empty" in read("agents/approver.md")
 
 
 def test_approve_warns_without_decision_and_points_to_rerun():
-    t = read("skills/approve/SKILL.md")
+    t = read("skills/factory-approve/SKILL.md")
     assert "no decision.md" in t and "rerun" in t
 
 
@@ -57,9 +57,25 @@ def test_waiting_jobs_are_reasked_on_resume_and_status():
 
 
 def test_answer_command_exists_and_points_to_reference():
-    t = read("skills/answer/SKILL.md")
+    t = read("skills/factory-answer/SKILL.md")
     assert "disable-model-invocation: true" in t and "reference/orchestrator.md" in t
 
 
 def test_dashboard_marks_waiting_input():
     assert "waiting-input" in read("factory/dashboard.html")
+
+
+def test_run_state_carries_task_counts_for_the_progress_band():
+    t = read("reference/orchestrator.md")
+    assert "`total`" in t and "`done`" in t and "each time a job lands" in t
+
+
+def test_progress_mod_is_wired_into_the_plugin():
+    import json
+
+    assert json.loads(read("hooks/hooks.json"))["modules"] == ["./register.tsx"]
+    assert json.loads(read(".claude-plugin/plugin.json"))["types"] == "./types/index.d.ts"
+    reg = read("hooks/register.tsx")
+    assert "factory-progress" in reg and "factory-agents" in reg
+    assert "factory:progress" not in reg and "factory:agents" not in reg
+    assert (PLUGIN / "types/index.d.ts").exists()
