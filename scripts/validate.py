@@ -5,7 +5,7 @@ import re
 import sys
 from pathlib import Path
 
-MANUAL_ONLY = {"factory"}
+MANUAL_ONLY = {"run", "task", "status", "approve", "rework"}
 AUTO_ALLOWED = {"brainstorm", "plan"}
 
 

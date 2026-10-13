@@ -23,7 +23,8 @@ def make_scaffold(root: Path) -> None:
     write(root, "plugins/factory/.claude-plugin/plugin.json", json.dumps({"name": "factory"}))
     write(root, "plugins/factory/skills/brainstorm/SKILL.md", skill("brainstorm"))
     write(root, "plugins/factory/skills/plan/SKILL.md", skill("plan"))
-    write(root, "plugins/factory/skills/factory/SKILL.md", skill("factory", "disable-model-invocation: true\n"))
+    for cmd in ("run", "task", "status", "approve", "rework"):
+        write(root, f"plugins/factory/skills/{cmd}/SKILL.md", skill(cmd, "disable-model-invocation: true\n"))
     write(root, "plugins/factory/agents/builder.md", skill("builder"))
 
 
@@ -57,10 +58,10 @@ def test_missing_style_reference_fails(tmp_path):
     assert any("builder.md" in p and "STYLE.md" in p for p in validate(tmp_path))
 
 
-def test_factory_skill_must_disable_model_invocation(tmp_path):
+def test_command_skills_must_disable_model_invocation(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/factory/skills/factory/SKILL.md", skill("factory"))
-    assert any("factory/SKILL.md" in p and "disable-model-invocation" in p for p in validate(tmp_path))
+    write(tmp_path, "plugins/factory/skills/run/SKILL.md", skill("run"))
+    assert any("run/SKILL.md" in p and "disable-model-invocation" in p for p in validate(tmp_path))
 
 
 def test_brainstorm_and_plan_must_allow_model_invocation(tmp_path):

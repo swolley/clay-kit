@@ -92,37 +92,38 @@ Rules:
 - Defaults when a field is missing, which is how an older superpowers plan runs: `Tier` medium, `Repo` the repo holding the plan, `Depends` none, `Accept` derived from the task's steps, `Verify` taken from the repo's own instructions. The orchestrator tells the user which defaults it applied.
 - Each task is a self-sufficient brief, because workers do not see the conversation. `Repo` is required in multi-repo workspaces. `Files` is a hint, not a contract: reviewer routing uses the real diff.
 - A task is done when all its non-cancelled steps are checked. The factory ticks the steps it completed and never edits cancelled ones.
-- The superpowers header line pointing to `subagent-driven-development` or `executing-plans` is not written: execution is `/factory run`.
+- The superpowers header line pointing to `subagent-driven-development` or `executing-plans` is not written: execution is `/factory:run`.
 
 ### 3.3 Gates
 
-Two human gates only: design (spec or short chat design) and plan. After the plan is approved, `/factory run` runs without further prompts.
+Two human gates only: design (spec or short chat design) and plan. After the plan is approved, `/factory:run` runs without further prompts.
 
 ## 4. Execution phase
 
 ### 4.0 Skills, names and invocation
 
-The tool exposes three skills. Their names read as one pipeline: `brainstorm` (idea to design), `plan` (design to plan), `factory run` (plan to code). They differ in how they may be started.
+Every command is its own skill, so each one appears in the host's command autocompletion and nothing has to be remembered. Names read as one pipeline: `brainstorm` (idea to design), `plan` (design to plan), `run` (plan to code).
 
 | Skill | Started by | Why |
 |-------|-----------|-----|
 | `brainstorm` | the user, or the model on its own when the user describes new work | conversational, ends at the user's approval gate |
 | `plan` | the user, or the model on its own after an approved design | conversational, ends at the user's review of the plan |
-| `factory` (`run`, `task`, `status`, `approve`, `rework`) | the user only (model invocation disabled) | starts autonomous work that spends tokens, creates branches and worktrees and can merge |
+| `run`, `task`, `approve`, `rework` | the user only (model invocation disabled) | start autonomous work that spends tokens, creates branches and worktrees and can merge |
+| `status` | the user only | read-only, but kept explicit so it is never run by surprise |
 
-Model invocation is controlled per skill, not per subcommand, which is why `factory` is a separate skill. The exact way a host spells these commands (for example `/factory:plan` or `/factory plan`) is recorded in `docs/hosts.md`; only the Claude Code behavior of the invocation flag has been observed (in claude-kit's `savvy-flow`).
+Model invocation is controlled per skill. The orchestration logic shared by `run`, `task`, `approve`, `rework` and `status` (job loop, modes, resume, state) lives in one reference file of the plugin, which these skills read; how a skill points at a shared file is recorded in `docs/hosts.md`. Commands are namespaced by the plugin (`/factory:run`); the exact spelling per host is also in `docs/hosts.md`. The autocompletion behavior (one entry per skill, no sub-arguments) is observed from installed plugins, not yet tested for this tool.
 
 ### 4.1 Commands
 
 ```
-/factory run <plan-file>         run the plan's open tasks
-/factory task "<text>"           run one ad hoc task without a plan
-/factory status                  list jobs and their stage
-/factory approve <job-id>        merge a needs-human job into the integration branch
-/factory rework <job-id> <note>  send a needs-human job back to its builder
+/factory:run <plan-file>         run the plan's open tasks
+/factory:task "<text>"           run one ad hoc task without a plan
+/factory:status                  list jobs and their stage
+/factory:approve <job-id>        merge a needs-human job into the integration branch
+/factory:rework <job-id> <note>  send a needs-human job back to its builder
 ```
 
-`/factory task` is for small work that does not need a plan. Subcommands are fixed words (`run`, `task`, `status`, `approve`, `rework`), so free text never collides with them.
+`/factory:task` is for small work that does not need a plan. Each command is a separate skill, so free text never collides with a command name.
 
 ### 4.2 Preconditions
 
@@ -130,7 +131,7 @@ At start the orchestrator checks that the plan exists and has checkbox tasks wit
 
 ### 4.3 Isolation mode: branches and worktrees
 
-At the start of `/factory run` the orchestrator proposes a mode through the native question tool, with isolation as the recommended option, and records the choice in the plan's run state.
+At the start of `/factory:run` the orchestrator proposes a mode through the native question tool, with isolation as the recommended option, and records the choice in the plan's run state.
 
 **Isolated (recommended, default).**
 - One integration branch per plan and repo: `factory/<plan-slug>`, created from the repo's main branch.
@@ -186,7 +187,7 @@ Runtime state in `factory/jobs/<job-id>/` of the main checkout, gitignored: `job
 
 ### 4.8 Resuming an interrupted run
 
-There is no separate resume command: `/factory run <plan>` is idempotent and resumes by itself.
+There is no separate resume command: `/factory:run <plan>` is idempotent and resumes by itself.
 
 At start the orchestrator reads the plan and `factory/jobs/` and classifies each task:
 
@@ -195,7 +196,7 @@ At start the orchestrator reads the plan and `factory/jobs/` and classifies each
 | Done | all non-cancelled steps checked | skip |
 | Merged but not ticked | `job.json` stage `merged` (or committed, in current-branch mode) | tick the steps, then skip |
 | Interrupted | `job.json` with stage `spec`, `build`, `review` or `approve` | resume from the recorded stage |
-| `needs-human` | `job.json` stage `needs-human` | do not touch; list it and wait for `/factory approve` or `/factory rework` |
+| `needs-human` | `job.json` stage `needs-human` | do not touch; list it and wait for `/factory:approve` or `/factory:rework` |
 | Not started | no job | start normally |
 
 Resuming a stage:
@@ -230,7 +231,8 @@ plugins/
   factory/                          this spec
     .claude-plugin/plugin.json
     .codex-plugin/plugin.json
-    skills/{brainstorm,plan,factory}/SKILL.md
+    skills/{brainstorm,plan,run,task,status,approve,rework}/SKILL.md
+    reference/orchestrator.md       shared logic read by run, task, status, approve, rework
     agents/{builder,reviewer-code,reviewer-ui,reviewer-ux,reviewer-security,approver}.md
     factory/dashboard.html
     STYLE.md  routing.md  tiers.md
@@ -254,7 +256,7 @@ No session-start hook in the factory. Skills trigger by `description`. If a hook
 - **Skills:** run each skill against a throwaway repo with scripted prompts; check the gate holds, questions use the native tool, and output length stays within the style contract.
 - **Factory:** a fixture repo with a three-task plan covering a backend-only task, a UI task and a task that must escalate. Expected: backend task runs no ui/ux reviewer; UI task runs them; escalation lands in `needs-human`.
 - **Routing:** unit-level check that `routing.md` patterns select the expected reviewers for sample diffs.
-- **Resume:** kill a run at each stage (`spec`, `build`, `review` with one reviewer done, `approve`) and in current-branch mode with uncommitted changes; rerun `/factory run` and check that merged tasks are skipped, the interrupted job is resumed without a duplicate branch, and `needs-human` jobs are left alone.
+- **Resume:** kill a run at each stage (`spec`, `build`, `review` with one reviewer done, `approve`) and in current-branch mode with uncommitted changes; rerun `/factory:run` and check that merged tasks are skipped, the interrupted job is resumed without a duplicate branch, and `needs-human` jobs are left alone.
 
 ## 9. Open items
 
