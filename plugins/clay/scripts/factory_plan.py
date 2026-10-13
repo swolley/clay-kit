@@ -13,6 +13,9 @@ TIERS = {"light", "medium", "careful", "heavy", "fable"}
 STEP = re.compile(r"^\s*[-*] \[([ xX-])\]\s*(.*)$")
 STATES = {" ": "open", "x": "done", "X": "done", "-": "cancelled"}
 BANNER = re.compile(r"^(?:>\s*)?(?:\*\*Status:\*\*|Status:)\s*(.+)$")
+SECTION = re.compile(r"^##\s+(.+)$")
+FILE_LINE = re.compile(r"^\s*[-*] (Create|Modify|Test|Migration|File):\s*(.+)$", re.I)
+PLAN_LEVEL = "(plan level)"
 
 
 @dataclass
@@ -34,7 +37,9 @@ class Task:
     verify: str = ""
     commits: list[str] = field(default_factory=list)
     files_create: list[str] = field(default_factory=list)
+    files_delete: list[str] = field(default_factory=list)
     steps: list[Step] = field(default_factory=list)
+    kind: str = "task"  # task, or a checklist outside the tasks: plan (above the first task) or section (a `##` heading)
     defaults_applied: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     fields_seen: set[str] = field(default_factory=set, repr=False)
@@ -74,6 +79,7 @@ class Plan:
     spec: str = ""
     status: str = ""  # the `status:` of the YAML front matter, lowercased; empty when absent
     banner: str = ""  # a `**Status:** ...` or `Status: ...` line above the first task; empty when absent
+    blocks: list[Task] = field(default_factory=list)  # every task, and every other checklist, in document order
 
     @property
     def state(self) -> str:
@@ -123,6 +129,22 @@ def _apply_field(task: Task, name: str, value: str) -> None:
         task.verify = value
 
 
+def _declare(task: Task, item: str, creates: bool = False, deletes: bool = False) -> None:
+    """Record the backticked paths of a file line, without a trailing `:line` or `:from-to` range."""
+    paths = [re.sub(r":\d+(?:-\d+)?$", "", p) for p in re.findall(r"`([^`]+)`", item)]
+    task.files += paths
+    if creates:
+        task.files_create += paths
+    if deletes:
+        task.files_delete += paths
+
+
+def _creates(kind: str, item: str) -> bool:
+    """Whether a file line names a file the task brings into existence; a test file it extends existed before."""
+    kind = kind.lower()
+    return kind in ("create", "migration") or (kind == "test" and not re.search(r"\b(append|extend|modify|existing)\b", item, re.I))
+
+
 def front_status(text: str) -> str:
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
@@ -152,7 +174,10 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
     status = front_status(text)
     title = ""
     tasks: list[Task] = []
-    current: Task | None = None
+    # Steps above the first task, or under a `##` section that is not a task, are a checklist of their own: they
+    # count for the plan but belong to no task.
+    current = Task(number=0, title=PLAN_LEVEL, kind="plan")
+    blocks = [current]
     in_fence = False
     spec = ""
     banner = ""
@@ -165,7 +190,7 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
             continue
         if in_fence:
             # A commit step often shows its message in a fenced `git commit -m "..."`.
-            if current is not None and (c := re.search(r"git commit(?: -\w+)* -m\s+[\"'](.+?)[\"']", line)):
+            if c := re.search(r"git commit(?: -\w+)* -m\s+[\"'](.+?)[\"']", line):
                 current.commits.append(c.group(1))
             continue
         if not title and (m := re.match(r"^#\s+(.+)$", line)):
@@ -178,23 +203,29 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
             name = _clean(heading.split(":", 1)[1] if ":" in heading else heading)
             current = Task(number=number, title=name)
             tasks.append(current)
+            blocks.append(current)
             last_field = ""
             continue
-        if current is None:
+        if m := SECTION.match(line):
+            current = Task(number=0, title=_clean(m.group(1)), kind="section")
+            blocks.append(current)
+            last_field = ""
+            continue
+        if not tasks:
             if m := re.match(r"^\*\*Spec:\*\*\s*(.*)$", line):
                 found = re.search(r"`([^`]+)`", m.group(1))
                 spec = found.group(1) if found else ""
             elif not banner and i >= body and (m := BANNER.match(line)):
                 banner = m.group(1).strip()
-            continue
-        if m := FIELD.match(line):
+        if current.kind == "task" and (m := FIELD.match(line)):
             _apply_field(current, m.group(1), m.group(2).strip())
             last_field = m.group(1).lower()
+        elif m := FILE_LINE.match(line):
+            _declare(current, m.group(2), creates=_creates(m.group(1), m.group(2)))
         elif last_field == "files" and (m := re.match(r"^\s*[-*]\s+(?!\[[ xX-]\])(.*)$", line)):
-            paths = [re.sub(r":\d+(?:-\d+)?$", "", p) for p in re.findall(r"`([^`]+)`", m.group(1))]
-            current.files += paths
-            if re.match(r"\s*Create\b", m.group(1), re.I):
-                current.files_create += paths
+            item = m.group(1)
+            _declare(current, item, creates=bool(re.match(r"\s*Create\b", item, re.I)),
+                     deletes=bool(re.match(r"\s*Delete\b", item, re.I)))
         elif m := STEP.match(line):
             last_field = ""
             text = _clean(re.sub(r"^Step \d+:\s*", "", _clean(m.group(2))))
@@ -212,7 +243,8 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
             t.repo = default_repo
         if "accept" not in t.fields_seen:
             t.accept = [s.text for s in t.steps if s.state != "cancelled"]
-    return Plan(title=title, tasks=tasks, spec=spec, status=status, banner=banner)
+    blocks = [b for b in blocks if b.kind == "task" or b.steps]
+    return Plan(title=title, tasks=tasks, spec=spec, status=status, banner=banner, blocks=blocks)
 
 
 def check_files(files: list[str], root: Path) -> tuple[list[str], list[str]]:

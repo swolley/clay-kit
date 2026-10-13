@@ -126,11 +126,13 @@ def _scan_plan(file: Path, root: Path, repo: str, relative: str, plan_dir: str, 
     plan = parse_plan(file.read_text(errors="replace"))
     tasks = []
     total = checked = 0
-    for t in plan.tasks:
+    # Every checklist counts, including the steps above the first task and those under a section that is not a task.
+    for t in plan.blocks:
         if not t.steps:
             continue
         open_, done, cancelled = t.counts()
-        files = list(dict.fromkeys(_paths(t.files)))
+        # A file the task deletes is gone once it ran, so its absence is no sign that the task is still to do.
+        files = [f for f in dict.fromkeys(_paths(t.files)) if f not in t.files_delete]
         created = len(_paths(t.files_create))
         found, missing = _evidence(files, root, relative) if evidence else (0, [])
         state = t.state

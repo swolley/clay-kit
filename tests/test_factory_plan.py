@@ -125,7 +125,7 @@ def test_commit_messages_are_read_from_inline_and_fenced_commit_steps():
 def test_create_bullets_are_told_apart_from_modify_bullets():
     text = "# P\n\n### Task 1: A\n\n**Files:**\n- Create: `new.py`\n- Modify: `old.py:10-20`\n- Test: `t.py`\n\n- [ ] **Step 1: do**\n"
     t = parse_plan(text).tasks[0]
-    assert t.files == ["new.py", "old.py", "t.py"] and t.files_create == ["new.py"]
+    assert t.files == ["new.py", "old.py", "t.py"] and t.files_create == ["new.py", "t.py"]
 
 
 def _git(root, *args):
@@ -242,3 +242,49 @@ def test_plan_date_comes_from_the_file_name():
     assert plan_date("docs/superpowers/plans/2026-01-02-x.md") == "2026-01-02"
     assert plan_date("factory-backlog-2026-10-13.md") == ""
     assert plan_date("2026-1-3-short.md") == ""
+
+
+def test_steps_before_the_first_task_form_a_plan_level_block():
+    plan = parse_plan("# P\n\n- [x] agree on scope\n- [ ] book the hall\n\n### Task 1: A\n\n- [ ] a\n")
+    assert [t.number for t in plan.tasks] == [1]
+    assert [(b.kind, b.title, b.counts()) for b in plan.blocks] == [("plan", "(plan level)", (1, 1, 0)), ("task", "A", (1, 0, 0))]
+    assert plan.blocks[1] is plan.tasks[0]
+
+
+def test_a_section_after_the_last_task_does_not_leak_into_it():
+    text = "# P\n\n### Task 1: A\n\n- [x] a\n\n## Release gates\n\n- [ ] tag the release\n- [ ] announce it\n"
+    plan = parse_plan(text)
+    assert plan.tasks[0].counts() == (0, 1, 0) and plan.tasks[0].done is True
+    assert [(b.kind, b.title, b.counts()) for b in plan.blocks] == [("task", "A", (0, 1, 0)), ("section", "Release gates", (2, 0, 0))]
+
+
+def test_a_deeper_heading_inside_a_task_keeps_its_steps_in_the_task():
+    plan = parse_plan("# P\n\n## Task 1: A\n\n### Details\n\n- [ ] a\n- [ ] b\n")
+    assert plan.tasks[0].counts() == (2, 0, 0) and [b.kind for b in plan.blocks] == ["task"]
+
+
+def test_blocks_without_steps_are_left_out_but_tasks_without_steps_stay():
+    plan = parse_plan("# P\n\nIntro.\n\n## Context\n\nProse.\n\n### Task 1: A\n\n## Notes\n\nMore prose.\n")
+    assert [b.kind for b in plan.blocks] == ["task"]
+
+
+def test_file_lines_are_read_anywhere_in_a_task():
+    text = "# P\n\n### Task 1: A\n\nSome prose first.\n\n- Create: `src/lamp.py`\n- Modify: `src/wick.py`\n\n- [ ] do\n"
+    t = parse_plan(text).tasks[0]
+    assert t.files == ["src/lamp.py", "src/wick.py"] and t.files_create == ["src/lamp.py"]
+
+
+def test_migrations_and_new_test_files_are_created_files():
+    text = (
+        "# P\n\n### Task 1: A\n\n**Files:**\n- Migration: `db/0001_lamps.sql`\n- Test: `tests/test_lamp.py`\n"
+        "- Test: extend `tests/test_wick.py`\n- Test: `tests/test_oil.py` (existing)\n- File: `docs/lamp.md`\n\n- [ ] do\n"
+    )
+    t = parse_plan(text).tasks[0]
+    assert t.files == ["db/0001_lamps.sql", "tests/test_lamp.py", "tests/test_wick.py", "tests/test_oil.py", "docs/lamp.md"]
+    assert t.files_create == ["db/0001_lamps.sql", "tests/test_lamp.py"]
+
+
+def test_deleted_files_are_told_apart_from_the_files_a_task_keeps():
+    text = "# P\n\n### Task 1: A\n\n**Files:**\n- Modify: `src/lamp.py`\n- Delete: `src/candle.py`\n\n- [ ] do\n"
+    t = parse_plan(text).tasks[0]
+    assert t.files == ["src/lamp.py", "src/candle.py"] and t.files_delete == ["src/candle.py"]

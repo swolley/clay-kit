@@ -152,6 +152,15 @@ def test_evidence_counts_the_declared_files_that_exist(tmp_path):
     assert (plain["files_found"], plain["files_missing"]) == (0, [])
 
 
+
+def test_a_file_the_task_deletes_is_not_evidence(tmp_path):
+    _write(tmp_path / "orchard/src/apple.py", "")
+    _write(tmp_path / "orchard/docs/superpowers/plans/2026-01-01-p.md",
+           "# Orchard\n\n## Task 1: replant\n\n**Files:**\n- Create: `src/apple.py`\n- Delete: `src/stump.py`\n\n- [ ] a\n")
+    task = _one(tmp_path)["tasks"][0]
+    assert (task["files"], task["files_found"], task["stale"]) == (["src/apple.py"], 1, True)
+
+
 def _specs(root: Path) -> list[dict]:
     repos = discover(root)
     return scan_specs(root, repos, scan_plans(root, repos, evidence=False))
