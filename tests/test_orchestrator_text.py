@@ -90,3 +90,30 @@ def test_job_state_carries_times_and_run_state_carries_the_task_list():
 def test_orchestrator_records_the_model_and_effort_of_each_agent():
     t = read("reference/orchestrator.md")
     assert "`agents` records" in t and "effort` you passed" in t
+
+
+def test_run_warns_about_tasks_that_may_already_be_implemented():
+    t = read("reference/orchestrator.md")
+    assert "--root" in t and "files_present" in t and "already be implemented" in t
+
+
+def test_no_undefined_build_check_step():
+    assert "Build check" not in read("reference/orchestrator.md")
+
+
+def test_job_json_is_written_after_the_worktree_exists():
+    assert "before writing `job.json`" in read("reference/orchestrator.md") or "only then write `job.json`" in read("reference/orchestrator.md")
+
+
+def test_job_records_head_and_build_round_for_resume():
+    t = read("reference/orchestrator.md")
+    assert "`head`" in t and "`build_round`" in t
+
+
+def test_style_contract_does_not_point_outside_the_plugin():
+    assert "docs/hosts.md" not in read("STYLE.md")
+
+
+def test_spec_says_the_orchestrator_lands_the_job():
+    spec = (PLUGIN.parent.parent / "docs/superpowers/specs/2026-10-13-factory-design.md").read_text()
+    assert "clears a job to land" in spec and "**Approver** merges" not in spec

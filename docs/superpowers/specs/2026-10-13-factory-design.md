@@ -165,7 +165,7 @@ task -> builder -> [routed reviewers] -> WAIT FOR ALL
 - **Builder** runs at the task's tier. It carries, as short sections of its own prompt, test-first development, systematic debugging, and verification before claiming done (commands run, results recorded). It updates `filemap.md` when it adds or moves files.
 - **Reviewer routing** is decided after the build from the real diff, using `routing.md` (path pattern to reviewer). `reviewer-code` and `approver` always run. `reviewer-ui`, `reviewer-ux`, `reviewer-security` run only when a changed path matches. The routing result is written to `job.json` and the round waits only for the selected reviewers.
 - **Reviews are adversarial:** the builder's report is a claim to verify against the diff, not a fact.
-- **Approver** merges (isolated mode) or commits (current-branch mode) only when all acceptance criteria are met with evidence, all selected reviews pass, and there are no conflicts. It escalates on: licensing or ownership boundaries stated in the repo's instructions, money, auth or permissions, migrations, CI or deploy config, new dependencies, and spec assumptions that are product decisions.
+- **Approver** clears a job to land (`APPROVE`; the orchestrator then merges it in isolated mode or commits it in current-branch mode) only when all acceptance criteria are met with evidence, all selected reviews pass, and there are no conflicts. It escalates on: licensing or ownership boundaries stated in the repo's instructions, money, auth or permissions, migrations, CI or deploy config, new dependencies, and spec assumptions that are product decisions.
 
 ### 4.5 Tiers
 

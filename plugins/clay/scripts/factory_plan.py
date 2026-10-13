@@ -7,7 +7,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 TASK_HEADING = re.compile(r"^#{2,4}\s+((?:Task|Phase|Step|Milestone|Wave)\b[^\n]*)$", re.I)
-FIELD = re.compile(r"^\*\*(Repo|Tier|Depends|Files|Constraints|Accept|Verify):\*\*\s*(.*)$")
+FIELD = re.compile(r"^\s*\*\*(Repo|Tier|Depends|Files|Constraints|Accept|Verify):\*\*\s*(.*)$")
+TIERS = {"light", "medium", "careful", "heavy", "fable"}
 STEP = re.compile(r"^\s*[-*] \[([ xX-])\]\s*(.*)$")
 STATES = {" ": "open", "x": "done", "X": "done", "-": "cancelled"}
 
@@ -31,6 +32,7 @@ class Task:
     verify: str = ""
     steps: list[Step] = field(default_factory=list)
     defaults_applied: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     fields_seen: set[str] = field(default_factory=set, repr=False)
 
     @property
@@ -114,6 +116,9 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
             last_field = ""
             current.steps.append(Step(STATES[m.group(1)], _clean(re.sub(r"^Step \d+:\s*", "", _clean(m.group(2))))))
     for t in tasks:
+        if t.tier not in TIERS:
+            t.warnings.append(f"unknown tier '{t.tier}', using medium")
+            t.tier = "medium"
         for name in ("tier", "repo", "depends", "files", "accept", "verify"):
             if name not in t.fields_seen:
                 t.defaults_applied.append(name)
@@ -124,17 +129,31 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
     return Plan(title=title, tasks=tasks)
 
 
+def check_files(files: list[str], root: Path) -> tuple[list[str], list[str]]:
+    """Which of a task's declared files already exist under `root`. Patterns and brace lists are skipped."""
+    present: list[str] = []
+    missing: list[str] = []
+    for f in files:
+        if any(c in f for c in "*?{}"):
+            continue
+        (present if (root / f).exists() else missing).append(f)
+    return present, missing
+
+
 def main(argv: list[str]) -> int:
     if not argv:
-        print("usage: factory_plan.py <plan.md> [--repo NAME]", file=sys.stderr)
+        print("usage: factory_plan.py <plan.md> [--repo NAME] [--root DIR]", file=sys.stderr)
         return 2
     repo = argv[argv.index("--repo") + 1] if "--repo" in argv else ""
+    root = Path(argv[argv.index("--root") + 1]) if "--root" in argv else None
     plan = parse_plan(Path(argv[0]).read_text(), default_repo=repo)
     out = {"title": plan.title, "tasks": []}
     for t in plan.tasks:
         d = asdict(t)
         d.pop("fields_seen")
         d["done"] = t.done
+        if root is not None:
+            d["files_present"], d["files_missing"] = check_files(t.files, root)
         out["tasks"].append(d)
     print(json.dumps(out, indent=2))
     return 0

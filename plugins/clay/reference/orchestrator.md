@@ -38,7 +38,8 @@ session got there first, so try the next counter value. `job.json`:
 
 `agents` records, per role (`builder`, `code`, `security`, `ux`, `ui`, `approver`), the `model` and `effort` you passed when
 you spawned that agent; write it right after each spawn. The progress mod shows who has the job and on which model.
-`started` and `updated` are ISO 8601 UTC timestamps: set `started` when the job is created and refresh `updated`
+`head` is the commit the job branch pointed at after the last build, and `build_round` the round that build was for; a
+resume uses them. `started` and `updated` are ISO 8601 UTC timestamps: set `started` when the job is created and refresh `updated`
 on every change (the progress mod shows elapsed time from them).
 `stage` is `spec`, `build`, `waiting-input`, `review`, `approve`, `merged`, `committed` or `needs-human`. Replace
 the file as a whole each time it changes. `reviews` holds the current round; earlier rounds stay in their folders.
@@ -69,9 +70,13 @@ failure or escalation you stop and leave the changes in the tree for the user.
 
 ## Preconditions (run)
 
-1. The plan file exists. Parse it: `python3 <plugin root>/scripts/factory_plan.py <plan> --repo <name>`.
+1. The plan file exists. Parse it: `python3 <plugin root>/scripts/factory_plan.py <plan> --repo <name> --root <repo>`.
    If there are no tasks, point to the `factory-brainstorm` and `factory-plan` skills and stop.
-2. Tell the user which defaults the parser applied (`defaults_applied`), in one line per task.
+2. Tell the user which defaults the parser applied (`defaults_applied`) and any `warnings`, in one line per task.
+   Then look for work that may already be done: a task that has no job, declares `Files`, and has all of them in
+   `files_present` (none in `files_missing`) may already be implemented, for instance a plan that was carried out by
+   hand and never ticked. Before you start anything, say so and ask with the question tool: skip those tasks (and tick
+   their steps), build them anyway, or stop. Never start such a task silently.
 3. The target repo is a git repo. Isolated mode needs a clean main checkout only for the final merge.
 4. Resume (below), then mode choice, then start.
 
@@ -88,8 +93,9 @@ failure or escalation you stop and leave the changes in the tree for the user.
 | waiting-input | stage `waiting-input` | read the pending `questions-<k>.md` and ask again; see Questions from agents |
 | not started | no job | start |
 
-Resuming: keep the worktree and branch, never recreate. If they are missing or the branch no
-longer matches `job.json`, set `needs-human` and say why. `build` without build.md: start a fresh
+Resuming: keep the worktree and branch, never recreate. If they are missing, or the branch no
+longer points at the `head` in `job.json`, set `needs-human` and say why. `build` with a build.md for the recorded `build_round` and `STATUS: READY`: go straight to Route (step 3).
+`build` without build.md: start a fresh
 builder with the task and the commits already on the branch. Round partly done: keep finished
 review files, rerun only the missing reviewers. `approve` without decision.md: rerun the approver.
 A named builder does not survive its session; a resumed builder is a new agent that reads build.md,
@@ -101,8 +107,9 @@ continue from them, stash them or stop. Before continuing, say in one line per j
 Open every agent prompt with the job's coordinates (`<paths>` below): its folder `<repo>/factory/jobs/<job-id>/`, the
 worktree path, the branch, the mode and the base.
 
-1. **Create** the job: folder, `task.md`, `job.json` (`stage: "spec"`, round 0, reviewers `[]`), then in isolated
-   mode the branch and worktree.
+1. **Create** the job: claim the folder, then in isolated mode create the branch and worktree, and only then write `job.json`
+   (`stage: "spec"`, round 0, reviewers `[]`) and `task.md`, so a crash never leaves a job without its
+   worktree. A job folder that has no `job.json` is an abandoned claim: start the task fresh.
 2. **Build.** `stage: "build"`. Spawn the `builder` under the name `builder-<job-id>` with model and effort from the task's
    tier in `<plugin root>/tiers.md`, prompt `<paths> Build round 1.` plus `Port: <5100+10n>` (n = job number).
    The first line of build.md decides what happens next: `STATUS: READY` moves on, `STATUS: NEEDS_INPUT` goes to
@@ -118,7 +125,7 @@ worktree path, the branch, the mode and the base.
    untouched until the whole round is in.
 5. **Decide.** All PASS: approve. Any CHANGES with resumes left (max 2 after round 1): `stage: "build"`,
    resume `builder-<job-id>` with `SendMessage` (or a fresh builder if the session lost it) saying the
-   reviews are in `round-N/` and to answer every CHANGES; then Build check, re-route (the diff may have grown),
+   reviews are in `round-N/` and to answer every CHANGES; then check the first line of build.md as in step 2, re-route (the diff may have grown),
    next round. When the resumes are used up, you write `decision.md` yourself: first line `ESCALATE`, then a sentence naming
    the lenses that still ask for changes, and go to step 8.
 6. **Approve.** `stage: "approve"`. Spawn `approver` (fixed settings) with `<paths> Final round: N.` Line one
@@ -160,7 +167,7 @@ chosen local action. Current-branch mode has nothing to merge.
   Land. Current branch: Land (commit).
 - **rework `<job-id>` `<note>`**: only valid on a job in `needs-human`. Write the note verbatim to `rework-<k>.md`
   (next unused k), set `stage: "build"`, spawn a fresh `builder-<job-id>` told to read that file and update
-  build.md; a rework gets a fresh budget of 2 resumes. Continue from Build check.
+  build.md; a rework gets a fresh budget of 2 resumes. Continue from the check of build.md in step 2 of the Job loop.
 - **answer `<job-id>` `[text]`**: only valid on a job in `waiting-input`. Without text, ask the pending questions again
   from the file. With text, treat it as the answers, check it covers every question (ask again for what is missing), save
   it to `answers-<k>.md` and continue from step 4 of Questions from agents.

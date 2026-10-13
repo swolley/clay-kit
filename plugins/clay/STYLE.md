@@ -7,9 +7,9 @@ restating them. Change a rule here, once.
 
 - Ask with the host's structured-question tool, one question at a time, options
   with a one-line consequence each, the recommended option first.
-- Claude Code: `AskUserQuestion`. Other hosts: use the native tool only if
-  `docs/hosts.md` marks it verified; otherwise fall back to numbered options in
-  plain text. Codex is currently in the fallback case.
+- Claude Code: `AskUserQuestion`. Other hosts: use their native structured-question tool only once its name has
+  been verified from the host's own documentation; until then fall back to numbered options in plain text.
+  Codex is currently in the fallback case.
 - Only skills in the main session ask. Subagents cannot use the question tool:
   an agent that needs an answer writes the open question in its own file and stops.
 

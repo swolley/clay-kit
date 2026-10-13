@@ -78,3 +78,35 @@ def test_files_listed_in_defaults_when_absent():
 def test_all_cancelled_task_is_done():
     t = parse_plan("# P\n\n### Task 1: A\n\n- [-] **Step 1: dropped**\n").tasks[0]
     assert t.done is True
+
+
+def test_check_files_splits_present_missing_and_skips_patterns(tmp_path):
+    from factory_plan import check_files
+
+    (tmp_path / "a.py").write_text("x")
+    present, missing = check_files(["a.py", "b.py", "skills/{run,task}/SKILL.md", "src/*.ts"], tmp_path)
+    assert (present, missing) == (["a.py"], ["b.py"])
+
+
+def test_cli_reports_existing_files_for_a_root(tmp_path, capsys):
+    import json
+
+    from factory_plan import main
+
+    (tmp_path / "a.py").write_text("x")
+    plan = tmp_path / "plan.md"
+    plan.write_text("# P\n\n### Task 1: A\n\n**Files:** `a.py`\n\n- [ ] **Step 1: do**\n\n### Task 2: B\n\n**Files:** `b.py`\n\n- [ ] **Step 1: do**\n")
+    assert main([str(plan), "--root", str(tmp_path)]) == 0
+    tasks = json.loads(capsys.readouterr().out)["tasks"]
+    assert (tasks[0]["files_present"], tasks[0]["files_missing"]) == (["a.py"], [])
+    assert (tasks[1]["files_present"], tasks[1]["files_missing"]) == ([], ["b.py"])
+
+
+def test_indented_field_lines_are_still_fields():
+    t = parse_plan("# P\n\n### Task 1: A\n\n  **Tier:** heavy\n\n- [ ] **Step 1: do**\n").tasks[0]
+    assert t.tier == "heavy" and "tier" not in t.defaults_applied
+
+
+def test_unknown_tier_falls_back_to_medium_with_a_warning():
+    t = parse_plan("# P\n\n### Task 1: A\n\n**Tier:** high\n\n- [ ] **Step 1: do**\n").tasks[0]
+    assert t.tier == "medium" and any("high" in w for w in t.warnings)
