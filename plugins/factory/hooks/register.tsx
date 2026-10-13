@@ -52,13 +52,6 @@ const labeled = (Box: any, Text: any, label: string, done: number, total: number
   )
 }
 
-// A small factory drawn for the surfaces that can show vector art.
-const ICON =
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="2" y="11" width="20" height="10" rx="1" fill="#8b93a5"/>' +
-  '<path d="M2 11 7 7v4m0 0 5-4v4m0 0 5-4v4" fill="#8b93a5"/><rect x="16" y="3" width="3" height="8" fill="#8b93a5"/>' +
-  '<rect x="5" y="14" width="3" height="3" fill="#3fb97c"/><rect x="10.5" y="14" width="3" height="3" fill="#3fb97c"/>' +
-  '<rect x="16" y="14" width="3" height="3" fill="#3fb97c"/></svg>'
-
 const stateIcon = (job: Job) => (job.stage === 'merged' || job.stage === 'committed' ? '✓' : '●')
 
 const stateColor = (job: Job) =>
@@ -123,7 +116,6 @@ export const register: Register = on => {
 
     const elements = $.ui.resolve(e)
     const { Box, Button, Text } = elements
-    const Svg = 'Svg' in elements ? elements.Svg : undefined
     const active = activePlans(summary)
     const lead = active[0]
     if (!lead) return next(e)
@@ -135,7 +127,6 @@ export const register: Register = on => {
     // One row, never wrapped. The time stays in the pane.
     return (
       <Box flexWrap="nowrap" gap={1}>
-        {Svg && <Svg source={ICON} alt="factory" width={18} height={18} />}
         <Text bold color={dot}>●</Text>
         <Text bold>{lead.plan.slice(0, 20)}{more}</Text>
         {labeled(Box, Text, label, lead.done, lead.total, 46, OK)}
