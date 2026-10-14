@@ -67,3 +67,16 @@ def test_brace_alternation_in_glob():
     assert route(["a/auth/x.php"], rules) == ["code", "security"]
     assert route(["a/auth/x.py"], rules) == ["code", "security"]
     assert route(["a/auth/x.md"], rules) == ["code"]
+
+
+def test_markup_and_style_extensions_beyond_vue_and_tsx_reach_the_interface_reviewers():
+    for p in ["templates/home.html", "views/layout.twig", "app/page.astro", "ui/Button.jsx", "mail/welcome.erb"]:
+        assert route([p], REAL) == ["code", "ux", "ui"], p
+    for p in ["styles/app.sass", "theme/dark.less"]:
+        assert route([p], REAL) == ["code", "ui"], p
+
+
+def test_plain_js_and_ts_count_only_inside_components_views_and_pages():
+    assert route(["server/index.js", "lib/format.ts", "scripts/build.mjs", "src/ui/state.js", "src/widgets/cache.ts", "src/forms/validate.js"], REAL) == ["code"]
+    assert route(["src/components/chart.ts"], REAL) == ["code", "ui"]
+    assert route(["src/pages/home.js"], REAL) == ["code", "ux"]

@@ -13,7 +13,7 @@ and read checks with them (`verify`, `checks`). A reviewer and the approver also
 
 When an agent finishes, the spawn result carries its usage (`subagent_tokens`, `tool_uses`, `duration_ms`). Record it at once, with all the agents that finished together in one call:
 `state.py after-agent <job-id> --agents '[{"role":"code","model":"sonnet","effort":"medium","tokens":9000,"ms":20000,"tools":5}]'` (roles `builder`, `code`,
-`security`, `ux`, `ui`, `approver`; leave `effort` empty when the host did not accept one; `state.py agent <job-id> <role> --model <m> --effort <e> --tokens <n>
+`security`, `ux`, `ui`, `uiux`, `approver`; leave `effort` empty when the host did not accept one; `state.py agent <job-id> <role> --model <m> --effort <e> --tokens <n>
 --ms <n> --tools <n>` records one agent). The progress views show who has the job, on which
 model, and what it cost in time and tokens. The usage of your own session is not included: it is not reported to you.
 
@@ -42,7 +42,9 @@ model, and what it cost in time and tokens. The usage of your own session is not
    **Short path.** When it prints `lite: true` (tier `light`, at most 3 files and 30 lines, only the `code` lens) no reviewer is spawned
    and the job goes straight to approve: the approver reviews the diff itself, so tell it `Lite: yes` in its prompt.
 4. **Review round N.** Spawn the reviewers in `rerun` in one message, with the settings from `tiers.md`, prompt `<paths> Review round N.`
-   plus `Port: 5101+10n` for ux and `5102+10n` for ui. When they have finished, check the round in its own step: `state.py verdicts <job>`
+   plus `Port: 5101+10n` for ux and `5102+10n` for ui. When `rerun` holds both `ux` and `ui`, spawn one `reviewer-uiux` for the two instead, with `Port: 5101+10n`:
+   it reads the change once and writes both `review-ux.md` and `review-ui.md`, and its usage is recorded under the role `uiux`. With only one of them, spawn that
+   lens's own reviewer. When they have finished, check the round in its own step: `state.py verdicts <job>`
    reads line one of every file of `rerun`, stores the verdicts in `job.json`, and exits 1 if a file or a verdict line
    is missing; `all_pass` counts the carried verdicts too. A reviewer's chat reply is a claim, not a verdict: only its file counts. A reviewer that wrote no file gets one more time, with a reminder to write it; if it still has no verdict line, stop and tell the user. The builder stays untouched until the whole round is in.
 5. **Decide.** `all_pass`: approve. Any CHANGES with resumes left (max 2 after round 1): `state.py stage <job> build`,

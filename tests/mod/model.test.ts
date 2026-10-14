@@ -290,6 +290,15 @@ test('workingNow lists only the reviewers still pending, grouped by model', () =
   assert.equal(workingNow(j).text, 'ux, ui · sonnet medium')
 })
 
+test('workingNow finds the combined ui and ux reviewer for either pending lens', () => {
+  const j = job({
+    stage: 'review', round: 1, reviewers: ['code', 'ux', 'ui'], reviews: { code: 'PASS', ux: 'pending', ui: 'pending' },
+    agents: { uiux: { model: 'sonnet', effort: 'medium' } },
+  })
+  assert.equal(workingNow(j).text, 'ux, ui · sonnet medium')
+  assert.equal(workingNow(j, { uiux: { model: 'claude-sonnet-5-5' } }).text, 'ux, ui · sonnet-5-5 medium')
+})
+
 test('workingNow names the approver, and nobody when the job is waiting on a person', () => {
   assert.equal(workingNow(job({ stage: 'approve', agents: { approver: { model: 'opus', effort: 'high' } } })).text, 'approver · opus high')
   assert.equal(workingNow(job({ stage: 'needs-human' })).text, '')
