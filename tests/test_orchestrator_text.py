@@ -295,3 +295,11 @@ def test_the_composite_commands_replace_the_step_by_step_calls_in_the_loop():
     assert "state.py begin-job" in loop and "state.py after-agent" in loop and "in one call" in loop
     assert "state.py preflight" in start and "`jobs`" in start and "`audit`" in start
     assert "state.py new-job" not in start and "factory_plan.py <plan> --repo <name> --root <repo>` prints it" in start
+
+
+def test_a_round_that_needs_both_interface_lenses_spawns_one_combined_reviewer():
+    loop = read("reference/job-loop.md")
+    assert "`reviewer-uiux`" in loop and "`review-ux.md` and `review-ui.md`" in loop and "role `uiux`" in loop
+    agent = read("agents/reviewer-uiux.md")
+    assert "review-ux.md" in agent and "review-ui.md" in agent and "reviewer-ux.md" in agent and "reviewer-ui.md" in agent
+    assert "reviewer-uiux" in read("tiers.md")

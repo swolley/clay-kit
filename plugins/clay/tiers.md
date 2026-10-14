@@ -26,6 +26,7 @@ Fallback: if the host does not accept `fable`, use `opus` with `xhigh`.
 | reviewer-code | sonnet | medium |
 | reviewer-ui | sonnet | medium |
 | reviewer-ux | sonnet | medium |
+| reviewer-uiux | sonnet | medium |
 | reviewer-security | opus | high |
 | reviewer-spec | sonnet | medium |
 | approver | sonnet or opus, see below | high |
@@ -33,6 +34,9 @@ Fallback: if the host does not accept `fable`, use `opus` with `xhigh`.
 The approver decides whether a change lands without anyone looking, so it uses `opus` when the job is risky and `sonnet`
 otherwise. A job is risky when the routing selected the `security` reviewer (a sensitive path was touched) or its tier is
 `careful`, `heavy` or `fable`. In the short path (below) the approver also does the code review.
+
+`reviewer-uiux` is `reviewer-ux` and `reviewer-ui` in one run. The run command spawns it instead of the two when a round needs both lenses, so the change is
+read once; it still writes one verdict file per lens.
 
 ## Short path
 
