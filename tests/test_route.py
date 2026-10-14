@@ -76,8 +76,7 @@ def test_markup_and_style_extensions_beyond_vue_and_tsx_reach_the_interface_revi
         assert route([p], REAL) == ["code", "ui"], p
 
 
-def test_plain_js_and_ts_count_only_inside_the_folders_that_hold_screens():
-    assert route(["server/index.js", "lib/format.ts", "scripts/build.mjs"], REAL) == ["code"]
-    assert route(["src/layouts/main.js"], REAL) == ["code", "ui"]
-    assert route(["src/screens/home.ts", "src/forms/login.mjs"], REAL) == ["code", "ux"]
-    assert route(["web/widgets/chart.ts"], REAL) == ["code", "ui"]
+def test_plain_js_and_ts_count_only_inside_components_views_and_pages():
+    assert route(["server/index.js", "lib/format.ts", "scripts/build.mjs", "src/ui/state.js", "src/widgets/cache.ts", "src/forms/validate.js"], REAL) == ["code"]
+    assert route(["src/components/chart.ts"], REAL) == ["code", "ui"]
+    assert route(["src/pages/home.js"], REAL) == ["code", "ux"]
