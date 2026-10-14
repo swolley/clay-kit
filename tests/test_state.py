@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -6,6 +7,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugins/clay/scripts"))
+import resolve  # noqa: E402
 import state  # noqa: E402
 
 PLAN = """# Demo plan
@@ -662,3 +664,102 @@ def test_cli_runs_the_composite_commands(repo, capsys):
     agents = json.dumps([{"role": "builder", "model": "sonnet", "tokens": 5, "ms": 6, "tools": 7}])
     assert state.main(["after-agent", began["id"], "--agents", agents, "--root", str(repo)]) == 0
     assert json.loads(capsys.readouterr().out)["builder"]["tokens"] == 5
+
+
+# ---- ad hoc working plan ----
+
+
+def adhoc(root, text):
+    return subprocess.run([sys.executable, str(Path(state.__file__)), "adhoc", "--root", str(root), "--text", text], capture_output=True, text=True)
+
+
+def test_adhoc_writes_a_parsable_plan_under_runs_and_prints_its_facts(tmp_path):
+    done = adhoc(tmp_path, "Rename the helper across the demo module and update the callers now")
+    assert done.returncode == 0, done.stderr
+    out = json.loads(done.stdout)
+    path = Path(out["plan_file"])
+    assert path.parent == tmp_path / "factory/jobs/_runs" and path.suffix == ".md"
+    assert re.fullmatch(r"adhoc-\d{8}-\d{6}-[a-z0-9-]+", out["plan_stem"]) and path.stem == out["plan_stem"]
+    assert out["tier"] == "medium" and out["title"] == "Rename the helper across the demo module and"
+    assert (tmp_path / "factory/jobs/.gitignore").read_text() == "*\n"
+    text = path.read_text()
+    assert "### Task 1: Rename the helper across the demo module and" in text
+    assert "**Tier:** medium" in text
+    assert "**Accept:** 1. Rename the helper across the demo module and update the callers now" in text
+    assert "- [ ] **Step 1: Rename the helper across the demo module and update the callers now**" in text
+    plan = state.parse_plan(text)
+    assert len(plan.tasks) == 1 and plan.tasks[0].tier == "medium" and plan.tasks[0].steps and plan.tasks[0].accept
+
+
+def test_adhoc_plan_works_with_run_lock_and_new_job_by_its_path(tmp_path):
+    git(tmp_path, "init", "-q", "-b", "main")
+    out = json.loads(adhoc(tmp_path, "tier=careful Fix the demo parser").stdout)
+    assert out["tier"] == "careful"
+    assert state.write_run(tmp_path, out["plan_file"], "current-branch")["total"] == 1
+    assert state.lock_acquire(tmp_path, out["plan_file"], run_id="r")["ok"] is True
+    job = state.new_job(tmp_path, out["plan_file"], 1, repo_name="demo", mode="current-branch", branch="main", worktree=str(tmp_path))
+    j = state.read_job(tmp_path, job["id"])
+    assert j["tier"] == "careful" and j["plan"] == out["plan_stem"]
+
+
+def test_adhoc_tier_token_is_removed_from_title_and_accept(tmp_path):
+    out = json.loads(adhoc(tmp_path, "tier=light Tidy the demo readme").stdout)
+    assert out["tier"] == "light" and out["title"] == "Tidy the demo readme"
+    text = Path(out["plan_file"]).read_text()
+    assert "tier=" not in text and "**Accept:** 1. Tidy the demo readme" in text
+
+
+def test_adhoc_title_is_capped_at_60_characters(tmp_path):
+    out = json.loads(adhoc(tmp_path, "internationalization " * 6).stdout)
+    assert len(out["title"]) <= 60 and out["title"].startswith("internationalization")
+
+
+@pytest.mark.parametrize("text", ["tier=huge Do a thing", "", "   ", "tier=light"])
+def test_adhoc_refuses_an_unknown_tier_or_empty_text_with_exit_2(tmp_path, text):
+    done = adhoc(tmp_path, text)
+    assert done.returncode == 2
+    assert "light, medium, careful, heavy, fable" in done.stderr
+    assert not (tmp_path / "factory/jobs/_runs").exists()
+
+
+def test_clean_deletes_a_read_only_adhoc_plan(tmp_path):
+    git(tmp_path, "init", "-q", "-b", "main")
+    out = json.loads(adhoc(tmp_path, "Do the demo thing").stdout)
+    state.lock_acquire(tmp_path, out["plan_file"], run_id="r")
+    assert not writable(Path(out["plan_file"]))
+    state.lock_release(tmp_path, out["plan_stem"], run_id="r")
+    state.lock_acquire(tmp_path, out["plan_file"], run_id="r")
+    assert state.clean_jobs(tmp_path, out["plan_stem"])["ok"] is True
+    assert not Path(out["plan_file"]).exists()
+
+
+def test_md_files_in_runs_are_ignored_by_lock_list_and_resolve_plans(tmp_path):
+    out = json.loads(adhoc(tmp_path, "Do the demo thing").stdout)
+    assert state.lock_list(tmp_path) == []
+    state.lock_acquire(tmp_path, out["plan_file"], run_id="r")
+    assert [v["plan"] for v in state.lock_list(tmp_path)] == [out["plan_stem"]]
+    assert resolve.list_plans(tmp_path) == [] and resolve.list_unclassified(tmp_path) == []
+
+
+def test_adhoc_collapses_whitespace_so_a_multiline_text_stays_on_one_line(tmp_path):
+    out = json.loads(adhoc(tmp_path, "tier=light Fix the demo\nsecond line:  more\t text").stdout)
+    text = Path(out["plan_file"]).read_text()
+    assert "**Accept:** 1. Fix the demo second line: more text\n" in text
+    assert "- [ ] **Step 1: Fix the demo second line: more text**\n" in text
+    assert state.parse_plan(text).tasks[0].accept == ["Fix the demo second line: more text"]
+
+
+def test_adhoc_same_second_same_text_gets_a_numeric_suffix_even_when_the_first_is_read_only(tmp_path):
+    first = json.loads(adhoc(tmp_path, "Do the demo thing").stdout)
+    Path(first["plan_file"]).chmod(0o444)
+    seen = {first["plan_file"]}
+    for _ in range(2):
+        done = adhoc(tmp_path, "Do the demo thing")
+        assert done.returncode == 0, done.stderr
+        seen.add(json.loads(done.stdout)["plan_file"])
+    assert len(seen) == 3 and all(Path(p).exists() for p in seen)
+
+
+def test_adhoc_tier_key_is_case_insensitive(tmp_path):
+    out = json.loads(adhoc(tmp_path, "TIER=Careful Do the demo thing").stdout)
+    assert out["tier"] == "careful" and out["title"] == "Do the demo thing"

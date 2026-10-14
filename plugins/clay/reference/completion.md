@@ -2,6 +2,9 @@
 
 Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is the path your skill states. Follow `<plugin root>/STYLE.md`. `<repo>` is the root of the target repository's own checkout.
 
+For an ad hoc plan (`factory/jobs/_runs/adhoc-*.md`, made by `state.py adhoc`) skip `tick-plan` and the plan commit, since the plan is local and there is
+nothing in the repo to tick; release the lock and run `clean` as below, which also deletes the working plan.
+
 When every task is landed, tick the steps of each completed task with `state.py tick-plan` (see `lock.md`) and commit that on
 the branch the jobs landed on: in current-branch mode in the repo (message "Mark the plan steps done"), in isolated mode in the integration
 worktree (pass the plan's path inside that worktree as `--plan-file`). When every task of the plan is done, `tick-plan` also writes

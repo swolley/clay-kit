@@ -468,3 +468,14 @@ test('backlogText is one short line, empty when there is nothing', () => {
   assert.equal(backlogText({ openPlans: 1, unplannedSpecs: 3 }), '1 open plan · 3 unplanned specs')
   assert.equal(backlogText({ openPlans: 0, unplannedSpecs: 0 }), '')
 })
+
+test('scan skips the working plans (.md) next to the run and lock files', async () => {
+  const fs = fakeFs({
+    'factory/jobs/_runs/adhoc-1.md': '# Ad hoc\n\n### Task 1: x\n',
+    'factory/jobs/_runs/adhoc-1.json': JSON.stringify({ plan: 'adhoc-1', total: 1, done: 0 }),
+    'factory/jobs/_runs/adhoc-1.lock': LOCK,
+  })
+  const out = await scan(fs)
+  assert.equal(out.runs.length, 1)
+  assert.equal(out.locks.length, 1)
+})

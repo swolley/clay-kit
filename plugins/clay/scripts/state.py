@@ -4,6 +4,7 @@
 Each command prints JSON. `verdicts` exits 1 when the round is not complete and valid.
 
   state.py setup --root DIR --plugin-root DIR
+  state.py adhoc --root DIR --text "[tier=NAME] TEXT"
   state.py run --root DIR --plan-file P --mode M --pace step|auto
   state.py preflight --root DIR [--plan-file P --repo-name R]
   state.py new-job --root DIR --plan-file P --task N --repo-name R --mode M --branch B --worktree W
@@ -30,7 +31,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from factory_plan import SECTION, TASK_HEADING, describe_plan, parse_plan
+from factory_plan import SECTION, TIERS, TASK_HEADING, describe_plan, parse_plan
 from resolve import PLANS_DIR, audit_plans, list_plans, list_unclassified, load_jobs
 from route import load_rules, route
 
@@ -72,6 +73,32 @@ def setup(root, plugin_root) -> None:
     src = Path(plugin_root) / "factory" / "dashboard.html"
     if src.exists():
         shutil.copy(src, d / "dashboard.html")
+
+
+def adhoc_plan(root, text: str) -> dict:
+    """Write the one-task working plan of an ad hoc task under factory/jobs/_runs, which git never sees."""
+    valid = "light, medium, careful, heavy, fable"
+    tier, body = "medium", text.strip()
+    if m := re.match(r"tier=(\S*)\s*", body, re.I):
+        tier, body = m.group(1).lower(), body[m.end():]
+    body = " ".join(body.split())
+    if tier not in TIERS or not body:
+        raise ValueError(f"an ad hoc task needs a text and a tier that is one of: {valid}")
+    title = " ".join(body.split()[:8])[:60].rstrip()
+    base = f"adhoc-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{slugify(title)}"
+    d = jobs_dir(Path(root).resolve())
+    (d / "_runs").mkdir(parents=True, exist_ok=True)
+    (d / ".gitignore").write_text("*\n")
+    n, stem = 1, base
+    while (d / "_runs" / f"{stem}.md").exists():  # same second, same text: never overwrite (or trip on) the first plan
+        n += 1
+        stem = f"{base}-{n}"
+    path = d / "_runs" / f"{stem}.md"
+    path.write_text(
+        f"# Ad hoc: {title}\n\n**Spec:** none\n\n### Task 1: {title}\n\n**Tier:** {tier}\n**Accept:** 1. {body}\n\n"
+        f"- [ ] **Step 1: {body}**\n"
+    )
+    return {"plan_file": str(path), "plan_stem": stem, "title": title, "tier": tier}
 
 
 def slugify(title: str) -> str:
@@ -593,6 +620,7 @@ def clean_jobs(root, plan_stem: str) -> dict:
         return {"ok": False, "reason": "jobs not landed: " + ", ".join(waiting), "removed": []}
     for j in jobs:
         shutil.rmtree(jobs_dir(root) / j["id"], ignore_errors=True)
+    (jobs_dir(root) / "_runs" / f"{plan_stem}.md").unlink(missing_ok=True)  # the working plan of an ad hoc task; unlinking needs no write permission on the file
     run_path(root, plan_stem).unlink(missing_ok=True)  # the lock is released by `lock release`, which restores the plan's permissions
     return {"ok": True, "removed": [j["id"] for j in jobs]}
 
@@ -623,6 +651,9 @@ def main(argv: list[str]) -> int:
     tp = sub.add_parser("tick-plan")
     tp.add_argument("--root", default=".")
     tp.add_argument("--plan-file", required=True)
+    ah = sub.add_parser("adhoc")
+    ah.add_argument("--root", default=".")
+    ah.add_argument("--text", required=True)
     cl = sub.add_parser("clean")
     cl.add_argument("--root", default=".")
     cl.add_argument("--plan", required=True)
@@ -671,6 +702,13 @@ def main(argv: list[str]) -> int:
         out = clean_jobs(a.root, a.plan)
         print(json.dumps(out, indent=2))
         return 0 if out["ok"] else 1
+    if a.cmd == "adhoc":
+        try:
+            print(json.dumps(adhoc_plan(a.root, a.text), indent=2))
+        except ValueError as e:
+            print(f"state.py adhoc: {e}", file=sys.stderr)
+            return 2
+        return 0
     if a.cmd == "tick-plan":
         print(json.dumps(tick_plan(a.root, a.plan_file), indent=2))
         return 0

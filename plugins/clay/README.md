@@ -14,7 +14,7 @@ Every command is a skill named `factory-<verb>`, so it is typed `/factory-run` a
 | `/factory-brainstorm` | you, or the model when you describe new work | idea to approved design (spec for big work, checked by an independent spec reviewer; short chat design for small work) |
 | `/factory-plan` | you, or the model after an approved design | design to a plan of tasks and steps |
 | `/factory-run [plan]` | you only | runs the plan's open tasks, asking after each task what to do next; takes the only plan with open steps when you give none |
-| `/factory-task "<text>"` | you only | one ad hoc task, no plan file |
+| `/factory-task [tier=<name>] "<text>"` | you only | one ad hoc task from a working plan the command writes itself under `factory/jobs/`; `/factory-task tier=careful <text>` sets the tier |
 | `/factory-status` | you only | jobs, stages, verdicts, what waits for you |
 | `/factory-approve [job]` | you only | lands a job that was waiting for you |
 | `/factory-rework [job] <note>` | you only | sends a waiting job back to its builder |

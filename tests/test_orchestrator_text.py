@@ -322,3 +322,18 @@ def test_plan_skill_tier_bullet_points_to_tiers():
 def test_readme_mentions_haiku_trial_and_findings():
     t = read("README.md")
     assert "haiku" in t and "Findings" in t
+
+
+def test_adhoc_task_makes_its_working_plan_with_state_adhoc():
+    skill = read("skills/factory-task/SKILL.md")
+    assert "Do not write a plan file" not in skill and "state.py adhoc" in skill
+    assert "tier=" in skill.split("---")[1]
+    assert "tick-plan" in skill and "clean" in skill
+    for rel in ("reference/start.md", "reference/completion.md"):
+        t = read(rel)
+        assert "state.py adhoc" in t and "factory/jobs/_runs" in t, rel
+    assert "tick-plan" in read("reference/start.md").split("## Ad hoc task")[1]
+
+
+def test_readme_shows_the_tier_option_of_factory_task():
+    assert "/factory-task tier=careful <text>" in read("README.md")

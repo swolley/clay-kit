@@ -58,5 +58,9 @@ continue from them, stash them or stop. Before continuing, say in one line per j
 
 ## Ad hoc task
 
-`factory-task <text>`: build a one-task plan in memory (title from the text, tier medium, one `Accept`
-criterion taken from the text) and run it through the Job loop and Completion with plan name `adhoc`.
+`factory-task [tier=<name>] <text>`: run `state.py adhoc --root <repo> --text "<text>"`. It writes a one-task plan to
+`factory/jobs/_runs/adhoc-<YYYYMMDD-HHMMSS>-<slug>.md` (title from the first words of the text, tier `medium` unless a leading `tier=<name>` says
+`light`, `medium`, `careful`, `heavy` or `fable`, one `Accept` criterion taken from the text) and prints `plan_file`, `plan_stem`, `title` and `tier`; an
+unknown tier or an empty text exits 2. The file is local and git ignores it, so it never reaches the repo's plans folder. Use `plan_file` as the plan path
+for `run`, `lock`, `new-job` and `begin-job`, and run it through the Job loop and Completion. Completion skips `tick-plan` and the plan commit (there is nothing in the
+repo to tick), then releases the lock and runs `clean`, which also deletes the working plan.
