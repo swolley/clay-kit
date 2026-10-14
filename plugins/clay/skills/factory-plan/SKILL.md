@@ -51,9 +51,10 @@ All fields are optional. Give each task a Commit step with its message (`**Step 
 
 - A task is the smallest unit with its own test cycle that a reviewer could reject
   without rejecting its neighbor. Fold setup, config and docs into the task that needs them.
-- `Tier` is the cheapest level that gets the task right the first time: light for
-  mechanical work, medium for standard features, careful for delicate changes, heavy for
-  unfamiliar code. Use fable only when clearly needed.
+- `Tier` is the cheapest level that gets the task right the first time: light for mechanical work, medium for standard
+  features and for fixes whose diagnosis is complete, careful only for writes into user files or shared state, behaviour
+  derived from a comparison or ambiguous spec, or security; heavy for unfamiliar code or unknown cause. Size alone never
+  decides. Fable only when clearly needed. Details in `tiers.md`.
 - A step is one action with a checkable result. A test step names the test and its
   assertions; a code step gives the exact signature and file and lets the implementer
   write the body; a verification step gives the command and the output that means pass.

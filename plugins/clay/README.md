@@ -40,6 +40,7 @@ After "run the rest without asking" a task that needs you stops the run and list
 
 **Models.** The task's tier picks the builder's model: `light` and `medium` the faster one, `careful` and `heavy` the stronger one (see `tiers.md`).
 Some hosts cannot pass an effort, so the model is what the tier really changes.
+`light` runs on `haiku` as a trial; the execution record has a Findings column (review issues per round and lens) to show whether to go back to `sonnet`.
 
 **Isolation.** `/factory-run` recommends a development branch per plan with one worktree per job, so your checkout
 is untouched and different plans can run at once in different sessions. You can instead confirm working on the current branch; jobs then

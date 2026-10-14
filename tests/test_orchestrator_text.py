@@ -170,7 +170,7 @@ def test_light_and_medium_tiers_run_on_the_faster_model():
     t = read("tiers.md")
     assert "| light |" in t and "| medium |" in t
     rows = {line.split("|")[1].strip(): line for line in t.splitlines() if line.startswith("| ") and "|" in line[2:]}
-    assert "sonnet" in rows["light"] and "sonnet" in rows["medium"]
+    assert "haiku" in rows["light"] and "sonnet" in rows["medium"]
     assert "opus" in rows["careful"] and "opus" in rows["heavy"]
 
 
@@ -303,3 +303,22 @@ def test_a_round_that_needs_both_interface_lenses_spawns_one_combined_reviewer()
     agent = read("agents/reviewer-uiux.md")
     assert "review-ux.md" in agent and "review-ui.md" in agent and "reviewer-ux.md" in agent and "reviewer-ui.md" in agent
     assert "reviewer-uiux" in read("tiers.md")
+
+
+def test_tier_guidance_and_approver_rule():
+    t = read("tiers.md")
+    assert "## Choosing a tier" in t and "size alone never decides" in t.lower()
+    rows = {line.split("|")[1].strip(): line for line in t.splitlines() if line.startswith("| ") and "|" in line[2:]}
+    assert "haiku" in rows["light"] and "trial" in rows["light"] and "Findings" in t
+    assert "`heavy` or `fable`" in t and "`careful`, `heavy` or `fable`" not in t
+    assert "tiers.md" in reference()
+
+
+def test_plan_skill_tier_bullet_points_to_tiers():
+    t = read("skills/factory-plan/SKILL.md")
+    assert "tiers.md" in t and "size alone" in t.lower()
+
+
+def test_readme_mentions_haiku_trial_and_findings():
+    t = read("README.md")
+    assert "haiku" in t and "Findings" in t

@@ -549,6 +549,16 @@ def _plan_jobs(root, plan_stem: str) -> list[dict]:
     return jobs
 
 
+def _findings(folder: Path, reviewed: bool) -> str:
+    """Numbered items under `## Issues` per round and lens, e.g. `r1 code 2, r1 ui 0, r2 code 0`; `short path` when the job had no reviewers, `-` when it had but left no files."""
+    found = []
+    for f in folder.glob("round-*/review-*.md"):
+        n, lens = int(f.parent.name.split("-", 1)[1]), f.stem.removeprefix("review-")
+        body = re.split(r"^## ", f.read_text().partition("## Issues")[2], maxsplit=1, flags=re.M)[0]
+        found.append((n, lens, len(re.findall(r"^\s*\d+[.)]\s", body, re.M))))
+    return ", ".join(f"r{n} {lens} {c}" for n, lens, c in sorted(found)) or ("-" if reviewed else "short path")
+
+
 def execution_record(root, plan_stem: str) -> str:
     """What the run did, as a table without checkboxes so plan tools do not read it as work. Kept in the plan, which
     travels with the repo, since the job folders are local and are removed once the plan is closed."""
@@ -568,9 +578,10 @@ def execution_record(root, plan_stem: str) -> str:
             notes.append(f"reworked {n}x")
         if n := len(list(folder.glob("answers-*.md"))):
             notes.append(f"{n} answered question(s)")
+        findings = _findings(folder, bool(j.get("reviews")))
         models = "/".join(sorted({a.get("model", "") for a in agents.values() if a.get("model")}))
-        rows.append(f"| {j.get('task')} | {j.get('tier', '')} | {models} | {j.get('round', 1)} | {verdicts} | {decision} | {'; '.join(notes)} | {t} | {m // 1000}s |")
-    head = "| Task | Tier | Models | Rounds | Reviews | Decision | Notes | Tokens | Agent time |\n|---|---|---|---|---|---|---|---|---|\n"
+        rows.append(f"| {j.get('task')} | {j.get('tier', '')} | {models} | {j.get('round', 1)} | {verdicts} | {decision} | {findings} | {'; '.join(notes)} | {t} | {m // 1000}s |")
+    head = "| Task | Tier | Models | Rounds | Reviews | Decision | Findings | Notes | Tokens | Agent time |\n|---|---|---|---|---|---|---|---|---|---|\n"
     return f"{RECORD_TITLE}\n\n{head}" + "\n".join(rows) + f"\n\nTotal: {tokens} tokens, {ms // 1000}s of agent time.\n"
 
 

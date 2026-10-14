@@ -357,6 +357,37 @@ def test_closing_writes_an_execution_record_without_checkboxes(locked_repo):
     assert (locked_repo / PLAN_FILE).read_text().count("## Execution record") == 1
 
 
+def test_execution_record_counts_findings_per_round_and_lens(locked_repo):
+    a, b = new(locked_repo, 1), new(locked_repo, 2)
+    folder = locked_repo / "factory/jobs" / a["id"]
+    (folder / "round-1").mkdir()
+    (folder / "round-2").mkdir()
+    (folder / "round-1/review-code.md").write_text("VERDICT: CHANGES\n\n## Issues\n1. x\n2. y\n")
+    (folder / "round-1/review-ui.md").write_text("VERDICT: PASS\n\n## Issues\nNone.\n")
+    (folder / "round-2/review-code.md").write_text("VERDICT: PASS\n\n## Issues\nNone.\n")
+    for j in (a, b):
+        state.land_job(locked_repo, j["id"], "committed", head="abc")
+    state.tick_plan(locked_repo, PLAN_FILE)
+    text = (locked_repo / PLAN_FILE).read_text()
+    assert "| Decision | Findings | Notes |" in text
+    assert "r1 code 2, r1 ui 0, r2 code 0" in text
+    row2 = next(l for l in text.splitlines() if l.startswith("| 2 |"))
+    assert row2.split("|")[-5].strip() == "short path"
+
+
+def test_findings_ignore_numbered_observations_and_mark_reviewed_jobs_without_files(locked_repo):
+    a, b = new(locked_repo, 1), new(locked_repo, 2)
+    folder = locked_repo / "factory/jobs" / a["id"]
+    (folder / "round-1").mkdir()
+    (folder / "round-1/review-code.md").write_text("VERDICT: PASS\n\n## Issues\nNone.\n\n## Observations\n1. a\n2. b\n")
+    job = state.read_job(locked_repo, b["id"])
+    job["reviews"] = {"code": "PASS"}
+    state.write_job(locked_repo, job)
+    rows = state.execution_record(locked_repo, "2026-01-01-demo").splitlines()
+    cells = {l.split("|")[1].strip(): l.split("|")[-5].strip() for l in rows if l.startswith("| 1 |") or l.startswith("| 2 |")}
+    assert cells == {"1": "r1 code 0", "2": "-"}
+
+
 def test_clean_removes_landed_jobs_but_refuses_while_one_is_unfinished(locked_repo):
     a, b = new(locked_repo, 1), new(locked_repo, 2)
     state.land_job(locked_repo, a["id"], "committed", head="abc")
