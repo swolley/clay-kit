@@ -337,3 +337,32 @@ def test_adhoc_task_makes_its_working_plan_with_state_adhoc():
 
 def test_readme_shows_the_tier_option_of_factory_task():
     assert "/factory-task tier=careful <text>" in read("README.md")
+
+
+def test_run_asks_once_before_starting_fable_tasks():
+    pre = read("reference/start.md").split("## Preconditions (run)")[1].split("## Resume")[0]
+    flat = " ".join(pre.split())
+    assert "question tool" in flat and "once" in flat and "resumed" in flat
+    assert "`tier=fable`" in flat and "not asked again" in flat
+    assert "${CLAUDE_PLUGIN_ROOT}" not in read("reference/start.md")
+    # ordering: after the defaults line and after the already-done decision
+    assert flat.index("defaults") < flat.index("already be done") < flat.index("fable")
+    # skip rule
+    assert "no task that will actually run has tier `fable`" in flat and "skipped" in flat
+    assert "already-done" in flat and "is not asked about" in flat
+    # the mapping of each option to tier, model and effort
+    assert "`opus` with `xhigh` (recommended) runs them as tier `heavy` (builder opus, effort xhigh, approver opus)" in flat
+    assert "`fable` as the plan says spawns the builder with model fable and effort high" in flat
+    assert "lower to `careful` runs them as tier `careful` (opus, high; the approver follows the normal risk rule)" in flat
+    assert "recorded in `agents` are the ones actually passed" in flat
+    assert "plan file is never edited" in flat
+
+
+def test_tiers_say_fable_needs_confirmation():
+    t = read("tiers.md")
+    assert "never started without" in t and "confirmation" in t and "cost" in t
+
+
+def test_plan_handover_names_every_fable_task():
+    hand = read("skills/factory-plan/SKILL.md").split("## Hand over")[1]
+    assert "fable" in hand and "every" in hand

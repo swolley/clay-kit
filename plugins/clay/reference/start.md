@@ -26,11 +26,18 @@ work that exists, or plan work that is already planned. It only reads; never edi
    It returns `plan` (the plan parsed, as `factory_plan.py <plan> --repo <name> --root <repo>` prints it), `jobs` (the jobs the plan already has, for Resume), `audit` (what
    the audit says about this plan) and `unclassified`. If there are no tasks, point to the `factory-brainstorm` and `factory-plan` skills and stop.
 2. Tell the user which defaults the parser applied (`defaults_applied`) and any `warnings`, in one line per task.
-   Then look for work that may already be done: a task that has no job and carries `done_signals` (its planned commit
+   Look for work that may already be done: a task that has no job and carries `done_signals` (its planned commit
    is already in the git history, or every file it creates exists) may already be implemented, for instance a plan that
    was carried out by hand and never ticked. Before you start anything, say so and ask with the question tool: skip
    those tasks (and tick their steps), build them anyway, or stop. Never start such a task silently. Modifying a file
    that exists is not a signal, so ordinary tasks are not questioned.
+   Only after that decision, ask once if needed: the question is skipped when no task that will actually run has tier `fable`
+   (a fable task skipped as already-done is not asked about). Otherwise ask once with the question tool, listing those tasks, with these options:
+   `opus` with `xhigh` (recommended) runs them as tier `heavy` (builder opus, effort xhigh, approver opus); `fable` as the plan says
+   spawns the builder with model fable and effort high (if the host does not accept fable, `tiers.md` falls back to opus xhigh);
+   lower to `careful` runs them as tier `careful` (opus, high; the approver follows the normal risk rule). In every case the models
+   recorded in `agents` are the ones actually passed, and the plan file is never edited. The answer holds for the whole run and is
+   asked again on a resumed run. `factory-task` with an explicit `tier=fable` is not asked again, the user chose it.
 3. The target repo is a git repo. Isolated mode needs a clean main checkout only for the final merge.
 4. Resume (below), then mode choice, then start.
 

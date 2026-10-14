@@ -30,6 +30,9 @@ one; with one model for every tier the tier would change nothing. The orchestrat
 
 Fallback: if the host does not accept `fable`, use `opus` with `xhigh`.
 
+`fable` is never started without the user's confirmation: it is the most costly tier, so a plan that names it does not decide
+alone. `run` asks once before it starts such tasks (see `reference/start.md`); only an explicit `tier=fable` on `factory-task` skips the question.
+
 ## The other agents
 
 | Agent | model | effort |
