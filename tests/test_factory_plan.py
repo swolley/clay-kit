@@ -258,6 +258,11 @@ def test_a_section_after_the_last_task_does_not_leak_into_it():
     assert [(b.kind, b.title, b.counts()) for b in plan.blocks] == [("task", "A", (0, 1, 0)), ("section", "Release gates", (2, 0, 0))]
 
 
+def test_a_plan_with_an_open_trailing_section_is_open():
+    plan = parse_plan("# P\n\n### Task 1: A\n\n- [x] a\n\n## Release gates\n\n- [ ] publish\n")
+    assert plan.state == "open"
+
+
 def test_a_deeper_heading_inside_a_task_keeps_its_steps_in_the_task():
     plan = parse_plan("# P\n\n## Task 1: A\n\n### Details\n\n- [ ] a\n- [ ] b\n")
     assert plan.tasks[0].counts() == (2, 0, 0) and [b.kind for b in plan.blocks] == ["task"]
@@ -282,6 +287,19 @@ def test_migrations_and_new_test_files_are_created_files():
     t = parse_plan(text).tasks[0]
     assert t.files == ["db/0001_lamps.sql", "tests/test_lamp.py", "tests/test_wick.py", "tests/test_oil.py", "docs/lamp.md"]
     assert t.files_create == ["db/0001_lamps.sql", "tests/test_lamp.py"]
+
+
+def test_test_files_named_as_extended_or_modified_are_not_created():
+    text = (
+        "# P\n\n### Task 1: A\n\n**Files:**\n- Test: `tests/test_lamp.py` (extended)\n"
+        "- Test: `tests/test_wick.py` (modified)\n- Test: appended to `tests/test_oil.py`\n\n- [ ] do\n"
+    )
+    assert parse_plan(text).tasks[0].files_create == []
+
+
+def test_a_new_test_file_whose_path_holds_such_a_word_is_still_created():
+    text = "# P\n\n### Task 1: A\n\n**Files:**\n- Test: `tests/existence_test.py`\n\n- [ ] do\n"
+    assert parse_plan(text).tasks[0].files_create == ["tests/existence_test.py"]
 
 
 def test_deleted_files_are_told_apart_from_the_files_a_task_keeps():

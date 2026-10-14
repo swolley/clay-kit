@@ -328,6 +328,18 @@ def test_tick_plan_replaces_an_existing_status_and_leaves_unfinished_plans_open(
     assert text.count("status:") == 1 and "status: completed" in text and "title: x" in text
 
 
+def test_tick_plan_leaves_a_trailing_section_open_and_the_plan_unclosed(locked_repo):
+    path = locked_repo / PLAN_FILE
+    path.write_text(path.read_text() + "\n## Release gates\n\n- [ ] publish\n")
+    for n in (1, 2):
+        j = new(locked_repo, n)
+        state.land_job(locked_repo, j["id"], "committed", head="abc")
+    out = state.tick_plan(locked_repo, PLAN_FILE)
+    text = path.read_text()
+    assert out["closed"] is False and out["ticked"] == 3
+    assert "- [ ] publish" in text and "status: completed" not in text
+
+
 def test_closing_writes_an_execution_record_without_checkboxes(locked_repo):
     for n in (1, 2):
         j = new(locked_repo, n)

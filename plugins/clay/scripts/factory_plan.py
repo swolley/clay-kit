@@ -89,7 +89,7 @@ class Plan:
             return "done"
         if self.status in DROPPED:
             return "dropped"
-        stepped = [t for t in self.tasks if t.steps]
+        stepped = [b for b in self.blocks if b.steps]
         if not stepped:
             return "unclassified"
         return "open" if any(not t.done for t in stepped) else "done"
@@ -140,9 +140,11 @@ def _declare(task: Task, item: str, creates: bool = False, deletes: bool = False
 
 
 def _creates(kind: str, item: str) -> bool:
-    """Whether a file line names a file the task brings into existence; a test file it extends existed before."""
+    """Whether a file line names a file the task brings into existence; a test file it extends existed before. Only the
+    words outside the backticked paths are read, so "extended" or "modified" count and a path never does."""
     kind = kind.lower()
-    return kind in ("create", "migration") or (kind == "test" and not re.search(r"\b(append|extend|modify|existing)\b", item, re.I))
+    words = re.sub(r"`[^`]*`", "", item)
+    return kind in ("create", "migration") or (kind == "test" and not re.search(r"\b(append|extend|modif|exist)\w*", words, re.I))
 
 
 def front_status(text: str) -> str:

@@ -136,3 +136,10 @@ def test_audit_flags_open_plan_whose_tasks_all_show_their_files(tmp_path):
     (tmp_path / "src").mkdir()
     (tmp_path / "src/new.py").write_text("x")
     assert "already show" in audit_plans(tmp_path)[0]["finding"]
+
+
+def test_audit_does_not_take_an_existing_test_file_that_is_only_extended_as_proof(tmp_path):
+    _raw(tmp_path, "2026-01-01-grow.md", "# G\n\n### Task 1: A\n\n**Files:**\n- Test: `tests/test_lamp.py` (extended)\n\n- [ ] **Step 1: do**\n")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests/test_lamp.py").write_text("x")
+    assert audit_plans(tmp_path) == []

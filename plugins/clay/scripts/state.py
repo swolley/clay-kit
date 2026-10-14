@@ -30,7 +30,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from factory_plan import describe_plan, parse_plan
+from factory_plan import SECTION, TASK_HEADING, describe_plan, parse_plan
 from resolve import PLANS_DIR, audit_plans, list_plans, list_unclassified, load_jobs
 from route import load_rules, route
 
@@ -514,14 +514,16 @@ def tick_plan(root, plan_file: str) -> dict:
             in_fence = not in_fence
         elif not in_fence and (m := heading.match(line)):
             current = int(m.group(1))
+        elif not in_fence and not TASK_HEADING.match(line) and SECTION.match(line):
+            current = None  # a `##` section that is not a task is no task's work, so its boxes are never ticked
         elif not in_fence and current in landed and re.match(r"^\s*[-*] \[ \]", line):
             line = line.replace("[ ]", "[x]", 1)
             ticked += 1
         out.append(line)
     text = "".join(out)
     after = parse_plan(text)
-    stepped = [t for t in after.tasks if t.steps]
-    closed = bool(stepped) and all(t.done for t in stepped) and after.status not in ("completed", "done", "shipped")
+    stepped = [b for b in after.blocks if b.steps]
+    closed = bool(stepped) and all(b.done for b in stepped) and after.status not in ("completed", "done", "shipped")
     if closed:
         text = close_header(text)
         if RECORD_TITLE not in text:
