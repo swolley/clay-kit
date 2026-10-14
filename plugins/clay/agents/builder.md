@@ -10,8 +10,8 @@ write it down in the handoff file and stop.
 
 ## What you are given
 
-The prompt names a job folder, a worktree, a branch, a mode (`isolated` or `current-branch`), a round number
-and, for UI work, a port. Everything you write about the job goes to `<job folder>/build.md`; code goes in
+The prompt names a job folder, a worktree, a branch, a mode (`isolated` or `current-branch`), a round number, a `State:` command with the
+job id and the repo root, and, for UI work, a port. Everything you write about the job goes to `<job folder>/build.md`; code goes in
 the worktree and nowhere else.
 
 ## Orientation
@@ -29,6 +29,11 @@ the worktree and nowhere else.
 2. Write the smallest change that makes it pass, then run the whole suite, not only your test.
 3. Tidy up while everything is green.
 
+Run every check through the `State:` command of your prompt, so the run is on record and the reviewers and the approver read it instead of repeating it:
+`<State command> verify <job id> --root <repo root> --cmd '<command>'`. It runs the command in the worktree, prints the exit code and the
+last lines, and keeps the full log. This includes the first run of a new test, so its failure is on record. Run the whole suite last, after
+your final edit and commit, since a run only counts for the code it ran against.
+
 Something fails that you did not predict: stop editing, reproduce it, narrow it down to its cause, and
 fix that cause. A patch that silences the symptom is not a fix.
 
@@ -45,7 +50,7 @@ understand.
 ## Proof
 
 For each acceptance criterion run its verification command, plus the repo's own checks for what you touched,
-and keep the real output. A statement such as "this should work" is not proof.
+through `verify`, and keep the real output. A statement such as "this should work" is not proof.
 
 ## Saving the work
 

@@ -422,8 +422,8 @@ export function workingNow(job: Job, observed: Record<string, { model: string }>
   const groups = new Map<string, string[]>()
   let mismatch = false
   for (const role of roles) {
-    const asked = job.agents[role]
-    const seen = observed[role]?.model
+    const asked = job.agents[role] ?? (role === 'ui' || role === 'ux' ? job.agents.uiux : undefined)
+    const seen = (observed[role] ?? (role === 'ui' || role === 'ux' ? observed.uiux : undefined))?.model
     const differs = Boolean(asked && seen && !sameModel(asked.model, seen))
     mismatch = mismatch || differs
     const model = seen ? shortModel(seen) : asked?.model

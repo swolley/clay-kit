@@ -26,6 +26,7 @@ def make_scaffold(root: Path) -> None:
     for cmd in ("factory-run", "factory-task", "factory-status", "factory-approve", "factory-rework", "factory-answer", "factory-unlock"):
         write(root, f"plugins/clay/skills/{cmd}/SKILL.md", skill(cmd, "disable-model-invocation: true\n") + "reference/orchestrator.md\n")
     write(root, "plugins/clay/agents/builder.md", skill("builder"))
+    write(root, "plugins/clay/reference/orchestrator.md", "core\n")
 
 
 def test_valid_scaffold_passes(tmp_path):
@@ -73,13 +74,25 @@ def test_brainstorm_and_plan_must_allow_model_invocation(tmp_path):
 def test_command_skill_must_read_orchestrator_reference(tmp_path):
     make_scaffold(tmp_path)
     write(tmp_path, "plugins/clay/skills/factory-run/SKILL.md", skill("factory-run", "disable-model-invocation: true\n"))
-    assert any("factory-run/SKILL.md" in p and "orchestrator.md" in p for p in validate(tmp_path))
+    assert any("factory-run/SKILL.md" in p and "reference/" in p for p in validate(tmp_path))
 
 
 def test_orchestrator_reference_must_not_use_plugin_root_variable(tmp_path):
     make_scaffold(tmp_path)
     write(tmp_path, "plugins/clay/reference/orchestrator.md", "uses ${CLAUDE_PLUGIN_ROOT}/x\n")
     assert any("orchestrator.md" in p and "CLAUDE_PLUGIN_ROOT" in p for p in validate(tmp_path))
+    write(tmp_path, "plugins/clay/reference/orchestrator.md", "core\n")
+    write(tmp_path, "plugins/clay/reference/lock.md", "uses ${CLAUDE_PLUGIN_ROOT}/x\n")
+    assert any("lock.md" in p and "CLAUDE_PLUGIN_ROOT" in p for p in validate(tmp_path))
+
+
+def test_a_command_skill_may_read_several_parts_but_each_must_exist(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/reference/lock.md", "lock\n")
+    write(tmp_path, "plugins/clay/skills/factory-unlock/SKILL.md", skill("factory-unlock", "disable-model-invocation: true\n") + "reference/lock.md\n")
+    assert validate(tmp_path) == []
+    write(tmp_path, "plugins/clay/skills/factory-unlock/SKILL.md", skill("factory-unlock", "disable-model-invocation: true\n") + "reference/lock.md reference/gone.md\n")
+    assert any("factory-unlock/SKILL.md" in p and "gone.md" in p for p in validate(tmp_path))
 
 
 def test_notice_requires_shipped_license_texts(tmp_path):

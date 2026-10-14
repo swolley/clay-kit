@@ -285,13 +285,9 @@ def git_subjects(root: Path) -> set[str]:
     return subjects
 
 
-def main(argv: list[str]) -> int:
-    if not argv:
-        print("usage: factory_plan.py <plan.md> [--repo NAME] [--root DIR]", file=sys.stderr)
-        return 2
-    repo = argv[argv.index("--repo") + 1] if "--repo" in argv else ""
-    root = Path(argv[argv.index("--root") + 1]) if "--root" in argv else None
-    plan = parse_plan(Path(argv[0]).read_text(), default_repo=repo)
+def describe_plan(text: str, repo: str = "", root: Path | None = None) -> dict:
+    """The plan as the run reads it: its tasks with defaults, warnings and, given the repo, the signs that a task is already done."""
+    plan = parse_plan(text, default_repo=repo)
     subjects = git_subjects(root) if root is not None else set()
     out = {"title": plan.title, "status": plan.status, "state": plan.state, "tasks": []}
     for t in plan.tasks:
@@ -302,7 +298,16 @@ def main(argv: list[str]) -> int:
             d["files_present"], d["files_missing"] = check_files(t.files, root)
             d["done_signals"] = done_signals(t, root, subjects)
         out["tasks"].append(d)
-    print(json.dumps(out, indent=2))
+    return out
+
+
+def main(argv: list[str]) -> int:
+    if not argv:
+        print("usage: factory_plan.py <plan.md> [--repo NAME] [--root DIR]", file=sys.stderr)
+        return 2
+    repo = argv[argv.index("--repo") + 1] if "--repo" in argv else ""
+    root = Path(argv[argv.index("--root") + 1]) if "--root" in argv else None
+    print(json.dumps(describe_plan(Path(argv[0]).read_text(), repo, root), indent=2))
     return 0
 
 

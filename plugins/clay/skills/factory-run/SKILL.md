@@ -6,13 +6,12 @@ argument-hint: <plan file> [inline]
 ---
 
 Plugin root: ${CLAUDE_PLUGIN_ROOT}
-Follow ${CLAUDE_PLUGIN_ROOT}/STYLE.md. Read ${CLAUDE_PLUGIN_ROOT}/reference/orchestrator.md first: it holds the
-shared rules (files, modes, resume, job loop, completion). Use the plugin root above wherever it says `<plugin root>`.
+Follow ${CLAUDE_PLUGIN_ROOT}/STYLE.md. Read these parts of the shared reference together, in one message: ${CLAUDE_PLUGIN_ROOT}/reference/orchestrator.md, ${CLAUDE_PLUGIN_ROOT}/reference/lock.md, ${CLAUDE_PLUGIN_ROOT}/reference/start.md, ${CLAUDE_PLUGIN_ROOT}/reference/job-loop.md. Read `questions.md` only when an agent asks something, `inline.md` only with the word `inline`, and `completion.md` once every task has landed (all in the same folder). Use the plugin root above wherever they say `<plugin root>`.
 
-Arguments: $ARGUMENTS (a plan, may be empty: see "Resolving arguments"; the word `inline` asks for the Inline mode in the reference)
+Arguments: $ARGUMENTS (a plan, may be empty: see "Resolving a plan" in `start.md`; the word `inline` asks for the mode in `inline.md`)
 
-1. Resolve the plan, take the run lock ("Run lock": stop if another run holds the plan), then Preconditions, Resume and the mode question (orchestrator reference). The pace is guided unless the user
-   chooses otherwise: see "Pace".
-2. Run the Job loop for each runnable task, in order, in parallel only where the reference allows.
-3. When every task has landed, do Completion.
+1. Resolve the plan, take the run lock (`lock.md`: stop if another run holds the plan), then Preconditions, Resume and the mode question (`start.md`, `orchestrator.md`). The pace is guided unless the user
+   chooses otherwise: see "Pace" in `job-loop.md`.
+2. Run the Job loop (`job-loop.md`) for each runnable task, in order, in parallel only where the reference allows.
+3. When every task has landed, read `completion.md` and do it.
 4. Report one line per transition and a final summary: landed jobs, jobs waiting for the user.
