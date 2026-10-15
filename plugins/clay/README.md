@@ -101,7 +101,7 @@ their sources, in [docs/hosts.md](https://github.com/swolley/clay-kit/blob/maste
 
 | | Claude Code | Codex | Cursor |
 |---|---|---|---|
-| Install | `/plugin marketplace add swolley/clay-kit`, then `/plugin install clay@clay-kit` | `codex plugin marketplace add swolley/clay-kit`, then `codex plugin add clay@clay-kit` | CLI `/plugin marketplace add https://github.com/swolley/clay-kit`, or a team admin imports the repo in the Dashboard (Plugins, Import from Repo). As documented by Cursor, not yet tried by us |
+| Install | `/plugin marketplace add swolley/clay-kit`, then `/plugin install clay@clay-kit` | `codex plugin marketplace add swolley/clay-kit`, then `codex plugin add clay@clay-kit` | CLI `/plugin marketplace add https://github.com/swolley/clay-kit`, or a team admin imports the repo in the Dashboard (Plugins & MCPs, Import from Repo), and users install from Customize. As documented by Cursor, not yet tried by us |
 | Manifest read | `.claude-plugin/` | `.codex-plugin/`, and `.claude-plugin/` for the marketplace | `.cursor-plugin/` |
 | Invoke | `/factory-run` (or `/clay:factory-run`) | `$factory-run`, or the `/skills` picker (`clay:factory-run`) | `/factory-run` |
 | Agents | the plugin's `clay:<role>` agents | generic subagents told to read the agent file | the plugin's agents, generic ones if the host does not list them |

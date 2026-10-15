@@ -119,7 +119,7 @@ Fresh fixture, opened in Codex. The commands are `$factory-<verb>` or the `/skil
 ## L. Cursor
 
 Fresh fixture, opened in Cursor. The commands are `/factory-<verb>`. The install route is Cursor's documented one (CLI
-`/plugin marketplace add https://github.com/swolley/clay-kit`, or Dashboard, Plugins, Import from Repo) and has not been tried yet.
+`/plugin marketplace add https://github.com/swolley/clay-kit`, or Dashboard, Plugins & MCPs, Import from Repo, then Customize for users) and has not been tried yet. The menu names come from a search excerpt of Cursor's page and may differ; correct them here if they do.
 
 - [ ] The plugin installs from the marketplace by one of the two routes; note which one.
 - [ ] The `factory-*` skills appear in the `/` menu or can be typed by name; note which of the user-only ones are hidden.

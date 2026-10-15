@@ -40,7 +40,7 @@ As documented by Cursor, not yet tried by us. In the Cursor CLI:
 /plugin marketplace add https://github.com/swolley/clay-kit
 ```
 
-For a team, an admin imports the repository from the Cursor Dashboard (Plugins, Import from Repo). Then type `/factory-run`.
+For a team, an admin imports the repository from the Cursor Dashboard (Plugins & MCPs, Import from Repo), and users install it from Customize. Then type `/factory-run`.
 
 Codex and Cursor are supported with limits (no progress band, different model names, a question fallback, and more); see the "Hosts" section of the [clay README](plugins/clay/README.md#hosts).
 
