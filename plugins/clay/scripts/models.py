@@ -88,8 +88,8 @@ def load(root) -> dict:
         return {}
     try:
         data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError) as e:
-        raise ModelsError(f"{FILE}: cannot read it as JSON ({e})") from e
+    except (OSError, ValueError) as e:  # ValueError covers bad JSON and bytes that are not UTF-8
+        raise ModelsError(f"{FILE}: cannot read or parse it as JSON ({e})") from e
     _validate(data)
     return data
 

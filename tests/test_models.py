@@ -50,6 +50,13 @@ def test_uiux_is_ux(tmp_path):
     assert resolve(tmp_path, "codex", agent="reviewer-uiux")["model"] == "m"
 
 
+def test_partial_fable_entry_takes_effort_from_heavy(tmp_path):
+    write_models(tmp_path, {"codex": {"tiers": {"fable": {"model": "x"}}}})
+    assert resolve(tmp_path, "codex", tier="fable") == {"model": "x", "effort": "xhigh", "source": "models.json"}
+    write_models(tmp_path, {"codex": {"tiers": {"fable": {"model": "x"}, "heavy": {"effort": "max"}}}})
+    assert resolve(tmp_path, "codex", tier="fable") == {"model": "x", "effort": "max", "source": "models.json"}
+
+
 def test_mapping_wins_per_key(tmp_path):
     write_models(tmp_path, {"codex": {"tiers": {"light": {"model": "m1"}}}})
     assert resolve(tmp_path, "codex", tier="light") == {"model": "m1", "effort": "low", "source": "models.json"}
@@ -126,3 +133,13 @@ def test_cli_exit_codes(tmp_path):
     bad = run_cli("--host", "codex", "--tier", "nope", "--root", str(tmp_path))
     assert bad.returncode == 2
     assert "nope" in json.loads(bad.stdout)["error"]
+
+
+def test_non_utf8_file_is_a_models_error(tmp_path):
+    (tmp_path / "factory").mkdir()
+    (tmp_path / "factory/models.json").write_bytes(b"\xff\xfe")
+    with pytest.raises(ModelsError, match=re.escape("models.json")):
+        resolve(tmp_path, "claude", tier="light")
+    done = run_cli("--host", "claude", "--tier", "light", "--root", str(tmp_path))
+    assert done.returncode == 2
+    assert "models.json" in json.loads(done.stdout)["error"]
