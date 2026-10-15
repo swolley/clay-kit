@@ -53,6 +53,7 @@ from a search engine's excerpt of the official page, not from reading it: confir
 | Shared plugin files | No variable for the plugin root in skill text. The model gets the absolute path of SKILL.md and is told to resolve relative paths "relative to the directory containing that expanded `SKILL.md` first" | GH:ext/skills/src/catalog_prompt.rs |
 | Custom agents | TOML: `name`, `description` required, plus any config key: `developer_instructions`, `model`, `model_reasoning_effort`, `sandbox_mode`, ... | GH:agent-roles/src/agent_role_config.rs |
 | Spawn tool | `spawn_agent` with `message`, `agent_type`, and per call `model` and `reasoning_effort` (shown when `expose_spawn_agent_model_overrides`, default true in config). Also `wait_agent`, `send_input`, `resume_agent`, `close_agent`. `multi_agent` is on by default | GH:core/src/tools/handlers/multi_agents_spec.rs, core/src/config/mod.rs |
+| Live agent threads | Capped by `agents.max_concurrent_threads_per_session` (formerly `agents.max_threads`, an alias). Default 6 with `multi_agent` (`DEFAULT_AGENT_MAX_THREADS = Some(6)`, `core/src/config/mod.rs:255`); with multi-agent v2 the default is 4 per session counting the root, so 3 subagents (`mod.rs:256`, `effective_agent_max_threads` at `mod.rs:1666`). Hitting it returns `AgentLimitReached`; `close_agent` frees a thread | GH:core/src/config/mod.rs, protocol/src/error.rs |
 | Effort values | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, ... (accepted values depend on the model) | GH:protocol/src/openai_models.rs |
 | Question tool | `request_user_input`: 1 to 3 questions, 2 to 3 options each, "Other" added. Plan mode only unless `[features] default_mode_request_user_input = true` (under development, off). **Refused in subagents** ("root thread" only) | GH:core/src/tools/handlers/request_user_input.rs, tools/src/tool_config.rs |
 | Hooks | Plugins ship hooks; their commands get `PLUGIN_ROOT` and `CLAUDE_PLUGIN_ROOT` in the environment. Hooks must be trusted before they run **(S)** | GH:hooks/src/engine/discovery.rs; developers.openai.com/codex/hooks (S) |
@@ -78,7 +79,7 @@ engine's excerpt of the cited page; rows marked **(F)** were read in full on Git
 | Arguments | `$ARGUMENTS`: not documented | |
 | Subagents | `.cursor/agents/`, `~/.cursor/agents/`, and for compatibility `.claude/agents/`, `.codex/agents/` **(S)**. Fields: `name`, `description`, `model` (`inherit` or a model id), `readonly`, `is_background`. `tools`, `effort`: not documented | cursor.com/docs/subagents (S) |
 | Spawn tool | The Task tool; a subagent cannot start another **(S)**. Forum: the per-call `model` accepts only `fast` | cursor.com/docs/subagents (S); forum.cursor.com/t/156736 |
-| Question tool | The ask-question tool works in any conversation, and subagents and skills may use it when told to **(S)**. Forum: depends on the model; skipped in headless `cursor-agent -p` | cursor.com/changelog/2-4 (S); forum.cursor.com/t/165280, /173657 |
+| Question tool | The ask-question tool works in any conversation, and subagents and skills may use it when told to **(S)**. Forum (reported): offered depending on the model; skipped in headless `cursor-agent -p` | cursor.com/changelog/2-4 (S); forum.cursor.com/t/165280, /173657 |
 | Hooks | `{"version":1,"hooks":{<event>:[{command,...}]}}`; plugins ship `hooks/hooks.json` **(F)**. Claude Code hooks are mapped to Cursor events **(S)** | github.com/cursor/plugin-template (starter-advanced); cursor.com/docs/hooks (S) |
 | Rules | `.cursor/rules/*.mdc` and `AGENTS.md` **(S)** | cursor.com/docs/rules (S) |
 | On disk | Local plugins in `~/.cursor/plugins/local/<name>` **(S)**; the install cache is not documented | cursor.com/docs/plugins (S) |
@@ -100,7 +101,7 @@ engine's excerpt of the cited page; rows marked **(F)** were read in full on Git
 Consequences, as built (design: `docs/superpowers/specs/2026-10-15-codex-cursor-design.md`; the host-by-host instructions
 the orchestrator follows are in `plugins/clay/reference/hosts.md`):
 - Every skill opens with `Plugin root: ${CLAUDE_PLUGIN_ROOT}` and a fallback line saying the root is the folder two levels
-  above its `SKILL.md`. Claude Code substitutes the variable; Codex and Cursor use the fallback, which follows their documented
+  above the folder that holds its `SKILL.md`. Claude Code substitutes the variable; Codex and Cursor use the fallback, which follows their documented
   rule of paths relative to the skill. The rest of the text says `<plugin root>`. Agents never use the variable: they read the
   `Plugin root:` line of their prompt, which the orchestrator adds on every host.
 - Codex cannot install agents with the plugin, so there the orchestrator spawns a generic subagent told to read
@@ -121,4 +122,5 @@ the orchestrator follows are in `plugins/clay/reference/hosts.md`):
 Still untested (in `tests/e2e/CHECKLIST.md`, sections K and L): that Cursor finds the plugin's `agents/` and `skills/` by
 default with no key in its manifest; how Cursor imports a Claude Code plugin; what `inherit` does as a per-call model (reported
 ignored in some versions); the Cursor install routes and the `/` menu for user-only skills; that Codex does not read our
-`hooks/hooks.json`, which is read from source only.
+`hooks/hooks.json`, which is read from source only; that an inline `hooks` object in the Cursor manifest stops Cursor loading the
+default `hooks/hooks.json` is not documented.

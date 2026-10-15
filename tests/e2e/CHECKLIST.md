@@ -114,6 +114,9 @@ Fresh fixture, opened in Codex. The commands are `$factory-<verb>` or the `/skil
 - [ ] `factory/jobs/<job>/job.json` `agents` records the model and effort actually passed (from `python3 <plugin root>/scripts/state.py model --host codex ...`); a key that was not passed is empty.
 - [ ] With a `factory/models.json` that names a model for `light`, the builder is started with it and `job.json` shows it.
 - [ ] The agents run as generic subagents that read the plugin's agent file (the spawn message starts with `Read <plugin root>/agents/`).
+- [ ] The plugin root the session worked out is an absolute path that contains `skills/`; state what the session printed.
+- [ ] A two-task run (`$factory-run` on a plan with two tasks): the second task starts without hitting a thread limit, because each reviewer and the approver were closed with `close_agent` after their files were read.
+- [ ] A CHANGES round resumes the builder through `send_input` (no fresh builder), and the builder is closed when the job lands.
 - [ ] The Claude Code mod hooks file (`hooks/hooks.json`) is not loaded: no hook trust prompt, no band or pane, no error about it.
 
 ## L. Cursor
@@ -127,6 +130,8 @@ Fresh fixture, opened in Cursor. The commands are `/factory-<verb>`. The install
 - [ ] A one-task run: `/factory-task "<a trivial change in the fixture>"` builds, reviews and lands the change; the job folder has `build.md` and `decision.md` starting `APPROVE`, and the review files unless the task took the short path.
 - [ ] One agent question is answered through the plain-text fallback (numbered options in the reply, the next message read as the answer), or through the ask-question tool if the host offers it.
 - [ ] `factory/jobs/<job>/job.json` `agents` records the model actually passed (`fast`, `inherit` or empty) and an empty effort for every agent.
+- [ ] The session reports itself as Cursor (`--host cursor` in the model calls), not Claude Code.
+- [ ] The plugin root the session worked out is an absolute path that contains `skills/`; state what the session printed.
 - [ ] The plugin's agents are found without a `skills` or `agents` key in `.cursor-plugin/plugin.json`: the builder starts as the plugin's `builder` agent, not as a generic one.
 - [ ] User-only skills (`factory-run`, `factory-approve`, ...) are not started by the model on its own; they run only when typed.
 - [ ] `inherit` behaviour: with `{"cursor": {"tiers": {"light": {"model": "inherit"}}}}` in `factory/models.json`, note whether the subagent runs on the model of the chat or on another; `inherit` is reported ignored in some versions.

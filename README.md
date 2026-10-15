@@ -30,7 +30,7 @@ codex plugin marketplace add swolley/clay-kit
 codex plugin add clay@clay-kit
 ```
 
-Codex reads the `.claude-plugin/` files of this repository. Start a skill with `$factory-run`, or pick it from the `/skills` picker, where plugin skills are namespaced (`clay:factory-run`).
+Codex reads `.codex-plugin/plugin.json` for the plugin and the existing `.claude-plugin/marketplace.json` for the marketplace. Start a skill with `$factory-run`, or pick it from the `/skills` picker, where plugin skills are namespaced (`clay:factory-run`).
 
 ### Cursor
 

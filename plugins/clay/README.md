@@ -106,13 +106,13 @@ their sources, in [docs/hosts.md](https://github.com/swolley/clay-kit/blob/maste
 | Invoke | `/factory-run` (or `/clay:factory-run`) | `$factory-run`, or the `/skills` picker (`clay:factory-run`) | `/factory-run` |
 | Agents | the plugin's `clay:<role>` agents | generic subagents told to read the agent file | the plugin's agents, generic ones if the host does not list them |
 | Model per call | `model`, and `effort` only if the Agent tool shows it | `model` and `reasoning_effort` | `fast` or `inherit` only, no effort |
-| Questions | `AskUserQuestion` | `request_user_input` in Plan mode, else plain text | the ask-question tool, depending on the model |
+| Questions | `AskUserQuestion` | `request_user_input` in Plan mode, else plain text | the ask-question tool (reported to depend on the model) |
 | Resume the builder | `SendMessage` | `send_input` | a fresh builder |
 | Progress band and pane | yes | no | no |
 | `factory/jobs/dashboard.html` | yes | yes | yes |
 
 Where the host does not substitute the plugin root, a skill finds the plugin's shared files from the folder of its own `SKILL.md`
-(each skill states its plugin root on its first two lines).
+(each skill states its plugin root on its first two lines of the body).
 
 ### Model mapping (`factory/models.json`)
 
@@ -124,7 +124,10 @@ beside `factory/routing.md`, is optional and maps tiers and agents to the host's
 {
   "claude": {
     "tiers": { "light": { "model": "sonnet", "effort": "low" } },
-    "agents": { "approver": { "model": "opus", "effort": "max" } }
+    "agents": {
+      "approver": { "model": "opus", "effort": "max" },
+      "approver-risky": { "model": "opus", "effort": "max" }
+    }
   },
   "codex": {
     "tiers": {
@@ -153,7 +156,8 @@ beside `factory/routing.md`, is optional and maps tiers and agents to the host's
 
 Tiers are `light`, `medium`, `careful`, `heavy`, `fable`. Agents are `reviewer-code`, `reviewer-ui`, `reviewer-ux`,
 `reviewer-security`, `reviewer-spec`, `approver` and `approver-risky` (the approver of a risky job); the combined `reviewer-uiux`
-uses the `reviewer-ux` entry.
+uses the `reviewer-ux` entry. `approver-risky` does not inherit from `approver`: to change the approver of risky jobs, give
+`approver-risky` its own entry.
 
 **Resolution order**, for each of `model` and `effort` separately:
 
@@ -180,13 +184,15 @@ tier or agent, a value the host cannot take) stops the run with a message that n
   to plain text.
 - **Codex agents.** A Codex plugin cannot install agents, so each role runs as a generic subagent that is told to read the plugin's
   agent file.
-- **Cursor model and effort.** The per-call model is only `fast` or `inherit`, and there is no effort. `inherit` is reported
+- **Cursor model and effort.** The per-call model is reported to accept only `fast` or `inherit` (a forum report), and there is no effort. `inherit` is reported
   ignored in some versions of Cursor. The model of your chat applies when nothing is passed, Auto included.
 - **Cursor menu.** Plugin skills marked user-only were reported hidden from the `/` menu. Type the command by name.
 - **Cursor, untested.** Whether Cursor finds the plugin's agents by default, and how it imports a Claude Code plugin, are not
   tested yet; the install route above comes from Cursor's documentation, not from our own run.
 - Model names differ per host, so a repository that runs on Codex or Cursor needs a `factory/models.json` to choose models per
   tier; without one Codex uses the session's model with the effort of `tiers.md`, and Cursor the model of your chat.
+- **Codex reviewers.** Codex runs them as generic subagents, which ignore the `tools:` frontmatter of the agent files, so reviewers
+  and the approver keep their no-code-change promise by instruction only.
 - A Cursor builder cannot be resumed: a rework starts a fresh builder that reads `build.md`, the rounds and the branch log.
 - The Claude Code progress mod in `hooks/` is meant to stay unloaded on Codex and Cursor: their manifests declare empty hooks.
 
