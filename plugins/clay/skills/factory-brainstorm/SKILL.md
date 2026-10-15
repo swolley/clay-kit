@@ -4,10 +4,13 @@ description: Use before creative work such as a new feature, component, behavior
 argument-hint: <idea or goal>
 ---
 
+Plugin root: ${CLAUDE_PLUGIN_ROOT}
+If the line above does not show an absolute path, the plugin root is the folder two levels above this SKILL.md.
+
 # Brainstorm
 
 Turn an idea into a design the user has approved, before any code is written.
-Follow `${CLAUDE_PLUGIN_ROOT}/STYLE.md` for questions, explanations and length.
+Follow `<plugin root>/STYLE.md` for questions, explanations and length.
 
 Derived from the superpowers `brainstorming` skill (MIT); see NOTICE.md.
 

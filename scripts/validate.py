@@ -8,6 +8,9 @@ from pathlib import Path
 MANUAL_ONLY = {"factory-run", "factory-task", "factory-status", "factory-approve", "factory-rework", "factory-answer", "factory-unlock", "factory-backlog"}
 AUTO_ALLOWED = {"factory-brainstorm", "factory-plan"}
 ROOT_SENTENCE = "Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there."
+ROOT_LINE = "Plugin root: ${CLAUDE_PLUGIN_ROOT}"
+ROOT_FALLBACK = "If the line above does not show an absolute path, the plugin root is the folder two levels above this SKILL.md."
+ARGS_FALLBACK = "If the Arguments line still shows a placeholder that starts with $, the arguments are the text the user typed after the command name."
 
 
 def frontmatter(text: str) -> dict[str, str]:
@@ -67,6 +70,15 @@ def validate(root: Path) -> list[str]:
                 skill = f.parent.name
                 if fm.get("name") and fm["name"] != skill:
                     problems.append(f"{rel(f)}: frontmatter name must match its folder ({skill})")
+                body = re.sub(r"\A---\n.*?\n---\n", "", text, count=1, flags=re.S)
+                if not body.lstrip("\n").startswith(ROOT_LINE + "\n" + ROOT_FALLBACK + "\n"):
+                    problems.append(f"{rel(f)}: body must start with the `Plugin root:` line and the line after it that covers hosts without substitution")
+                if text.count("CLAUDE_PLUGIN_ROOT") != 1:
+                    problems.append(f"{rel(f)}: CLAUDE_PLUGIN_ROOT must appear exactly once (in the first line); write <plugin root>/... elsewhere")
+                if text.count("$ARGUMENTS") > 1:
+                    problems.append(f"{rel(f)}: $ARGUMENTS must appear at most once")
+                if "$ARGUMENTS" in text and ARGS_FALLBACK not in text:
+                    problems.append(f"{rel(f)}: has $ARGUMENTS but not the sentence about the Arguments line")
                 if skill in MANUAL_ONLY and not disabled:
                     problems.append(f"{rel(f)}: disable-model-invocation must be true")
                 if skill in AUTO_ALLOWED and disabled:

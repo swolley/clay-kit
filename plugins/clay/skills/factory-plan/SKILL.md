@@ -4,10 +4,13 @@ description: Use when a design or spec is approved and the work has several step
 argument-hint: <spec path>
 ---
 
+Plugin root: ${CLAUDE_PLUGIN_ROOT}
+If the line above does not show an absolute path, the plugin root is the folder two levels above this SKILL.md.
+
 # Plan
 
 Turn an approved spec into a plan of small tasks that someone who has not seen this
-conversation can execute. Follow `${CLAUDE_PLUGIN_ROOT}/STYLE.md`.
+conversation can execute. Follow `<plugin root>/STYLE.md`.
 
 Derived from the superpowers `writing-plans` skill (MIT); see NOTICE.md.
 

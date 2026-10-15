@@ -6,7 +6,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from validate import validate  # noqa: E402
 
 ROOT_SENTENCE = "Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there."
-FM = "---\nname: {name}\ndescription: {desc}\n{extra}---\nSee STYLE.md.\n"
+ROOT_LINE = "Plugin root: ${CLAUDE_PLUGIN_ROOT}"
+ROOT_FALLBACK = "If the line above does not show an absolute path, the plugin root is the folder two levels above this SKILL.md."
+ARGS_FALLBACK = "If the Arguments line still shows a placeholder that starts with $, the arguments are the text the user typed after the command name."
+FM = "---\nname: {name}\ndescription: {desc}\n{extra}---\n"
 
 
 def write(root: Path, rel: str, text: str) -> None:
@@ -15,8 +18,12 @@ def write(root: Path, rel: str, text: str) -> None:
     p.write_text(text)
 
 
-def skill(name: str, extra: str = "") -> str:
-    return FM.format(name=name, desc="d", extra=extra)
+def agent(name: str) -> str:
+    return FM.format(name=name, desc="d", extra="") + "See STYLE.md.\n"
+
+
+def skill(name: str, extra: str = "", body: str = "") -> str:
+    return FM.format(name=name, desc="d", extra=extra) + ROOT_LINE + "\n" + ROOT_FALLBACK + "\nSee STYLE.md.\n" + body
 
 
 def make_scaffold(root: Path) -> None:
@@ -26,7 +33,7 @@ def make_scaffold(root: Path) -> None:
     write(root, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan"))
     for cmd in ("factory-run", "factory-task", "factory-status", "factory-approve", "factory-rework", "factory-answer", "factory-unlock"):
         write(root, f"plugins/clay/skills/{cmd}/SKILL.md", skill(cmd, "disable-model-invocation: true\n") + "reference/orchestrator.md\n")
-    write(root, "plugins/clay/agents/builder.md", skill("builder") + ROOT_SENTENCE + "\n")
+    write(root, "plugins/clay/agents/builder.md", agent("builder") + ROOT_SENTENCE + "\n")
     write(root, "plugins/clay/reference/orchestrator.md", "core\n")
 
 
@@ -50,7 +57,7 @@ def test_skill_without_description_fails(tmp_path):
 
 def test_superpowers_reference_fails(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/clay/agents/builder.md", skill("builder") + ROOT_SENTENCE + "\nUse superpowers:tdd\n")
+    write(tmp_path, "plugins/clay/agents/builder.md", agent("builder") + ROOT_SENTENCE + "\nUse superpowers:tdd\n")
     assert any("builder.md" in p and "superpowers:" in p for p in validate(tmp_path))
 
 
@@ -128,11 +135,40 @@ def test_backlog_skill_must_disable_model_invocation(tmp_path):
 
 def test_agent_with_plugin_root_variable_fails(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/clay/agents/builder.md", skill("builder") + ROOT_SENTENCE + "\n${CLAUDE_PLUGIN_ROOT}/STYLE.md\n")
+    write(tmp_path, "plugins/clay/agents/builder.md", agent("builder") + ROOT_SENTENCE + "\n${CLAUDE_PLUGIN_ROOT}/STYLE.md\n")
     assert any(p.startswith("plugins/clay/agents/builder.md:") and "CLAUDE_PLUGIN_ROOT" in p for p in validate(tmp_path))
 
 
 def test_agent_without_root_sentence_fails(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/clay/agents/builder.md", skill("builder"))
+    write(tmp_path, "plugins/clay/agents/builder.md", agent("builder"))
     assert any(p.startswith("plugins/clay/agents/builder.md:") and "Plugin root:" in p for p in validate(tmp_path))
+
+
+def test_skill_without_root_lines_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", FM.format(name="factory-plan", desc="d", extra="") + "See STYLE.md.\n")
+    assert any(p.startswith("plugins/clay/skills/factory-plan/SKILL.md:") and "Plugin root:" in p for p in validate(tmp_path))
+    write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", FM.format(name="factory-plan", desc="d", extra="") + ROOT_LINE + "\nSee STYLE.md.\n")
+    assert any(p.startswith("plugins/clay/skills/factory-plan/SKILL.md:") and "Plugin root:" in p for p in validate(tmp_path))
+
+
+def test_skill_with_second_plugin_root_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan", body="Follow ${CLAUDE_PLUGIN_ROOT}/STYLE.md.\n"))
+    assert any(p.startswith("plugins/clay/skills/factory-plan/SKILL.md:") and "CLAUDE_PLUGIN_ROOT" in p for p in validate(tmp_path))
+
+
+def test_skill_with_two_arguments_placeholders_fails(tmp_path):
+    make_scaffold(tmp_path)
+    body = "Arguments: $ARGUMENTS\n" + ARGS_FALLBACK + "\nRun x $ARGUMENTS\n"
+    write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan", body=body))
+    assert any(p.startswith("plugins/clay/skills/factory-plan/SKILL.md:") and "$ARGUMENTS" in p for p in validate(tmp_path))
+
+
+def test_skill_with_arguments_but_no_fallback_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan", body="Arguments: $ARGUMENTS\n"))
+    assert any(p.startswith("plugins/clay/skills/factory-plan/SKILL.md:") and "Arguments line" in p for p in validate(tmp_path))
+    write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan", body="Arguments: $ARGUMENTS\n" + ARGS_FALLBACK + "\n"))
+    assert validate(tmp_path) == []

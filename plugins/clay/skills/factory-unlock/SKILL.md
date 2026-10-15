@@ -6,9 +6,11 @@ argument-hint: <plan> [--force]
 ---
 
 Plugin root: ${CLAUDE_PLUGIN_ROOT}
-Follow ${CLAUDE_PLUGIN_ROOT}/STYLE.md. Read these parts of the shared reference together, in one message: ${CLAUDE_PLUGIN_ROOT}/reference/lock.md. Use the plugin root above wherever they say `<plugin root>`.
+If the line above does not show an absolute path, the plugin root is the folder two levels above this SKILL.md.
+Follow <plugin root>/STYLE.md. Read these parts of the shared reference together, in one message: <plugin root>/reference/lock.md. Use the plugin root above wherever they say `<plugin root>`.
 
-Plan: $ARGUMENTS (may be empty)
+Arguments: $ARGUMENTS (a plan, may be empty)
+If the Arguments line still shows a placeholder that starts with $, the arguments are the text the user typed after the command name.
 
 1. List the locks: `python3 <plugin root>/scripts/state.py lock list --root <repo>`. With no argument take the only lock, or ask which one with the question tool,
    showing each plan, since when, and whether it is stale.
