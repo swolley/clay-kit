@@ -25,7 +25,7 @@ must be rerun on each change), and documentation only (leaves the hosts unusable
 | `.claude-plugin/marketplace.json`, `plugins/clay/.claude-plugin/plugin.json` | Claude Code; Codex reads them too | unchanged |
 | `plugins/clay/.codex-plugin/plugin.json` | Codex (searched first) | `name`, `version`, `description`, `skills: "./skills"`, an empty inline `hooks`, `interface { displayName, shortDescription, developerName, category }` |
 | `.cursor-plugin/marketplace.json` | Cursor | `name`, `owner`, `plugins: [{ name: "clay", source: "./plugins/clay", description }]` |
-| `plugins/clay/.cursor-plugin/plugin.json` | Cursor | `name`, `version`, `description`, `skills: "./skills/"`, `agents: "./agents/"`, an empty inline `hooks` |
+| `plugins/clay/.cursor-plugin/plugin.json` | Cursor | `name`, `version`, `description`, an empty inline `hooks`; no `skills` or `agents` key, because Cursor finds `skills/` and `agents/` by default |
 
 - `hooks/hooks.json` holds the Claude Code mod (`{"modules": [...]}`). Codex and Cursor load `hooks/hooks.json` by default, so
   both manifests declare hooks inline and empty. Codex: `"hooks": {"hooks": {}}` (an inline object with no events is skipped and
