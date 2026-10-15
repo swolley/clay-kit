@@ -152,8 +152,16 @@ def validate(root: Path) -> list[str]:
                     problems.append(f"{rel(f)}: CLAUDE_PLUGIN_ROOT must appear exactly once (in the first line); write <plugin root>/... elsewhere")
                 if text.count("$ARGUMENTS") > 1:
                     problems.append(f"{rel(f)}: $ARGUMENTS must appear at most once")
-                if "$ARGUMENTS" in text and ARGS_FALLBACK not in text:
-                    problems.append(f"{rel(f)}: has $ARGUMENTS but not the sentence about the Arguments line")
+                lines = body.splitlines()
+                at = next((i for i, line in enumerate(lines) if "$ARGUMENTS" in line), None)
+                if at is not None:
+                    after = next((line for line in lines[at + 1:] if line.strip()), None)
+                    if after is None or after.strip() != ARGS_FALLBACK:
+                        problems.append(f"{rel(f)}: the line with $ARGUMENTS must be followed by the sentence about the Arguments line")
+                if any("${" in line and line != ROOT_LINE for line in text.splitlines()):
+                    problems.append(f"{rel(f)}: ${{ may appear only in the Plugin root: line (no other substituted variables)")
+                if re.search(r"\$[1-9]|\$ARGUMENTS\[", text):
+                    problems.append(f"{rel(f)}: must not use positional argument forms ($1 to $9, $ARGUMENTS[...])")
                 if skill in MANUAL_ONLY and not disabled:
                     problems.append(f"{rel(f)}: disable-model-invocation must be true")
                 if skill in AUTO_ALLOWED and disabled:

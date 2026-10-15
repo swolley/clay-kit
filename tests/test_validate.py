@@ -119,6 +119,14 @@ def test_a_command_skill_may_read_several_parts_but_each_must_exist(tmp_path):
     assert any("factory-unlock/SKILL.md" in p and "gone.md" in p for p in validate(tmp_path))
 
 
+def test_manual_skill_pointing_to_a_missing_part_with_the_plugin_root_form_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/skills/factory-status/SKILL.md", skill("factory-status", "disable-model-invocation: true\n") + "Read <plugin root>/reference/orchestrator.md and <plugin root>/reference/gone.md\n")
+    assert any("factory-status/SKILL.md" in p and "gone.md" in p for p in validate(tmp_path))
+    write(tmp_path, "plugins/clay/skills/factory-status/SKILL.md", skill("factory-status", "disable-model-invocation: true\n") + "Read <plugin root>/reference/orchestrator.md\n")
+    assert validate(tmp_path) == []
+
+
 def test_spawning_skill_without_hosts_part_fails(tmp_path):
     make_scaffold(tmp_path)
     write(tmp_path, "plugins/clay/skills/factory-run/SKILL.md", skill("factory-run", "disable-model-invocation: true\n") + "reference/orchestrator.md\n")
@@ -211,6 +219,37 @@ def test_skill_with_arguments_but_no_fallback_fails(tmp_path):
     assert any(p.startswith("plugins/clay/skills/factory-plan/SKILL.md:") and "Arguments line" in p for p in validate(tmp_path))
     write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan", body="Arguments: $ARGUMENTS\n" + ARGS_FALLBACK + "\n"))
     assert validate(tmp_path) == []
+
+
+def test_arguments_fallback_must_be_the_next_line_after_the_placeholder(tmp_path):
+    make_scaffold(tmp_path)
+    path = "plugins/clay/skills/factory-plan/SKILL.md"
+    for body in (
+        ARGS_FALLBACK + "\nArguments: $ARGUMENTS\n",
+        "Arguments: $ARGUMENTS\nOther text.\n" + ARGS_FALLBACK + "\n",
+        "Arguments: $ARGUMENTS\n" + "Other text. " + ARGS_FALLBACK + "\n",
+    ):
+        write(tmp_path, path, skill("factory-plan", body=body))
+        assert any(p.startswith(path + ":") and "Arguments line" in p for p in validate(tmp_path)), body
+    write(tmp_path, path, skill("factory-plan", body="Arguments: $ARGUMENTS\n\n" + ARGS_FALLBACK + "\n"))
+    assert validate(tmp_path) == []
+
+
+def test_skill_with_other_dollar_brace_variable_fails(tmp_path):
+    make_scaffold(tmp_path)
+    path = "plugins/clay/skills/factory-plan/SKILL.md"
+    write(tmp_path, path, skill("factory-plan", body="Read ${CLAUDE_SKILL_DIR}/x.md\n"))
+    assert any(p.startswith(path + ":") and "${" in p for p in validate(tmp_path))
+    write(tmp_path, path, skill("factory-plan", body="Home is ${HOME}\n"))
+    assert any(p.startswith(path + ":") and "${" in p for p in validate(tmp_path))
+
+
+def test_skill_with_positional_argument_leftover_fails(tmp_path):
+    make_scaffold(tmp_path)
+    path = "plugins/clay/skills/factory-plan/SKILL.md"
+    for body in ("The id is $1\n", "Text $9 here\n", "All: $ARGUMENTS[0]\n"):
+        write(tmp_path, path, skill("factory-plan", body=body))
+        assert any(p.startswith(path + ":") and ("$1" in p or "$ARGUMENTS[" in p) for p in validate(tmp_path)), body
 
 
 def edit_json(root: Path, rel: str, **changes) -> None:
