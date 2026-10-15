@@ -79,8 +79,17 @@ def test_risky_approver_mapping(tmp_path):
         ({"claude": {"tiers": {"light": {"model": "gpt-x"}}}}, "claude", {"tier": "light"}, "gpt-x"),
         ({"claude": {"tiers": {"light": {"effort": "huge"}}}}, "claude", {"tier": "light"}, "huge"),
         ({"cursor": {"tiers": {"light": {"model": "auto"}}}}, "cursor", {"tier": "light"}, "auto"),
-        ({"cursor": {"tiers": {"light": {"effort": "low"}}}}, "cursor", {"tier": "light"}, "effort"),
+        ({"cursor": {"tiers": {"light": {"effort": "low"}}}}, "cursor", {"tier": "light"}, "cursor.tiers.light.effort"),
         ({"codex": {"tiers": {"light": {"model": ""}}}}, "codex", {"tier": "light"}, "codex.tiers.light.model"),
+        ("", "claude", {"tier": "light"}, "models.json"),
+        ([], "claude", {"tier": "light"}, "top level"),
+        ("null", "claude", {"tier": "light"}, "top level"),
+        ("3", "claude", {"tier": "light"}, "top level"),
+        ({"claude": {"tiers": {"light": {"model": None}}}}, "claude", {"tier": "light"}, "claude.tiers.light.model"),
+        ({"claude": {"tiers": {"light": {"model": 3}}}}, "claude", {"tier": "light"}, "claude.tiers.light.model"),
+        ({"codex": {"tiers": {"light": {"effort": 3}}}}, "codex", {"tier": "light"}, "codex.tiers.light.effort"),
+        ({"codex": {"tiers": {"light": {"modle": "x"}}}}, "codex", {"tier": "light"}, "modle"),
+        ({"codex": {"agents": {"reviewer-uiux": {"model": "x"}}}}, "codex", {"agent": "reviewer-ux"}, "reviewer-uiux is configured as reviewer-ux"),
         (None, "claude", {"tier": "light", "agent": "approver"}, "tier"),
         (None, "claude", {}, "tier"),
         (None, "claude", {"tier": "hevy"}, "hevy"),
@@ -96,6 +105,18 @@ def test_bad_input_raises(tmp_path, data, host, kwargs, needle):
         write_models(tmp_path, data)
     with pytest.raises(ModelsError, match=re.escape(needle)):
         resolve(tmp_path, host, **kwargs)
+
+
+def test_empty_object_is_a_no_op(tmp_path):
+    before = resolve(tmp_path, "codex", tier="light")
+    write_models(tmp_path, {})
+    assert resolve(tmp_path, "codex", tier="light") == before
+
+
+def test_effort_only_entry_keeps_effort_and_falls_back_for_model(tmp_path):
+    write_models(tmp_path, {"claude": {"tiers": {"light": {"effort": "max"}}}, "codex": {"tiers": {"light": {"effort": "max"}}}})
+    assert resolve(tmp_path, "claude", tier="light") == {"model": "haiku", "effort": "max", "source": "models.json"}
+    assert resolve(tmp_path, "codex", tier="light") == {"model": None, "effort": "max", "source": "models.json"}
 
 
 def parse_tables() -> tuple[dict, dict]:
@@ -148,6 +169,13 @@ def test_cli_exit_codes(tmp_path):
     assert "nope" in json.loads(bad.stdout)["error"]
 
 
+def test_cli_typo_in_models_json_exits_2_and_names_the_key(tmp_path):
+    write_models(tmp_path, {"codex": {"tiers": {"light": {"modle": "x"}}}})
+    bad = run_cli("--host", "codex", "--tier", "light", "--root", str(tmp_path))
+    assert bad.returncode == 2
+    assert "codex.tiers.light.modle" in json.loads(bad.stdout)["error"]
+
+
 def test_non_utf8_file_is_a_models_error(tmp_path):
     (tmp_path / "factory").mkdir()
     (tmp_path / "factory/models.json").write_bytes(b"\xff\xfe")
@@ -160,11 +188,13 @@ def test_non_utf8_file_is_a_models_error(tmp_path):
 
 def test_agent_frontmatter_effort():
     agents = HERE.parent / "plugins/clay/agents"
+    checked = []
     for name, (_model, effort) in AGENT_DEFAULTS.items():
-        f = agents / f"{name}.md"
-        if not f.exists():
+        if name == "approver-risky":  # a variant of approver, not an agent file
             continue
-        fm = re.match(r"---\n(.*?)\n---\n", f.read_text(), re.S).group(1)
+        fm = re.match(r"---\n(.*?)\n---\n", (agents / f"{name}.md").read_text(), re.S).group(1)
         assert re.search(rf"^effort: {effort}$", fm, re.M), name
+        checked.append(name)
+    assert sorted(checked) == sorted(["reviewer-code", "reviewer-ui", "reviewer-ux", "reviewer-uiux", "reviewer-spec", "reviewer-security", "approver"])
     builder = (agents / "builder.md").read_text()
     assert "effort:" not in re.match(r"---\n(.*?)\n---\n", builder, re.S).group(1)
