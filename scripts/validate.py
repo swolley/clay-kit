@@ -7,6 +7,7 @@ from pathlib import Path
 
 MANUAL_ONLY = {"factory-run", "factory-task", "factory-status", "factory-approve", "factory-rework", "factory-answer", "factory-unlock", "factory-backlog"}
 AUTO_ALLOWED = {"factory-brainstorm", "factory-plan"}
+ROOT_SENTENCE = "Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there."
 
 
 def frontmatter(text: str) -> dict[str, str]:
@@ -56,6 +57,11 @@ def validate(root: Path) -> list[str]:
                     problems.append(f"{rel(f)}: frontmatter missing {key}")
             if "STYLE.md" not in text:
                 problems.append(f"{rel(f)}: does not reference STYLE.md")
+            if f.parent.name == "agents":
+                if "CLAUDE_PLUGIN_ROOT" in text:
+                    problems.append(f"{rel(f)}: must not use CLAUDE_PLUGIN_ROOT (not substituted when a host reads the agent as plain text)")
+                if ROOT_SENTENCE not in text:
+                    problems.append(f"{rel(f)}: must say its plugin root is the `Plugin root:` line of its prompt")
             if f.name == "SKILL.md":
                 disabled = fm.get("disable-model-invocation") == "true"
                 skill = f.parent.name

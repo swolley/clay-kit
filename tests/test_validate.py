@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from validate import validate  # noqa: E402
 
+ROOT_SENTENCE = "Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there."
 FM = "---\nname: {name}\ndescription: {desc}\n{extra}---\nSee STYLE.md.\n"
 
 
@@ -25,7 +26,7 @@ def make_scaffold(root: Path) -> None:
     write(root, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan"))
     for cmd in ("factory-run", "factory-task", "factory-status", "factory-approve", "factory-rework", "factory-answer", "factory-unlock"):
         write(root, f"plugins/clay/skills/{cmd}/SKILL.md", skill(cmd, "disable-model-invocation: true\n") + "reference/orchestrator.md\n")
-    write(root, "plugins/clay/agents/builder.md", skill("builder"))
+    write(root, "plugins/clay/agents/builder.md", skill("builder") + ROOT_SENTENCE + "\n")
     write(root, "plugins/clay/reference/orchestrator.md", "core\n")
 
 
@@ -49,13 +50,13 @@ def test_skill_without_description_fails(tmp_path):
 
 def test_superpowers_reference_fails(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/clay/agents/builder.md", skill("builder") + "Use superpowers:tdd\n")
+    write(tmp_path, "plugins/clay/agents/builder.md", skill("builder") + ROOT_SENTENCE + "\nUse superpowers:tdd\n")
     assert any("builder.md" in p and "superpowers:" in p for p in validate(tmp_path))
 
 
 def test_missing_style_reference_fails(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/clay/agents/builder.md", "---\nname: builder\ndescription: d\n---\nno ref\n")
+    write(tmp_path, "plugins/clay/agents/builder.md", "---\nname: builder\ndescription: d\n---\n" + ROOT_SENTENCE + "\n")
     assert any("builder.md" in p and "STYLE.md" in p for p in validate(tmp_path))
 
 
@@ -123,3 +124,15 @@ def test_backlog_skill_must_disable_model_invocation(tmp_path):
     make_scaffold(tmp_path)
     write(tmp_path, "plugins/clay/skills/factory-backlog/SKILL.md", skill("factory-backlog") + "reference/orchestrator.md\n")
     assert any("factory-backlog/SKILL.md" in p and "disable-model-invocation" in p for p in validate(tmp_path))
+
+
+def test_agent_with_plugin_root_variable_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/agents/builder.md", skill("builder") + ROOT_SENTENCE + "\n${CLAUDE_PLUGIN_ROOT}/STYLE.md\n")
+    assert any(p.startswith("plugins/clay/agents/builder.md:") and "CLAUDE_PLUGIN_ROOT" in p for p in validate(tmp_path))
+
+
+def test_agent_without_root_sentence_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/agents/builder.md", skill("builder"))
+    assert any(p.startswith("plugins/clay/agents/builder.md:") and "Plugin root:" in p for p in validate(tmp_path))

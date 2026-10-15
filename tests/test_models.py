@@ -143,3 +143,15 @@ def test_non_utf8_file_is_a_models_error(tmp_path):
     done = run_cli("--host", "claude", "--tier", "light", "--root", str(tmp_path))
     assert done.returncode == 2
     assert "models.json" in json.loads(done.stdout)["error"]
+
+
+def test_agent_frontmatter_effort():
+    agents = HERE.parent / "plugins/clay/agents"
+    for name, (_model, effort) in AGENT_DEFAULTS.items():
+        f = agents / f"{name}.md"
+        if not f.exists():
+            continue
+        fm = re.match(r"---\n(.*?)\n---\n", f.read_text(), re.S).group(1)
+        assert re.search(rf"^effort: {effort}$", fm, re.M), name
+    builder = (agents / "builder.md").read_text()
+    assert "effort:" not in re.match(r"---\n(.*?)\n---\n", builder, re.S).group(1)
