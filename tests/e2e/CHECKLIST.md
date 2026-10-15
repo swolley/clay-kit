@@ -1,6 +1,9 @@
 # End-to-end checklist
 
-Needs a Claude Code session with the clay-kit marketplace and the `clay` plugin installed.
+Sections A to J run in a Claude Code session with the clay-kit marketplace and the `clay` plugin installed; section G is Claude Code only.
+Sections K (Codex) and L (Cursor) run in that host with the same marketplace. They need the real host and a person, so they cannot
+run in CI. The "Manual checks on Codex and Cursor" table in `plugins/clay/README.md` records which were run and when; it is empty
+until someone runs them.
 
 Setup, once per scenario (use a fresh directory each time):
 
@@ -97,3 +100,35 @@ Use a task whose brief leaves a real choice open (for example "add a cache" with
 - [ ] A job moving to `needs-human` or `waiting-input` raises a toast and the band shows "waiting for you".
 - [ ] With no `factory/jobs` folder, nothing is drawn and no error appears in the transcript.
 - [ ] Started from a workspace root with the jobs in `<repo>/factory/jobs`, the band still appears.
+
+## K. Codex
+
+Fresh fixture, opened in Codex. The commands are `$factory-<verb>` or the `/skills` picker.
+
+- [ ] `codex plugin marketplace add swolley/clay-kit`, then `codex plugin add clay@clay-kit`, both succeed.
+- [ ] The `/skills` picker lists the ten factory skills (namespaced `clay:factory-*`).
+- [ ] `$factory-status` runs and reports no jobs.
+- [ ] A one-task run: `$factory-task "<a trivial change in the fixture>"` builds, reviews and lands the change; the job folder has `build.md` and `decision.md` starting `APPROVE`, and the review files unless the task took the short path.
+- [ ] One agent question is answered through the plain-text fallback: outside Plan mode the run asks in the reply with numbered options and waits; your next message is read as the answer, and an unrelated message leaves the job waiting.
+- [ ] In Plan mode the same question uses `request_user_input` (2 to 3 options).
+- [ ] `factory/jobs/<job>/job.json` `agents` records the model and effort actually passed (from `python3 <plugin root>/scripts/state.py model --host codex ...`); a key that was not passed is empty.
+- [ ] With a `factory/models.json` that names a model for `light`, the builder is started with it and `job.json` shows it.
+- [ ] The agents run as generic subagents that read the plugin's agent file (the spawn message starts with `Read <plugin root>/agents/`).
+- [ ] The Claude Code mod hooks file (`hooks/hooks.json`) is not loaded: no hook trust prompt, no band or pane, no error about it.
+
+## L. Cursor
+
+Fresh fixture, opened in Cursor. The commands are `/factory-<verb>`. The install route is Cursor's documented one (CLI
+`/plugin marketplace add https://github.com/swolley/clay-kit`, or Dashboard, Plugins, Import from Repo) and has not been tried yet.
+
+- [ ] The plugin installs from the marketplace by one of the two routes; note which one.
+- [ ] The `factory-*` skills appear in the `/` menu or can be typed by name; note which of the user-only ones are hidden.
+- [ ] `/factory-status` runs and reports no jobs.
+- [ ] A one-task run: `/factory-task "<a trivial change in the fixture>"` builds, reviews and lands the change; the job folder has `build.md` and `decision.md` starting `APPROVE`, and the review files unless the task took the short path.
+- [ ] One agent question is answered through the plain-text fallback (numbered options in the reply, the next message read as the answer), or through the ask-question tool if the host offers it.
+- [ ] `factory/jobs/<job>/job.json` `agents` records the model actually passed (`fast`, `inherit` or empty) and an empty effort for every agent.
+- [ ] The plugin's agents are found without a `skills` or `agents` key in `.cursor-plugin/plugin.json`: the builder starts as the plugin's `builder` agent, not as a generic one.
+- [ ] User-only skills (`factory-run`, `factory-approve`, ...) are not started by the model on its own; they run only when typed.
+- [ ] `inherit` behaviour: with `{"cursor": {"tiers": {"light": {"model": "inherit"}}}}` in `factory/models.json`, note whether the subagent runs on the model of the chat or on another; `inherit` is reported ignored in some versions.
+- [ ] After a rework, a fresh builder is started and reads `build.md`, the rounds and the branch log.
+- [ ] The Claude Code mod hooks file (`hooks/hooks.json`) is not loaded: no band or pane, no error about it.

@@ -97,13 +97,28 @@ engine's excerpt of the cited page; rows marked **(F)** were read in full on Git
 | Question tool | `AskUserQuestion`, main session | `request_user_input`, Plan mode only by default | ask-question tool, model dependent |
 | Progress mod | yes | no | no |
 
-Consequences:
-- A skill that states its plugin root with `${CLAUDE_PLUGIN_ROOT}` alone breaks on Codex and maybe on Cursor; it needs a
-  fallback relative to SKILL.md (the root is two folders up).
-- Codex cannot install the agents with the plugin. Either the orchestrator spawns a generic subagent told to read
-  `<plugin root>/agents/<role>.md`, or a script writes TOML agents into `.codex/agents/`.
-- Tiers name Claude models. Other hosts need their own mapping, or the session's model with the effort only.
-- Every question needs the plain-text fallback: numbered options in the reply, then wait for the user's answer.
+Consequences, as built (design: `docs/superpowers/specs/2026-10-15-codex-cursor-design.md`; the host-by-host instructions
+the orchestrator follows are in `plugins/clay/reference/hosts.md`):
+- Every skill opens with `Plugin root: ${CLAUDE_PLUGIN_ROOT}` and a fallback line saying the root is the folder two levels
+  above its `SKILL.md`. Claude Code substitutes the variable; Codex and Cursor use the fallback, which follows their documented
+  rule of paths relative to the skill. The rest of the text says `<plugin root>`. Agents never use the variable: they read the
+  `Plugin root:` line of their prompt, which the orchestrator adds on every host.
+- Codex cannot install agents with the plugin, so there the orchestrator spawns a generic subagent told to read
+  `<plugin root>/agents/<role>.md`. Cursor starts the plugin's own agent and falls back to the same generic message when the
+  host does not list it. No TOML installer was written.
+- Tiers name Claude models only in the defaults of `tiers.md` (mirrored in `scripts/models.py`). Other hosts map them with the
+  optional `factory/models.json`, resolved by `state.py model`; without an entry Codex passes no model and keeps the tier's
+  effort, and Cursor passes nothing. The values each host accepts are checked when the file is read.
+- Every question has a plain-text fallback: numbered options in the reply, then wait for the user's answer. Codex's
+  `request_user_input` is used in Plan mode, and a list longer than 3 options goes to plain text.
 - The progress band and pane stay Claude Code only; `factory/jobs/dashboard.html` works on every host.
-- Plugin `hooks/hooks.json` is the default hooks path on Codex and Cursor too, and ours holds a Claude Code mod
-  (`{"modules": [...]}`): how they treat it is to be tested.
+- Our `hooks/hooks.json` holds a Claude Code mod (`{"modules": [...]}`) and Codex and Cursor load that path by default, so
+  both manifests declare hooks inline and empty (`"hooks": {"hooks": {}}` for Codex, `"hooks": {"version": 1, "hooks": {}}` for
+  Cursor). The Codex loader skips an empty inline object without reading the default path (`core-plugins/src/loader.rs`).
+- Codex needs `agents/openai.yaml` with `allow_implicit_invocation: false` for each user-only skill; Cursor uses the existing
+  `disable-model-invocation: true`.
+
+Still untested (in `tests/e2e/CHECKLIST.md`, sections K and L): that Cursor finds the plugin's `agents/` and `skills/` by
+default with no key in its manifest; how Cursor imports a Claude Code plugin; what `inherit` does as a per-call model (reported
+ignored in some versions); the Cursor install routes and the `/` menu for user-only skills; that Codex does not read our
+`hooks/hooks.json`, which is read from source only.

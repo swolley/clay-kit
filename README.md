@@ -1,12 +1,16 @@
 # clay-kit
 
-Personal marketplace of plugins, skills and tools for Claude Code, Codex and other agent hosts.
+Personal marketplace of plugins, skills and tools for Claude Code, Codex and Cursor.
 
 | Tool | What it does |
 |------|--------------|
 | [clay](plugins/clay) | From an idea to merged code: `/factory-brainstorm`, `/factory-plan`, then `/factory-run`, with routed review and approval. |
 
-## Install (Claude Code)
+## Install
+
+The marketplace is called `clay-kit` and the plugin `clay`.
+
+### Claude Code
 
 In Claude Code:
 
@@ -16,6 +20,29 @@ In Claude Code:
 ```
 
 Restart the session afterwards. Commands are named `factory-<verb>`, for example `/factory-run`; the namespaced form `/clay:factory-run` also works.
+
+### Codex
+
+In a terminal:
+
+```
+codex plugin marketplace add swolley/clay-kit
+codex plugin add clay@clay-kit
+```
+
+Codex reads the `.claude-plugin/` files of this repository. Start a skill with `$factory-run`, or pick it from the `/skills` picker, where plugin skills are namespaced (`clay:factory-run`).
+
+### Cursor
+
+As documented by Cursor, not yet tried by us. In the Cursor CLI:
+
+```
+/plugin marketplace add https://github.com/swolley/clay-kit
+```
+
+For a team, an admin imports the repository from the Cursor Dashboard (Plugins, Import from Repo). Then type `/factory-run`.
+
+Codex and Cursor are supported with limits (no progress band, different model names, a question fallback, and more); see the "Hosts" section of the [clay README](plugins/clay/README.md#hosts).
 
 ## Development
 
