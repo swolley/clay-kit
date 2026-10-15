@@ -28,11 +28,12 @@ must be rerun on each change), and documentation only (leaves the hosts unusable
 | `plugins/clay/.cursor-plugin/plugin.json` | Cursor | `name`, `version`, `description`, `skills: "./skills/"`, `agents: "./agents/"`, an empty inline `hooks` |
 
 - `hooks/hooks.json` holds the Claude Code mod (`{"modules": [...]}`). Codex and Cursor load `hooks/hooks.json` by default, so
-  both manifests declare hooks explicitly and empty. The exact empty form is the one each host's schema accepts (Cursor:
-  `schemas/plugin.schema.json`; Codex: `core-plugins/src/manifest.rs`), checked during implementation.
-- Codex gets no `.agents/plugins/marketplace.json`: it reads `.claude-plugin/marketplace.json`. Whether it accepts the extra
-  `version` and `category` keys of that file is checked in the source; if not, a minimal `.agents/plugins/marketplace.json`
-  is added.
+  both manifests declare hooks inline and empty. Codex: `"hooks": {"hooks": {}}` (an inline object with no events is skipped and
+  the default path is not read: `core-plugins/src/loader.rs`, `load_plugin_hooks`). Cursor: `"hooks": {"version": 1, "hooks": {}}`
+  (the schema takes a path or an inline object).
+- Codex gets no `.agents/plugins/marketplace.json`: it reads `.claude-plugin/marketplace.json`, and its parser keeps unknown keys
+  such as `version` instead of rejecting them (`core-plugins/src/marketplace.rs`, `RawMarketplaceManifestPlugin`).
+- The Cursor manifests allow no keys outside their schema (`additionalProperties: false`); the validator holds the list.
 - Name, version and description agree across the four manifests; the validator enforces it.
 - **User-only commands.** The 8 manual skills (`MANUAL_ONLY` in the validator) each get `agents/openai.yaml` with
   `policy: { allow_implicit_invocation: false }`. Cursor honours the existing `disable-model-invocation: true`. A forum report
@@ -48,14 +49,16 @@ Cursor `/factory-run`.
   `If the line above does not show an absolute path, the plugin root is the folder two levels above this SKILL.md.`
   Claude Code substitutes the variable. Codex tells the model the absolute path of SKILL.md and to resolve relative paths from
   its folder, so the fallback holds there. Cursor documents paths relative to the skill root, so it holds there too.
-- The rest of each skill keeps `${CLAUDE_PLUGIN_ROOT}/...` where it is today; the skill text says to read it as `<plugin root>/...`
-  when the variable was not substituted. Reference files already use `<plugin root>` and stay as they are.
+- The rest of each skill says `<plugin root>/...` instead of `${CLAUDE_PLUGIN_ROOT}/...`, as the reference files already do. The
+  variable appears once per skill, in the first line, so an unsubstituted copy can never sit in the middle of an instruction.
 - **Agents** stop using `${CLAUDE_PLUGIN_ROOT}`. A generic agent on Codex reads the agent file as plain text, where nothing is
   substituted. Each agent says its plugin root is the `Plugin root:` line of its prompt, and the orchestrator adds that line to
   `<paths>` (job-loop.md) on every host.
-- `Arguments: $ARGUMENTS` stays, followed by: if it was not substituted, the arguments are the text the user typed after the
-  command name.
-- The validator checks the two plugin-root lines in every skill and the absence of `CLAUDE_PLUGIN_ROOT` in `agents/`.
+- `Arguments: $ARGUMENTS` stays, followed by: `If the Arguments line still shows a placeholder that starts with $, the arguments
+  are the text the user typed after the command name.` The sentence never spells the placeholder, because Claude Code would
+  substitute it there too.
+- The validator checks the two plugin-root lines in every skill, one `CLAUDE_PLUGIN_ROOT` and at most one `$ARGUMENTS` per skill,
+  and the absence of `CLAUDE_PLUGIN_ROOT` in `agents/`.
 
 ## 3. Orchestration per host
 
@@ -101,11 +104,40 @@ prints `{ "model", "effort", "source" }`:
 5. Tier `fable` with no entry on a host other than `claude` resolves as `heavy`. `reviewer-uiux` resolves as `reviewer-ux`.
    `--risky` picks `approver-risky`, then the `tiers.md` rule.
 
+Each host has its own vocabulary, checked when `models.json` is read (a bad value exits 2 and names the key):
+
+| Host | `model` | `effort` |
+|------|---------|----------|
+| `claude` | `haiku`, `sonnet`, `opus`, `fable`, `inherit`, or an id starting with `claude-` | `low`, `medium`, `high`, `xhigh`, `max` |
+| `codex` | any non-empty id (OpenAI ids change too often to list) | any non-empty value (Codex accepts model-defined values) |
+| `cursor` | `fast` or `inherit` (the only values the Task tool takes per call) | not allowed (Cursor has no effort) |
+
+An unknown host key, tier or agent name in the file also exits 2, so a typo does not silently fall back to the defaults.
+
+On Cursor, `inherit` (and no entry at all) means the model of the user's chat, including Auto when the user picked Auto in the
+model picker. A plugin cannot set Auto itself: `auto` is not a documented subagent value, and the agent files are shared with
+Claude Code, where it would be invalid.
+
 `source` is `models.json`, `tiers.md` or `session`. `null` means pass nothing. An unknown host, tier or agent exits 2. The
 defaults of `tiers.md` move into the script; a test checks that the table in `tiers.md` and the script agree. `job.json`
 `agents` records what was actually passed, so the progress views and the dashboard stay honest.
 
 The `fable` question at the start of a run is asked on every host: it is about cost, not about Claude.
+
+### Effort
+
+Today `tiers.md` holds an effort per tier and per agent, and the orchestrator passes it only when the spawn tool takes one. The
+Claude Code run of 2026-10-13 showed the Agent tool taking a model but no effort, so in practice no effort is applied. The plan:
+
+| | Builder (effort depends on the tier) | Every other agent (fixed effort) |
+|---|---|---|
+| Claude Code | per call when the Agent tool shows an `effort` parameter; else the session's effort, recorded empty | `effort:` in the agent's frontmatter (documented for plugin agents), so it applies even without a per-call value |
+| Codex | `reasoning_effort` per call | `reasoning_effort` per call |
+| Cursor | none; recorded empty | none; recorded empty |
+
+Frontmatter efforts, from `tiers.md`: `reviewer-code`, `reviewer-ui`, `reviewer-ux`, `reviewer-uiux`, `reviewer-spec` `medium`;
+`reviewer-security`, `approver` `high`. A test keeps them equal to `tiers.md`. On Claude Code, when no per-call effort was
+passed, `agents` records the frontmatter value, because that is the one applied.
 
 ### What stays Claude Code only
 
