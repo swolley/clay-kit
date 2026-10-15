@@ -51,8 +51,11 @@ result carries, else leave it out.
 ## Resuming an agent
 
 On Claude Code send the message to the builder's agent id with `SendMessage`, on Codex with `send_input`. Codex limits the live
-agent threads, so close each reviewer and the approver with `close_agent` once its file has been read, and the builder when the
-job leaves review or lands. No way to resume an agent is documented for Cursor: start a fresh builder, as when a session lost
+agent threads (default 6, or 4 including the root under multi-agent v2; see `docs/hosts.md`), so close each reviewer and the
+approver with `close_agent` once its file has been read, and the builder when the job leaves review or lands. A spawn refused
+for the thread limit is not a failed agent: close the agents already read, then the builder if a slot is still missing (a later
+round starts a fresh builder, as below), start the reviewers that did not fit once a slot is free, and retry the refused spawn;
+with no slot to free, run it after the others finish. No way to resume an agent is documented for Cursor: start a fresh builder, as when a session lost
 its builder, spawned as in step 2 of `job-loop.md`; it reads build.md, the rounds and the branch log. On any host a builder whose agent is gone is replaced the same way.
 
 ## Asking the user

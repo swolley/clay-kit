@@ -406,6 +406,13 @@ def test_hosts_closes_codex_agents():
     assert "`close_agent`" in flat and "once its file has been read" in flat
 
 
+def test_hosts_handles_refused_spawn_on_thread_limit():
+    flat = " ".join(read("reference/hosts.md").split())
+    assert "refused for the thread limit is not a failed agent" in flat
+    assert "start the reviewers that did not fit once a slot is free" in flat
+    assert "a later round starts a fresh builder" in flat
+
+
 def other_parts() -> dict[str, str]:
     texts = {p.name: p.read_text() for p in (PLUGIN / "reference").glob("*.md") if p.name != "hosts.md"}
     texts["STYLE.md"] = read("STYLE.md")
