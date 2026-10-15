@@ -68,7 +68,7 @@ replaced the same way.
 default and is refused for subagents. Cursor's ask-question tool is reported to be offered depending on the model, and headless mode to skip it.
 
 **Option limit.** At most 4 options per question on Claude Code, and on Cursor, which documents no limit. On Codex the tool takes
-2 to 3; a question with 4 goes to the plain-text form. Questions per call: Claude Code one, as `STYLE.md` says; Codex 1 to 3, and more go in further calls or the plain-text form.
+2 to 3; a question with 4 goes to the plain-text form. Questions per call: Claude Code up to 4, Codex 1 to 3; more go in further calls or the plain-text form.
 
 **Plain-text form.** Use it when there is no question tool or the host refuses it, and on Codex when a list is longer than 3.
 Write the question in your reply with numbered options, each with its consequence and the recommended one first, end the turn,
