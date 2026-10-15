@@ -46,7 +46,7 @@ Cursor `/factory-run`.
 
 - Every skill opens with two lines:
   `Plugin root: ${CLAUDE_PLUGIN_ROOT}` and
-  `If the line above does not show an absolute path, the plugin root is the folder two levels above this SKILL.md.`
+  `If the line above does not show an absolute path, the plugin root is the folder two levels above the folder that holds this SKILL.md (the folder that contains skills/).`
   Claude Code substitutes the variable. Codex tells the model the absolute path of SKILL.md and to resolve relative paths from
   its folder, so the fallback holds there. Cursor documents paths relative to the skill root, so it holds there too.
 - The rest of each skill says `<plugin root>/...` instead of `${CLAUDE_PLUGIN_ROOT}/...`, as the reference files already do. The

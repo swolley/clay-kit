@@ -17,7 +17,7 @@ SHARED_KEYS = ("name", "version", "description")
 POLICY_LINE = "allow_implicit_invocation: false"
 ROOT_SENTENCE = "Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there."
 ROOT_LINE = "Plugin root: ${CLAUDE_PLUGIN_ROOT}"
-ROOT_FALLBACK = "If the line above does not show an absolute path, the plugin root is the folder two levels above this SKILL.md."
+ROOT_FALLBACK = "If the line above does not show an absolute path, the plugin root is the folder two levels above the folder that holds this SKILL.md (the folder that contains skills/)."
 ARGS_FALLBACK = "If the Arguments line still shows a placeholder that starts with $, the arguments are the text the user typed after the command name."
 
 

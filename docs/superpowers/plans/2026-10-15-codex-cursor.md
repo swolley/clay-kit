@@ -92,7 +92,7 @@
 **Interfaces:**
 - Produces: exact lines, as constants in `validate.py` (`ROOT_LINE`, `ROOT_FALLBACK`, `ARGS_FALLBACK`):
   - `Plugin root: ${CLAUDE_PLUGIN_ROOT}`
-  - `If the line above does not show an absolute path, the plugin root is the folder two levels above this SKILL.md.`
+  - `If the line above does not show an absolute path, the plugin root is the folder two levels above the folder that holds this SKILL.md (the folder that contains skills/).`
   - `If the Arguments line still shows a placeholder that starts with $, the arguments are the text the user typed after the command name.`
 
 - [ ] **Step 1: Write the failing tests** in `test_validate.py`, with `make_scaffold` updated to the new lines: `test_skill_without_root_lines_fails`, `test_skill_with_second_plugin_root_fails`, `test_skill_with_two_arguments_placeholders_fails`, `test_skill_with_arguments_but_no_fallback_fails`. Each asserts a problem naming the SKILL.md.

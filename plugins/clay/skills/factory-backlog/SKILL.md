@@ -6,7 +6,7 @@ argument-hint: [--all] [--repo <name>] [--kind plans,specs,todos] [--stale] [--f
 ---
 
 Plugin root: ${CLAUDE_PLUGIN_ROOT}
-If the line above does not show an absolute path, the plugin root is the folder two levels above this SKILL.md.
+If the line above does not show an absolute path, the plugin root is the folder two levels above the folder that holds this SKILL.md (the folder that contains skills/).
 Follow <plugin root>/STYLE.md. Read <plugin root>/reference/orchestrator.md first: it holds the
 shared rules (files, modes, resume, job loop, completion). Use the plugin root above wherever it says `<plugin root>`.
 

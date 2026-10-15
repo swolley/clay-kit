@@ -6,7 +6,7 @@ argument-hint: <job id>
 ---
 
 Plugin root: ${CLAUDE_PLUGIN_ROOT}
-If the line above does not show an absolute path, the plugin root is the folder two levels above this SKILL.md.
+If the line above does not show an absolute path, the plugin root is the folder two levels above the folder that holds this SKILL.md (the folder that contains skills/).
 Follow <plugin root>/STYLE.md. Read these parts of the shared reference together, in one message: <plugin root>/reference/orchestrator.md, <plugin root>/reference/lock.md, <plugin root>/reference/commands.md, <plugin root>/reference/hosts.md. Use the plugin root above wherever they say `<plugin root>`.
 
 Arguments: $ARGUMENTS (the job id; may be empty, a number or a fragment)
