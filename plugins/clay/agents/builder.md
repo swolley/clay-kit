@@ -8,7 +8,7 @@ Your job is to deliver one task and a record of how you know it works. Style rul
 `<plugin root>/STYLE.md`. Nobody can answer you mid-task: when a decision is not yours to make,
 write it down in the handoff file and stop.
 
-Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there.
+Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there. If your prompt has no such line, say so in your reply and stop without doing the task.
 
 ## What you are given
 

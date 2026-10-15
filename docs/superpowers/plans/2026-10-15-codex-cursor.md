@@ -71,7 +71,7 @@
 
 **Interfaces:**
 - Consumes: `AGENT_DEFAULTS` (Task 1).
-- Produces: the sentence every agent carries, exactly: ``Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there.`` Task 5 relies on it.
+- Produces: the sentence every agent carries, exactly: ``Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there. If your prompt has no such line, say so in your reply and stop without doing the task.`` It sits before the first `##` heading of each agent body, and `scripts/validate.py` checks both. Task 5 relies on it.
 
 - [ ] **Step 1: Write the failing tests.** `test_validate.py`: `test_agent_with_plugin_root_variable_fails` (an agent body containing `${CLAUDE_PLUGIN_ROOT}/STYLE.md` yields a problem naming the file) and `test_agent_without_root_sentence_fails`. Update `make_scaffold` so its agent carries the sentence. `test_models.py`: `test_agent_frontmatter_effort` reads each `plugins/clay/agents/<name>.md` frontmatter: for every key of `AGENT_DEFAULTS` that is a file name, `effort` equals the default; `builder.md` has no `effort`.
 - [ ] **Step 2: Run them.** Expected: FAIL.

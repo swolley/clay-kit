@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from validate import validate  # noqa: E402
 
-ROOT_SENTENCE = "Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there."
+ROOT_SENTENCE = "Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there. If your prompt has no such line, say so in your reply and stop without doing the task."
 ROOT_LINE = "Plugin root: ${CLAUDE_PLUGIN_ROOT}"
 ROOT_FALLBACK = "If the line above does not show an absolute path, the plugin root is the folder two levels above the folder that holds this SKILL.md (the folder that contains skills/)."
 ARGS_FALLBACK = "If the Arguments line still shows a placeholder that starts with $, the arguments are the text the user typed after the command name."
@@ -166,6 +166,21 @@ def test_agent_with_plugin_root_variable_fails(tmp_path):
 def test_agent_without_root_sentence_fails(tmp_path):
     make_scaffold(tmp_path)
     write(tmp_path, "plugins/clay/agents/builder.md", agent("builder"))
+    assert any(p.startswith("plugins/clay/agents/builder.md:") and "Plugin root:" in p for p in validate(tmp_path))
+
+
+def test_agent_root_sentence_after_first_heading_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/agents/builder.md", agent("builder") + "## What you are given\n" + ROOT_SENTENCE + "\n")
+    assert any(p.startswith("plugins/clay/agents/builder.md:") and "before the first" in p for p in validate(tmp_path))
+    write(tmp_path, "plugins/clay/agents/builder.md", agent("builder") + ROOT_SENTENCE + "\n## What you are given\nx\n")
+    assert validate(tmp_path) == []
+
+
+def test_agent_with_the_old_root_sentence_fails(tmp_path):
+    make_scaffold(tmp_path)
+    old = ROOT_SENTENCE.split(" If your prompt")[0]
+    write(tmp_path, "plugins/clay/agents/builder.md", agent("builder") + old + "\n")
     assert any(p.startswith("plugins/clay/agents/builder.md:") and "Plugin root:" in p for p in validate(tmp_path))
 
 

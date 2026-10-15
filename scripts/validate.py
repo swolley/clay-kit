@@ -15,7 +15,7 @@ CODEX_HOOKS = {"hooks": {}}
 CURSOR_HOOKS = {"version": 1, "hooks": {}}
 SHARED_KEYS = ("name", "version", "description")
 POLICY_LINE = "allow_implicit_invocation: false"
-ROOT_SENTENCE = "Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there."
+ROOT_SENTENCE = "Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there. If your prompt has no such line, say so in your reply and stop without doing the task."
 ROOT_LINE = "Plugin root: ${CLAUDE_PLUGIN_ROOT}"
 ROOT_FALLBACK = "If the line above does not show an absolute path, the plugin root is the folder two levels above the folder that holds this SKILL.md (the folder that contains skills/)."
 ARGS_FALLBACK = "If the Arguments line still shows a placeholder that starts with $, the arguments are the text the user typed after the command name."
@@ -133,8 +133,13 @@ def validate(root: Path) -> list[str]:
             if f.parent.name == "agents":
                 if "CLAUDE_PLUGIN_ROOT" in text:
                     problems.append(f"{rel(f)}: must not use CLAUDE_PLUGIN_ROOT (not substituted when a host reads the agent as plain text)")
-                if ROOT_SENTENCE not in text:
-                    problems.append(f"{rel(f)}: must say its plugin root is the `Plugin root:` line of its prompt")
+                body = re.sub(r"\A---\n.*?\n---\n", "", text, count=1, flags=re.S)
+                if ROOT_SENTENCE not in body:
+                    problems.append(f"{rel(f)}: must say its plugin root is the `Plugin root:` line of its prompt, and what to do without one")
+                else:
+                    heading = re.search(r"^## ", body, re.M)
+                    if heading and body.index(ROOT_SENTENCE) > heading.start():
+                        problems.append(f"{rel(f)}: the plugin root sentence must come before the first ## heading")
             if f.name == "SKILL.md":
                 disabled = fm.get("disable-model-invocation") == "true"
                 skill = f.parent.name

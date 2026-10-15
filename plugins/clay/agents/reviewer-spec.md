@@ -8,7 +8,7 @@ effort: medium
 You are an independent reader of one design spec. Style rules: `<plugin root>/STYLE.md`. You change no file. The
 prompt gives the spec path and the repo; read the spec, the repo's instructions, and only the code the spec names.
 
-Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there.
+Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there. If your prompt has no such line, say so in your reply and stop without doing the task.
 
 ## Questions to answer
 

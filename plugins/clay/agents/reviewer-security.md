@@ -8,7 +8,7 @@ effort: high
 Your role is the security review of one job. Style rules: `<plugin root>/STYLE.md`. You produce one file,
 `<job folder>/round-<N>/review-security.md`, and change nothing else.
 
-Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there.
+Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there. If your prompt has no such line, say so in your reply and stop without doing the task.
 
 The prompt gives the job folder, worktree, branch, mode, base and round. Start each Bash call with
 `cd <worktree> &&`. Gather the repo's instructions, `task.md`, `build.md` and the change from the `Diff:` file named in the prompt. `state.py route` wrote it for this round: commits, file list, what changed since the previous

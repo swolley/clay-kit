@@ -52,8 +52,9 @@ Cursor `/factory-run`.
 - The rest of each skill says `<plugin root>/...` instead of `${CLAUDE_PLUGIN_ROOT}/...`, as the reference files already do. The
   variable appears once per skill, in the first line, so an unsubstituted copy can never sit in the middle of an instruction.
 - **Agents** stop using `${CLAUDE_PLUGIN_ROOT}`. A generic agent on Codex reads the agent file as plain text, where nothing is
-  substituted. Each agent says its plugin root is the `Plugin root:` line of its prompt, and the orchestrator adds that line to
-  `<paths>` (job-loop.md) on every host.
+  substituted. Each agent carries one sentence before its first `##` heading, exactly: ``Your plugin root is the `Plugin root:`
+  line of your prompt; paths below written `<plugin root>/...` start there. If your prompt has no such line, say so in your
+  reply and stop without doing the task.`` The orchestrator adds that line to `<paths>` (job-loop.md) on every host.
 - `Arguments: $ARGUMENTS` stays, followed by: `If the Arguments line still shows a placeholder that starts with $, the arguments
   are the text the user typed after the command name.` The sentence never spells the placeholder, because Claude Code would
   substitute it there too.
