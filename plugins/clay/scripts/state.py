@@ -5,6 +5,7 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
 
   state.py setup --root DIR --plugin-root DIR
   state.py adhoc --root DIR --text "[tier=NAME] TEXT"
+  state.py model --root DIR --host claude|codex|cursor (--tier T | --agent A) [--risky]
   state.py run --root DIR --plan-file P --mode M --pace step|auto
   state.py preflight --root DIR [--plan-file P --repo-name R]
   state.py new-job --root DIR --plan-file P --task N --repo-name R --mode M --branch B --worktree W
@@ -32,6 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from factory_plan import SECTION, TIERS, TASK_HEADING, describe_plan, parse_plan
+from models import ModelsError, resolve as resolve_model
 from resolve import PLANS_DIR, audit_plans, list_plans, list_unclassified, load_jobs
 from route import load_rules, route
 
@@ -654,6 +656,12 @@ def main(argv: list[str]) -> int:
     ah = sub.add_parser("adhoc")
     ah.add_argument("--root", default=".")
     ah.add_argument("--text", required=True)
+    md = sub.add_parser("model")
+    md.add_argument("--root", default=".")
+    md.add_argument("--host", required=True)
+    md.add_argument("--tier")
+    md.add_argument("--agent")
+    md.add_argument("--risky", action="store_true")
     cl = sub.add_parser("clean")
     cl.add_argument("--root", default=".")
     cl.add_argument("--plan", required=True)
@@ -707,6 +715,13 @@ def main(argv: list[str]) -> int:
             print(json.dumps(adhoc_plan(a.root, a.text), indent=2))
         except ValueError as e:
             print(f"state.py adhoc: {e}", file=sys.stderr)
+            return 2
+        return 0
+    if a.cmd == "model":
+        try:
+            print(json.dumps(resolve_model(a.root, a.host, a.tier, a.agent, a.risky), indent=2))
+        except ModelsError as e:
+            print(json.dumps({"error": str(e)}))
             return 2
         return 0
     if a.cmd == "tick-plan":
