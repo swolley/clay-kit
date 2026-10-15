@@ -7,7 +7,8 @@ parts say "as `hosts.md` says" and "the question tool" for them; everything else
 
 ## Which host
 
-The spawn tool your session has names the host: `Agent` is Claude Code, `spawn_agent` is Codex, `Task` is Cursor. There is
+The tools your session has name the host. Check in this order and stop at the first match: `Agent` or `AskUserQuestion` is
+Claude Code; else `spawn_agent` is Codex; else `Task` is Cursor. If none is present, say so in one line and stop. There is
 nothing to run. `<host>` in the commands is `claude`, `codex` or `cursor` accordingly.
 
 | | Claude Code | Codex | Cursor |
@@ -33,9 +34,11 @@ It prints `model`, `effort` and `source`; `null` means pass nothing for that key
 `<plugin root>/tiers.md`, and `<repo>/factory/models.json`, when it exists, maps them per host. Exit 2 names the bad key: tell the
 user and stop.
 
-- **Claude Code:** pass `model` on every spawn. Pass `effort` only when the Agent tool shows an `effort` parameter; otherwise pass
-  none, and the `effort:` in the agent file's frontmatter applies (the builder has none and runs at the session's effort).
-- **Codex:** pass `model` and `reasoning_effort` (the printed `effort`); omit a key that is null, the session's value applies.
+- **Claude Code:** pass `model` on every spawn; an `inherit`, like a null, passes nothing and the model is recorded empty. Pass
+  `effort` only when the Agent tool shows an `effort` parameter; otherwise pass none, and the `effort:` in the agent file's frontmatter applies (the builder has none and runs at
+  the session's effort).
+- **Codex:** pass `model` and `reasoning_effort` (the printed `effort`); omit a key that is null, the session's value
+  applies. If the spawn refuses a `reasoning_effort` value, spawn again without it and record the effort empty.
 - **Cursor:** pass `model` only, and only `fast` or `inherit`; there is no effort. `inherit`, like a null, is the model of the
   user's chat, Auto included when the user picked Auto.
 
@@ -47,14 +50,15 @@ result carries, else leave it out.
 
 ## Resuming an agent
 
-On Claude Code send the message to the builder's agent id with `SendMessage`, on Codex with `send_input`. Cursor has no way to
-resume an agent: start a fresh builder, as when a session lost its builder, spawned as in step 2 of `job-loop.md`; it reads
-build.md, the rounds and the branch log. On any host a builder whose agent is gone is replaced the same way.
+On Claude Code send the message to the builder's agent id with `SendMessage`, on Codex with `send_input`. Codex limits the live
+agent threads, so close each reviewer and the approver with `close_agent` once its file has been read, and the builder when the
+job leaves review or lands. No way to resume an agent is documented for Cursor: start a fresh builder, as when a session lost
+its builder, spawned as in step 2 of `job-loop.md`; it reads build.md, the rounds and the branch log. On any host a builder whose agent is gone is replaced the same way.
 
 ## Asking the user
 
 "The question tool" in every part is the host's tool in the table. Codex's `request_user_input` works only in Plan mode by
-default and is refused for subagents. Cursor's ask-question tool is offered depending on the model, and headless mode skips it.
+default and is refused for subagents. Cursor's ask-question tool is reported to be offered depending on the model, and headless mode to skip it.
 
 **Option limit.** At most 4 options per question on Claude Code, and on Cursor, which documents no limit. On Codex the tool takes
 2 to 3; a question with 4 goes to the plain-text form.

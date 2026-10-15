@@ -392,6 +392,20 @@ def test_hosts_part_has_sections():
     assert "state.py model --host <host>" in flat and "frontmatter" in flat
 
 
+def test_hosts_detection_is_an_ordered_check():
+    flat = " ".join(read("reference/hosts.md").split())
+    which = flat.split("## Which host")[1].split("| |")[0]
+    assert which.index("`AskUserQuestion`") < which.index("`spawn_agent`") < which.index("`Task`")
+    assert "`Agent` or `AskUserQuestion` is Claude Code" in which
+    assert "If none is present, say so in one line and stop" in which
+    assert "SendMessage" not in which
+
+
+def test_hosts_closes_codex_agents():
+    flat = " ".join(read("reference/hosts.md").split())
+    assert "`close_agent`" in flat and "once its file has been read" in flat
+
+
 def other_parts() -> dict[str, str]:
     texts = {p.name: p.read_text() for p in (PLUGIN / "reference").glob("*.md") if p.name != "hosts.md"}
     texts["STYLE.md"] = read("STYLE.md")
