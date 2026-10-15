@@ -105,8 +105,8 @@ their sources, in [docs/hosts.md](https://github.com/swolley/clay-kit/blob/maste
 | Manifest read | `.claude-plugin/` | `.codex-plugin/`, and `.claude-plugin/` for the marketplace | `.cursor-plugin/` |
 | Invoke | `/factory-run` (or `/clay:factory-run`) | `$factory-run`, or the `/skills` picker (`clay:factory-run`) | `/factory-run` |
 | Agents | the plugin's `clay:<role>` agents | generic subagents told to read the agent file | the plugin's agents, generic ones if the host does not list them |
-| Model per call | `model`, and `effort` only if the Agent tool shows it | `model` and `reasoning_effort` | `fast` or `inherit` only, no effort |
-| Questions | `AskUserQuestion` | `request_user_input` in Plan mode, else plain text | the ask-question tool (reported to depend on the model) |
+| Model per call | `model`, and `effort` only if the Agent tool shows it | `model` and `reasoning_effort` | reported to take only `fast` or `inherit`, no effort |
+| Questions | `AskUserQuestion`, up to 4 options | `request_user_input`, 2 to 3 options, in Plan mode, else plain text | the ask-question tool (reported to depend on the model, and to be skipped in headless mode, `cursor-agent -p`) |
 | Resume the builder | `SendMessage` | `send_input` | a fresh builder |
 | Progress band and pane | yes | no | no |
 | `factory/jobs/dashboard.html` | yes | yes | yes |
@@ -174,7 +174,8 @@ python3 <plugin root>/scripts/state.py model --host <host> --agent <agent> [--ri
 
 Add `--root <repo>` when you do not run it from the repository. It prints the `model`, the `effort` and the `source`
 (`models.json`, `tiers.md` or `session`); `null` means that key is not passed. A mistake in the file (bad JSON, an unknown host,
-tier or agent, a value the host cannot take) stops the run with a message that names the key.
+tier or agent, a value the host cannot take) stops the run with a message that names the key. On Codex and Cursor `source` is
+`session` when the model is the session's, even when the Codex effort comes from `tiers.md`.
 
 ### Known limits on Codex and Cursor
 

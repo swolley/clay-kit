@@ -88,7 +88,7 @@ engine's excerpt of the cited page; rows marked **(F)** were read in full on Git
 
 | Need of this tool | Claude Code | Codex | Cursor |
 |---|---|---|---|
-| Find the plugin | `.claude-plugin/` | reads `.claude-plugin/` too | `.cursor-plugin/`; may import a Claude Code plugin |
+| Find the plugin | `.claude-plugin/` | `.codex-plugin/plugin.json` first; `.claude-plugin/` files only for the marketplace | `.cursor-plugin/`; may import a Claude Code plugin |
 | Shared files from a skill | `${CLAUDE_PLUGIN_ROOT}` substituted | path relative to SKILL.md | path relative to the skill root |
 | Bundled agents | `agents/*.md` | not possible from a plugin | `agents/*.md` |
 | Per-call model | yes (`model`) | yes (`model`, `reasoning_effort`) | only `fast` (forum) |
