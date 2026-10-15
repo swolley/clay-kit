@@ -387,10 +387,19 @@ def test_openai_yaml_policy_line_must_be_a_real_line_under_policy(tmp_path):
         "allow_implicit_invocation: false\n",
         "policy:\nother:\n  allow_implicit_invocation: false\n",
         "policy:\n  note: allow_implicit_invocation: false\n",
+        "policy:\n  other:\n    allow_implicit_invocation: false\n",
+        "policy:\n  nested: x\n    allow_implicit_invocation: false\n",
+        "policy: {allow_implicit_invocation: true}\n",
     ):
         write(tmp_path, path, text)
         assert any("factory-run/agents/openai.yaml" in p and "allow_implicit_invocation: false" in p for p in validate(tmp_path)), text
-    for text in (OPENAI_YAML, "interface:\n  x: y\npolicy:\n  allow_implicit_invocation: false\n"):
+    for text in (
+        OPENAI_YAML,
+        "interface:\n  x: y\npolicy:\n  allow_implicit_invocation: false\n",
+        "policy:\n    allow_implicit_invocation: false\n",
+        "policy:\n  allow_implicit_invocation: false  # user only\n",
+        "policy: {allow_implicit_invocation: false}\n",
+    ):
         write(tmp_path, path, text)
         assert validate(tmp_path) == [], text
 

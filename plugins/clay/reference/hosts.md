@@ -44,7 +44,7 @@ user and stop.
 
 **Recording.** `job.json` `agents` (`after-agent`, `agent`) records what was actually passed, never a value that was not applied:
 leave `model` empty when none was passed and leave `effort` empty when the host did not accept one. On Claude Code, when no
-per-call effort was passed, record the frontmatter `effort:` of the agent file instead, since that one applied: it equals the `effort` that `state.py model --host claude --agent <role>` prints (builder: empty).
+per-call effort was passed, record the frontmatter `effort:` of the agent file instead, since that one applied: it equals the `effort` that `state.py model --host claude --agent <role>` prints. The builder has no such file value: record its effort empty.
 The usage comes from the spawn result: on Claude Code `subagent_tokens`, `tool_uses` and `duration_ms`; elsewhere what the
 result carries, else leave it out.
 

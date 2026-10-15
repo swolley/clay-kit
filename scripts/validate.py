@@ -15,6 +15,7 @@ CODEX_HOOKS = {"hooks": {}}
 CURSOR_HOOKS = {"version": 1, "hooks": {}}
 SHARED_KEYS = ("name", "version", "description")
 POLICY_LINE = "allow_implicit_invocation: false"
+POLICY_FLOW_RE = re.compile(r"^policy:[ \t]*\{[ \t]*allow_implicit_invocation:[ \t]*false[ \t]*\}$")
 POLICY_RE = re.compile(r"^[ \t]+allow_implicit_invocation:[ \t]*false[ \t]*(#.*)?$")
 ROOT_SENTENCE = "Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there. If your prompt has no such line, say so in your reply and stop without doing the task."
 ROOT_LINE = "Plugin root: ${CLAUDE_PLUGIN_ROOT}"
@@ -35,15 +36,24 @@ def frontmatter(text: str) -> dict[str, str]:
 
 
 def has_policy_line(text: str) -> bool:
-    """True when a non-comment `allow_implicit_invocation: false` line is indented under a top-level `policy:` line."""
-    under_policy = False
+    """True when `allow_implicit_invocation: false` is a direct, non-comment child of a top-level `policy:` (block or flow style)."""
+    in_policy = False
+    child_indent: int | None = None
     for line in text.splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         if not line[0].isspace():
-            under_policy = line.split("#")[0].strip() == "policy:"
-        elif under_policy and POLICY_RE.match(line):
-            return True
+            head = line.split("#")[0].strip()
+            in_policy = head == "policy:"
+            child_indent = None
+            if POLICY_FLOW_RE.match(head):
+                return True
+        elif in_policy:
+            indent = len(line) - len(line.lstrip())
+            if child_indent is None:
+                child_indent = indent
+            if indent == child_indent and POLICY_RE.match(line):
+                return True
     return False
 
 
@@ -182,7 +192,7 @@ def validate(root: Path) -> list[str]:
                 if any("${" in line and line != ROOT_LINE for line in text.splitlines()):
                     problems.append(f"{rel(f)}: ${{ may appear only in the Plugin root: line (no other substituted variables)")
                 if re.search(r"\$[1-9]|\$ARGUMENTS\[", text):
-                    problems.append(f"{rel(f)}: must not use positional argument forms ($1 to $9, $ARGUMENTS[...])")
+                    problems.append(f"{rel(f)}: must not use positional argument forms ($1 to $9, $ARGUMENTS[...]): Claude Code substitutes them, so even prose such as '$5' would be replaced")
                 if skill in MANUAL_ONLY and not disabled:
                     problems.append(f"{rel(f)}: disable-model-invocation must be true")
                 if skill in AUTO_ALLOWED and disabled:
