@@ -26,13 +26,26 @@ def skill(name: str, extra: str = "", body: str = "") -> str:
     return FM.format(name=name, desc="d", extra=extra) + ROOT_LINE + "\n" + ROOT_FALLBACK + "\nSee STYLE.md.\n" + body
 
 
+DESC = "d"
+MANUAL = ("factory-run", "factory-task", "factory-status", "factory-approve", "factory-rework", "factory-answer", "factory-unlock")
+OPENAI_YAML = "policy:\n  allow_implicit_invocation: false\n"
+
+
+def put_json(root: Path, rel: str, data: dict) -> None:
+    write(root, rel, json.dumps(data))
+
+
 def make_scaffold(root: Path) -> None:
-    write(root, ".claude-plugin/marketplace.json", json.dumps({"name": "k", "plugins": []}))
-    write(root, "plugins/clay/.claude-plugin/plugin.json", json.dumps({"name": "clay"}))
+    put_json(root, ".claude-plugin/marketplace.json", {"name": "k", "plugins": [{"name": "clay", "source": "./plugins/clay", "description": DESC, "version": "0.1.0", "category": "skill"}]})
+    put_json(root, "plugins/clay/.claude-plugin/plugin.json", {"name": "clay", "version": "0.1.0", "description": DESC})
+    put_json(root, "plugins/clay/.codex-plugin/plugin.json", {"name": "clay", "version": "0.1.0", "description": DESC, "skills": "./skills/", "hooks": {"hooks": {}}, "interface": {"displayName": "Clay", "category": "skill"}})
+    put_json(root, "plugins/clay/.cursor-plugin/plugin.json", {"name": "clay", "version": "0.1.0", "description": DESC, "hooks": {"version": 1, "hooks": {}}})
+    put_json(root, ".cursor-plugin/marketplace.json", {"name": "k", "owner": {"name": "o"}, "metadata": {"description": "m"}, "plugins": [{"name": "clay", "source": "./plugins/clay", "description": DESC}]})
     write(root, "plugins/clay/skills/factory-brainstorm/SKILL.md", skill("factory-brainstorm"))
     write(root, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan"))
-    for cmd in ("factory-run", "factory-task", "factory-status", "factory-approve", "factory-rework", "factory-answer", "factory-unlock"):
+    for cmd in MANUAL:
         write(root, f"plugins/clay/skills/{cmd}/SKILL.md", skill(cmd, "disable-model-invocation: true\n") + "reference/orchestrator.md\n")
+        write(root, f"plugins/clay/skills/{cmd}/agents/openai.yaml", OPENAI_YAML)
     write(root, "plugins/clay/agents/builder.md", agent("builder") + ROOT_SENTENCE + "\n")
     write(root, "plugins/clay/reference/orchestrator.md", "core\n")
 
@@ -172,3 +185,99 @@ def test_skill_with_arguments_but_no_fallback_fails(tmp_path):
     assert any(p.startswith("plugins/clay/skills/factory-plan/SKILL.md:") and "Arguments line" in p for p in validate(tmp_path))
     write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan", body="Arguments: $ARGUMENTS\n" + ARGS_FALLBACK + "\n"))
     assert validate(tmp_path) == []
+
+
+def edit_json(root: Path, rel: str, **changes) -> None:
+    data = json.loads((root / rel).read_text())
+    data.update(changes)
+    put_json(root, rel, data)
+
+
+def test_missing_codex_manifest_fails(tmp_path):
+    make_scaffold(tmp_path)
+    (tmp_path / "plugins/clay/.codex-plugin/plugin.json").unlink()
+    assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "missing" in p for p in validate(tmp_path))
+
+
+def test_missing_cursor_manifest_and_marketplace_fail(tmp_path):
+    make_scaffold(tmp_path)
+    (tmp_path / "plugins/clay/.cursor-plugin/plugin.json").unlink()
+    (tmp_path / ".cursor-plugin/marketplace.json").unlink()
+    problems = validate(tmp_path)
+    assert any(p.startswith("plugins/clay/.cursor-plugin/plugin.json:") and "missing" in p for p in problems)
+    assert any(p.startswith(".cursor-plugin/marketplace.json:") and "missing" in p for p in problems)
+
+
+def test_version_mismatch_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.cursor-plugin/plugin.json", version="0.2.0")
+    assert any("plugins/clay/.cursor-plugin/plugin.json" in p and "plugins/clay/.claude-plugin/plugin.json" in p and "version" in p for p in validate(tmp_path))
+
+
+def test_codex_description_mismatch_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", description="other")
+    assert any("plugins/clay/.codex-plugin/plugin.json" in p and "description" in p for p in validate(tmp_path))
+
+
+def test_cursor_unknown_key_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.cursor-plugin/plugin.json", types="./types/index.d.ts")
+    assert any(p.startswith("plugins/clay/.cursor-plugin/plugin.json:") and "types" in p for p in validate(tmp_path))
+
+
+def test_cursor_marketplace_unknown_key_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, ".cursor-plugin/marketplace.json", version="1")
+    assert any(p.startswith(".cursor-plugin/marketplace.json:") and "version" in p for p in validate(tmp_path))
+
+
+def test_cursor_marketplace_source_mismatch_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, ".cursor-plugin/marketplace.json", plugins=[{"name": "clay", "source": "./plugins/other", "description": DESC}])
+    assert any(p.startswith(".cursor-plugin/marketplace.json:") and "clay" in p and "source" in p for p in validate(tmp_path))
+
+
+def test_cursor_marketplace_plugin_list_mismatch_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, ".cursor-plugin/marketplace.json", plugins=[])
+    assert any(p.startswith(".cursor-plugin/marketplace.json:") and "clay" in p for p in validate(tmp_path))
+
+
+def test_hooks_not_empty_inline_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", hooks="./hooks/hooks.json")
+    assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "hooks" in p for p in validate(tmp_path))
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.cursor-plugin/plugin.json", hooks="./hooks/hooks.json")
+    assert any(p.startswith("plugins/clay/.cursor-plugin/plugin.json:") and "hooks" in p for p in validate(tmp_path))
+
+
+def test_codex_path_without_dot_slash_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", skills="skills/")
+    assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "./" in p for p in validate(tmp_path))
+
+
+def test_codex_category_must_match_marketplace_entry(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", interface={"displayName": "Clay", "category": "other"})
+    assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "category" in p for p in validate(tmp_path))
+
+
+def test_manual_skill_without_openai_yaml_fails(tmp_path):
+    make_scaffold(tmp_path)
+    (tmp_path / "plugins/clay/skills/factory-run/agents/openai.yaml").unlink()
+    assert any("factory-run/agents/openai.yaml" in p and "missing" in p for p in validate(tmp_path))
+
+
+def test_manual_skill_openai_yaml_must_disable_implicit_invocation(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/skills/factory-run/agents/openai.yaml", "policy:\n  allow_implicit_invocation: true\n")
+    assert any("factory-run/agents/openai.yaml" in p and "allow_implicit_invocation: false" in p for p in validate(tmp_path))
+
+
+def test_auto_skill_with_openai_yaml_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/skills/factory-plan/agents/openai.yaml", OPENAI_YAML)
+    assert any("factory-plan/agents/openai.yaml" in p for p in validate(tmp_path))
