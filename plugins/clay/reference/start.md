@@ -5,8 +5,8 @@ Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is t
 ## Resolving a plan
 
 For `factory-run` without a plan, run `python3 <plugin root>/scripts/state.py preflight --root <repo>` (it lists `plans`, the plans with open steps, and `unclassified`;
-`resolve.py plans` is the script behind it): one plan with open steps is the plan; none, point to `factory-brainstorm` and `factory-plan`. Several: the question tool shows at most 4
-options, so list the 4 most recent (by the date in the file name) as path and open over total tasks, say how many more
+`resolve.py plans` is the script behind it): one plan with open steps is the plan; none, point to `factory-brainstorm` and `factory-plan`. Several: list as many of the most
+recent (by the date in the file name) as the host's option limit allows (`hosts.md`), as path and open over total tasks, say how many more
 there are, and accept a fragment of a name typed by the user (match it the same way as a job token).
 
 A plan's declared `status:` (completed, done, shipped, superseded) closes it whatever its checkboxes say (the convention of
@@ -32,10 +32,12 @@ work that exists, or plan work that is already planned. It only reads; never edi
    those tasks (and tick their steps), build them anyway, or stop. Never start such a task silently. Modifying a file
    that exists is not a signal, so ordinary tasks are not questioned.
    Only after that decision, ask once if needed: the question is skipped when no task that will actually run has tier `fable`
-   (a fable task skipped as already-done is not asked about). Otherwise ask once with the question tool, listing those tasks, with these options:
-   `opus` with `xhigh` (recommended) runs them as tier `heavy` (builder opus, effort xhigh, approver opus); `fable` as the plan says
-   spawns the builder with model fable and effort high (if the host does not accept fable, `tiers.md` falls back to opus xhigh);
-   lower to `careful` runs them as tier `careful` (opus, high; the approver follows the normal risk rule). In every case the models
+   (a fable task skipped as already-done is not asked about). Otherwise ask once with the question tool, on every host (it is about cost), listing those tasks, with these options:
+   `heavy` (recommended) runs them as tier `heavy` (approver on its risky model); `fable` as the plan says runs them as tier `fable`;
+   lower to `careful` runs them as tier `careful` (the approver follows the normal risk rule). Label each option with the builder's
+   model and effort that `state.py model --host <host> --tier <tier>` prints for it (a null model is the session's). On Claude Code,
+   with no `factory/models.json`, that reads `opus` with `xhigh`, `fable` with `high` (if the host does not accept fable, `tiers.md`
+   falls back to opus xhigh) and `opus` with `high`; elsewhere a `fable` with no entry of its own resolves as `heavy`. In every case the models
    recorded in `agents` are the ones actually passed, and the plan file is never edited. The answer holds for the whole run and is
    asked again on a resumed run. `factory-task` with an explicit `tier=fable` is not asked again, the user chose it.
 3. The target repo is a git repo. Isolated mode needs a clean main checkout only for the final merge.

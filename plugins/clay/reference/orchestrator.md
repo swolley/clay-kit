@@ -2,7 +2,7 @@
 
 Shared by the `factory-*` command skills, split in parts so a command reads only what it needs. The skill that sent you here states `<plugin root>` and
 lists the parts it needs: read them together, in one message. Follow `<plugin root>/STYLE.md`. These files are read as plain text:
-the plugin-root variable is not substituted in them.
+the plugin-root variable is not substituted in them. How to start, resume and ask on each host, and "the question tool", are in `hosts.md`.
 
 You are the orchestrator of the jobs you start. You spawn the agents, you decide, you write
 `job.json` and nothing else of the job's content. Never write code, tasks' specs, reviews or
@@ -11,6 +11,7 @@ decisions yourself. Never push. Never reset or discard a user's changes.
 | Part | Holds | Read by |
 |---|---|---|
 | `orchestrator.md` | the rules, the files, the modes, landing, reporting | every command except `factory-unlock` |
+| `hosts.md` | starting an agent, its model and effort, resuming it, asking the user, per host | every command that spawns or asks: run, task, approve, rework, answer, unlock |
 | `lock.md` | the run lock | run, task, approve, rework, answer, unlock |
 | `start.md` | resolving a plan, preconditions, resume, the ad hoc task | run, task |
 | `job-loop.md` | the job loop and the pace | run, task, rework, answer |
@@ -49,8 +50,8 @@ session got there first, so try the next counter value. `job.json`:
   "reviews": { "code": "PASS", "security": "pending" } }
 ```
 
-`agents` records, per role (`builder`, `code`, `security`, `ux`, `ui`, `approver`), the `model` and `effort` you passed when
-you spawned that agent; write it right after each spawn. The progress mod shows who has the job and on which model.
+`agents` records, per role (`builder`, `code`, `security`, `ux`, `ui`, `uiux`, `approver`), the `model` and `effort` you passed when
+you spawned that agent, as the recording rule in `hosts.md` says; write it right after each spawn. The progress mod shows who has the job and on which model.
 `head` is the commit the job branch pointed at after the last build, and `build_round` the round that build was for; a
 resume uses them. `started` and `updated` are ISO 8601 UTC timestamps: set `started` when the job is created and refresh `updated`
 on every change (the progress mod shows elapsed time from them).

@@ -7,7 +7,7 @@ argument-hint: <plan file> [inline]
 
 Plugin root: ${CLAUDE_PLUGIN_ROOT}
 If the line above does not show an absolute path, the plugin root is the folder two levels above this SKILL.md.
-Follow <plugin root>/STYLE.md. Read these parts of the shared reference together, in one message: <plugin root>/reference/orchestrator.md, <plugin root>/reference/lock.md, <plugin root>/reference/start.md, <plugin root>/reference/job-loop.md. Read `questions.md` only when an agent asks something, `inline.md` only with the word `inline`, and `completion.md` once every task has landed (all in the same folder). Use the plugin root above wherever they say `<plugin root>`.
+Follow <plugin root>/STYLE.md. Read these parts of the shared reference together, in one message: <plugin root>/reference/orchestrator.md, <plugin root>/reference/lock.md, <plugin root>/reference/start.md, <plugin root>/reference/job-loop.md, <plugin root>/reference/hosts.md. Read `questions.md` only when an agent asks something, `inline.md` only with the word `inline`, and `completion.md` once every task has landed (all in the same folder). Use the plugin root above wherever they say `<plugin root>`.
 
 Arguments: $ARGUMENTS (a plan, may be empty: see "Resolving a plan" in `start.md`; the word `inline` asks for the mode in `inline.md`)
 If the Arguments line still shows a placeholder that starts with $, the arguments are the text the user typed after the command name.

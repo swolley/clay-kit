@@ -76,6 +76,7 @@ All fields are optional. Give each task a Commit step with its message (`**Step 
 
 ## Hand over
 
-Save, commit, and ask the user to review the plan (`STYLE.md` rule 1). Execution is the
+Save, commit, and ask the user to review the plan (`STYLE.md` rule 1, with the question tool
+`<plugin root>/reference/hosts.md` names for this host). Execution is the
 `/factory-run` command of this tool; do not pick an execution method for the user.
 Name every fable task in the handover, with its title, so the user sees at plan review which tasks `run` will ask about.

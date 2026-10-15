@@ -7,6 +7,8 @@ from pathlib import Path
 
 MANUAL_ONLY = {"factory-run", "factory-task", "factory-status", "factory-approve", "factory-rework", "factory-answer", "factory-unlock", "factory-backlog"}
 AUTO_ALLOWED = {"factory-brainstorm", "factory-plan"}
+# The commands that spawn an agent or ask the user: they read how to do it on each host.
+SPAWNING = {"factory-run", "factory-task", "factory-approve", "factory-rework", "factory-answer", "factory-unlock"}
 CURSOR_PLUGIN_KEYS = {"name", "displayName", "description", "version", "minClientVersions", "author", "publisher", "homepage", "repository", "license", "logo", "keywords", "category", "tags", "commands", "agents", "skills", "rules", "hooks", "variables", "mcpServers"}
 CURSOR_MARKETPLACE_KEYS = {"name", "owner", "metadata", "plugins"}
 CODEX_HOOKS = {"hooks": {}}
@@ -158,6 +160,8 @@ def validate(root: Path) -> list[str]:
                     for part in sorted(set(parts)):
                         if not (plugin / "reference" / part).exists():
                             problems.append(f"{rel(f)}: points to reference/{part}, which does not exist")
+                if skill in SPAWNING and "reference/hosts.md" not in text:
+                    problems.append(f"{rel(f)}: must list reference/hosts.md (it spawns agents or asks the user)")
     return problems
 
 

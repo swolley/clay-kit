@@ -29,6 +29,7 @@ def skill(name: str, extra: str = "", body: str = "") -> str:
 DESC = "d"
 MANUAL = ("factory-run", "factory-task", "factory-status", "factory-approve", "factory-rework", "factory-answer", "factory-unlock")
 OPENAI_YAML = "policy:\n  allow_implicit_invocation: false\n"
+SPAWNING = ("factory-run", "factory-task", "factory-approve", "factory-rework", "factory-answer", "factory-unlock")
 
 
 def put_json(root: Path, rel: str, data: dict) -> None:
@@ -44,10 +45,12 @@ def make_scaffold(root: Path) -> None:
     write(root, "plugins/clay/skills/factory-brainstorm/SKILL.md", skill("factory-brainstorm"))
     write(root, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan"))
     for cmd in MANUAL:
-        write(root, f"plugins/clay/skills/{cmd}/SKILL.md", skill(cmd, "disable-model-invocation: true\n") + "reference/orchestrator.md\n")
+        hosts = "reference/hosts.md\n" if cmd in SPAWNING else ""
+        write(root, f"plugins/clay/skills/{cmd}/SKILL.md", skill(cmd, "disable-model-invocation: true\n") + "reference/orchestrator.md\n" + hosts)
         write(root, f"plugins/clay/skills/{cmd}/agents/openai.yaml", OPENAI_YAML)
     write(root, "plugins/clay/agents/builder.md", agent("builder") + ROOT_SENTENCE + "\n")
     write(root, "plugins/clay/reference/orchestrator.md", "core\n")
+    write(root, "plugins/clay/reference/hosts.md", "hosts\n")
 
 
 def test_valid_scaffold_passes(tmp_path):
@@ -110,10 +113,18 @@ def test_orchestrator_reference_must_not_use_plugin_root_variable(tmp_path):
 def test_a_command_skill_may_read_several_parts_but_each_must_exist(tmp_path):
     make_scaffold(tmp_path)
     write(tmp_path, "plugins/clay/reference/lock.md", "lock\n")
-    write(tmp_path, "plugins/clay/skills/factory-unlock/SKILL.md", skill("factory-unlock", "disable-model-invocation: true\n") + "reference/lock.md\n")
+    write(tmp_path, "plugins/clay/skills/factory-unlock/SKILL.md", skill("factory-unlock", "disable-model-invocation: true\n") + "reference/lock.md reference/hosts.md\n")
     assert validate(tmp_path) == []
-    write(tmp_path, "plugins/clay/skills/factory-unlock/SKILL.md", skill("factory-unlock", "disable-model-invocation: true\n") + "reference/lock.md reference/gone.md\n")
+    write(tmp_path, "plugins/clay/skills/factory-unlock/SKILL.md", skill("factory-unlock", "disable-model-invocation: true\n") + "reference/lock.md reference/hosts.md reference/gone.md\n")
     assert any("factory-unlock/SKILL.md" in p and "gone.md" in p for p in validate(tmp_path))
+
+
+def test_spawning_skill_without_hosts_part_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/skills/factory-run/SKILL.md", skill("factory-run", "disable-model-invocation: true\n") + "reference/orchestrator.md\n")
+    assert any(p.startswith("plugins/clay/skills/factory-run/SKILL.md:") and "reference/hosts.md" in p for p in validate(tmp_path))
+    # a command that neither spawns nor asks needs no host part
+    assert not any("factory-status" in p for p in validate(tmp_path))
 
 
 def test_notice_requires_shipped_license_texts(tmp_path):
