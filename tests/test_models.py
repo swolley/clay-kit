@@ -9,6 +9,7 @@ import pytest
 HERE = Path(__file__).resolve().parent
 SCRIPTS = HERE.parent / "plugins/clay/scripts"
 sys.path.insert(0, str(SCRIPTS))
+import factory_plan  # noqa: E402
 from models import AGENT_DEFAULTS, HOSTS, TIER_DEFAULTS, ModelsError, resolve  # noqa: E402
 
 
@@ -85,6 +86,9 @@ def test_risky_approver_mapping(tmp_path):
         (None, "claude", {"tier": "hevy"}, "hevy"),
         (None, "claude", {"agent": "reviewer-cod"}, "reviewer-cod"),
         (None, "gemini", {"tier": "light"}, "gemini"),
+        (None, "claude", {"tier": "light", "risky": True}, "--risky"),
+        (None, "claude", {"agent": "reviewer-code", "risky": True}, "--risky"),
+        (None, "codex", {"agent": "reviewer-uiux", "risky": True}, "--risky"),
     ],
 )
 def test_bad_input_raises(tmp_path, data, host, kwargs, needle):
@@ -116,6 +120,7 @@ def test_tiers_md_parity():
     tiers, agents = parse_tables()
     assert tiers and agents
     assert tiers == TIER_DEFAULTS
+    assert set(TIER_DEFAULTS) == set(factory_plan.TIERS)
     others = {k: v for k, v in AGENT_DEFAULTS.items() if k not in ("approver", "approver-risky")}
     assert {k: v for k, v in agents.items() if k != "approver"} == others
     assert AGENT_DEFAULTS["approver"] == ("sonnet", "high")
@@ -124,6 +129,14 @@ def test_tiers_md_parity():
 
 def run_cli(*args):
     return subprocess.run([sys.executable, str(SCRIPTS / "state.py"), "model", *args], capture_output=True, text=True)
+
+
+def test_cli_risky_only_with_approver(tmp_path):
+    for args in (("--tier", "light"), ("--agent", "reviewer-code")):
+        bad = run_cli("--host", "claude", *args, "--risky", "--root", str(tmp_path))
+        assert bad.returncode == 2 and "--risky" in json.loads(bad.stdout)["error"]
+    ok = run_cli("--host", "claude", "--agent", "approver", "--risky", "--root", str(tmp_path))
+    assert ok.returncode == 0 and json.loads(ok.stdout)["model"] == "opus"
 
 
 def test_cli_exit_codes(tmp_path):

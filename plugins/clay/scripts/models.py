@@ -100,6 +100,8 @@ def resolve(root, host: str, tier: str | None = None, agent: str | None = None, 
         raise ModelsError(f"unknown host {host!r}, expected one of {', '.join(HOSTS)}")
     if (tier is None) == (agent is None):
         raise ModelsError("give exactly one of tier and agent")
+    if risky and (tier is not None or agent != "approver"):
+        raise ModelsError("--risky applies only to --agent approver")
     if tier is not None:
         if tier not in TIERS:
             raise ModelsError(f"unknown tier {tier!r}, expected one of {', '.join(sorted(TIERS))}")
