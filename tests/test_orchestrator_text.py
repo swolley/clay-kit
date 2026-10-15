@@ -251,9 +251,9 @@ def test_every_part_of_the_reference_is_listed_in_the_core_and_exists():
 
 
 def test_each_command_reads_only_the_parts_it_needs():
-    assert parts_read_by("factory-unlock") == {"lock.md"}
+    assert parts_read_by("factory-unlock") == {"lock.md", "hosts.md"}
     assert parts_read_by("factory-status") == {"orchestrator.md", "commands.md"}
-    assert parts_read_by("factory-approve") == {"orchestrator.md", "lock.md", "commands.md"}
+    assert parts_read_by("factory-approve") == {"orchestrator.md", "lock.md", "commands.md", "hosts.md"}
     assert {"job-loop.md", "start.md", "lock.md", "orchestrator.md"} <= parts_read_by("factory-run")
     assert {"job-loop.md", "start.md", "lock.md", "orchestrator.md"} <= parts_read_by("factory-task")
     assert {"job-loop.md", "commands.md", "lock.md", "questions.md"} <= parts_read_by("factory-answer")
@@ -267,11 +267,16 @@ def test_the_parts_a_run_needs_only_sometimes_are_read_when_needed():
         assert part not in "".join(f"reference/{x}" for x in parts_read_by("factory-run")), part
 
 
+# hosts.md is left out of the per-command shares: unlock reads it only to ask a question, and every command that spawns
+# or asks needs it. So that it cannot grow unnoticed, the last assert caps hosts.md itself at 18% of the whole reference
+# (about 13.8% when first set; raised from 16% to 18% when the Codex thread-limit rule was added, 16.4% then, about 10% headroom).
 def test_the_small_commands_read_a_fraction_of_the_reference():
-    size = {p.name: len(p.read_text()) for p in (PLUGIN / "reference").glob("*.md")}
+    size = {p.name: len(p.read_text()) for p in (PLUGIN / "reference").glob("*.md") if p.name != "hosts.md"}
     total = sum(size.values())
     for skill, limit in (("factory-unlock", 0.1), ("factory-status", 0.4), ("factory-approve", 0.6)):
-        assert sum(size[n] for n in parts_read_by(skill)) < limit * total, skill
+        assert sum(size[n] for n in parts_read_by(skill) - {"hosts.md"}) < limit * total, skill
+    hosts = len(read("reference/hosts.md"))
+    assert hosts < 0.18 * (total + hosts), "hosts.md grew past its cap"
 
 
 def test_a_job_loop_spawns_only_the_lenses_to_rerun_and_hands_out_the_ready_made_diff():
@@ -350,10 +355,13 @@ def test_run_asks_once_before_starting_fable_tasks():
     # skip rule
     assert "no task that will actually run has tier `fable`" in flat and "skipped" in flat
     assert "already-done" in flat and "is not asked about" in flat
-    # the mapping of each option to tier, model and effort
-    assert "`opus` with `xhigh` (recommended) runs them as tier `heavy` (builder opus, effort xhigh, approver opus)" in flat
-    assert "`fable` as the plan says spawns the builder with model fable and effort high" in flat
-    assert "lower to `careful` runs them as tier `careful` (opus, high; the approver follows the normal risk rule)" in flat
+    # the mapping of each option to a tier, labelled with what the model resolver prints on this host
+    assert "on every host (it is about cost)" in flat
+    assert "`heavy` (recommended) runs them as tier `heavy` (approver on its risky model)" in flat
+    assert "`fable` as the plan says runs them as tier `fable`" in flat
+    assert "lower to `careful` runs them as tier `careful` (the approver follows the normal risk rule)" in flat
+    assert "`state.py model --host <host> --tier <tier>`" in flat
+    assert "On Claude Code, with no `factory/models.json`, that reads `opus` with `xhigh`, `fable` with `high`" in flat and "`opus` with `high`" in flat
     assert "recorded in `agents` are the ones actually passed" in flat
     assert "plan file is never edited" in flat
 
@@ -366,3 +374,71 @@ def test_tiers_say_fable_needs_confirmation():
 def test_plan_handover_names_every_fable_task():
     hand = read("skills/factory-plan/SKILL.md").split("## Hand over")[1]
     assert "fable" in hand and "every" in hand
+
+
+HOST_SECTIONS = ("## Which host", "## Starting an agent", "## Model and effort", "## Resuming an agent", "## Asking the user", "## Claude Code only")
+
+
+def test_hosts_part_has_sections():
+    t = read("reference/hosts.md")
+    for heading in HOST_SECTIONS:
+        assert f"\n{heading}\n" in t, heading
+    assert [h for h in HOST_SECTIONS] == sorted(HOST_SECTIONS, key=t.index)
+    assert "Read <plugin root>/agents/<role>.md and follow it as your instructions." in t
+    for tool in ("`Agent`", "`spawn_agent`", "`Task`", "`AskUserQuestion`", "`request_user_input`", "`send_input`", "`SendMessage`"):
+        assert tool in t, tool
+    flat = " ".join(t.split())
+    assert "end the turn" in flat and "never apply a default" in flat.lower() and "longer than 3" in flat
+    assert "state.py model --host <host>" in flat and "frontmatter" in flat
+
+
+def test_hosts_detection_is_an_ordered_check():
+    flat = " ".join(read("reference/hosts.md").split())
+    which = flat.split("## Which host")[1].split("| |")[0]
+    assert which.index("`AskUserQuestion`") < which.index("`spawn_agent`") < which.index("`Task`")
+    assert "`Agent` or `AskUserQuestion` is Claude Code" in which
+    assert "If none is present, say so in one line and stop" in which
+    assert "SendMessage" not in which
+
+
+def test_hosts_closes_codex_agents():
+    flat = " ".join(read("reference/hosts.md").split())
+    assert "`close_agent`" in flat and "once its file has been read" in flat
+
+
+def test_hosts_handles_refused_spawn_on_thread_limit():
+    flat = " ".join(read("reference/hosts.md").split())
+    assert "`AgentLimitReached`) is not a failed agent" in flat
+    assert "start the reviewers that did not fit and retry the refused spawn" in flat
+    # the builder is the last thing closed: running reviewers are waited for first
+    assert flat.index("`wait_agent` for the reviewers still running") < flat.index("only if no slot is free yet, close the builder")
+    assert "a later round starts a fresh builder" in flat
+
+
+def other_parts() -> dict[str, str]:
+    texts = {p.name: p.read_text() for p in (PLUGIN / "reference").glob("*.md") if p.name != "hosts.md"}
+    texts["STYLE.md"] = read("STYLE.md")
+    return texts
+
+
+def test_no_fixed_option_limit_outside_hosts():
+    for name, text in other_parts().items():
+        assert "at most 4" not in " ".join(text.split()), name
+
+
+def test_sendmessage_only_in_hosts():
+    for name, text in other_parts().items():
+        assert "SendMessage" not in text, name
+    for skill in (PLUGIN / "skills").glob("*/SKILL.md"):
+        assert "SendMessage" not in skill.read_text(), skill.parent.name
+
+
+def test_spawns_use_model_resolver():
+    flat = " ".join(read("reference/job-loop.md").split())
+    assert "state.py model --host <host>" in flat
+    assert "--tier <tier>" in flat and "--agent reviewer-<lens>" in flat and "--agent approver" in flat and "--risky" in flat
+    assert "with the model and effort of the task's tier in" not in flat and "The approver's model is in `tiers.md`" not in flat
+
+
+def test_paths_carry_plugin_root():
+    assert "Plugin root: <plugin root>" in read("reference/job-loop.md")

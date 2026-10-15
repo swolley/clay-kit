@@ -2,10 +2,16 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from validate import validate  # noqa: E402
 
-FM = "---\nname: {name}\ndescription: {desc}\n{extra}---\nSee STYLE.md.\n"
+ROOT_SENTENCE = "Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there. If your prompt has no such line, say so in your reply and stop without doing the task."
+ROOT_LINE = "Plugin root: ${CLAUDE_PLUGIN_ROOT}"
+ROOT_FALLBACK = "If the line above does not show an absolute path, the plugin root is the folder two levels above the folder that holds this SKILL.md (the folder that contains skills/)."
+ARGS_FALLBACK = "If the Arguments line still shows a placeholder that starts with $, the arguments are the text the user typed after the command name."
+FM = "---\nname: {name}\ndescription: {desc}\n{extra}---\n"
 
 
 def write(root: Path, rel: str, text: str) -> None:
@@ -14,19 +20,39 @@ def write(root: Path, rel: str, text: str) -> None:
     p.write_text(text)
 
 
-def skill(name: str, extra: str = "") -> str:
-    return FM.format(name=name, desc="d", extra=extra)
+def agent(name: str) -> str:
+    return FM.format(name=name, desc="d", extra="") + "See STYLE.md.\n"
+
+
+def skill(name: str, extra: str = "", body: str = "") -> str:
+    return FM.format(name=name, desc="d", extra=extra) + ROOT_LINE + "\n" + ROOT_FALLBACK + "\nSee STYLE.md.\n" + body
+
+
+DESC = "d"
+MANUAL = ("factory-run", "factory-task", "factory-status", "factory-approve", "factory-rework", "factory-answer", "factory-unlock")
+OPENAI_YAML = "policy:\n  allow_implicit_invocation: false\n"
+SPAWNING = ("factory-run", "factory-task", "factory-approve", "factory-rework", "factory-answer", "factory-unlock")
+
+
+def put_json(root: Path, rel: str, data: dict) -> None:
+    write(root, rel, json.dumps(data))
 
 
 def make_scaffold(root: Path) -> None:
-    write(root, ".claude-plugin/marketplace.json", json.dumps({"name": "k", "plugins": []}))
-    write(root, "plugins/clay/.claude-plugin/plugin.json", json.dumps({"name": "clay"}))
+    put_json(root, ".claude-plugin/marketplace.json", {"name": "k", "plugins": [{"name": "clay", "source": "./plugins/clay", "description": DESC, "version": "0.1.0", "category": "skill"}]})
+    put_json(root, "plugins/clay/.claude-plugin/plugin.json", {"name": "clay", "version": "0.1.0", "description": DESC})
+    put_json(root, "plugins/clay/.codex-plugin/plugin.json", {"name": "clay", "version": "0.1.0", "description": DESC, "skills": "./skills/", "hooks": {"hooks": {}}, "interface": {"displayName": "Clay", "category": "skill"}})
+    put_json(root, "plugins/clay/.cursor-plugin/plugin.json", {"name": "clay", "version": "0.1.0", "description": DESC, "hooks": {"version": 1, "hooks": {}}})
+    put_json(root, ".cursor-plugin/marketplace.json", {"name": "k", "owner": {"name": "o"}, "metadata": {"description": "m"}, "plugins": [{"name": "clay", "source": "./plugins/clay", "description": DESC}]})
     write(root, "plugins/clay/skills/factory-brainstorm/SKILL.md", skill("factory-brainstorm"))
     write(root, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan"))
-    for cmd in ("factory-run", "factory-task", "factory-status", "factory-approve", "factory-rework", "factory-answer", "factory-unlock"):
-        write(root, f"plugins/clay/skills/{cmd}/SKILL.md", skill(cmd, "disable-model-invocation: true\n") + "reference/orchestrator.md\n")
-    write(root, "plugins/clay/agents/builder.md", skill("builder"))
+    for cmd in MANUAL:
+        hosts = "reference/hosts.md\n" if cmd in SPAWNING else ""
+        write(root, f"plugins/clay/skills/{cmd}/SKILL.md", skill(cmd, "disable-model-invocation: true\n") + "reference/orchestrator.md\n" + hosts)
+        write(root, f"plugins/clay/skills/{cmd}/agents/openai.yaml", OPENAI_YAML)
+    write(root, "plugins/clay/agents/builder.md", agent("builder") + ROOT_SENTENCE + "\n")
     write(root, "plugins/clay/reference/orchestrator.md", "core\n")
+    write(root, "plugins/clay/reference/hosts.md", "hosts\n")
 
 
 def test_valid_scaffold_passes(tmp_path):
@@ -49,13 +75,13 @@ def test_skill_without_description_fails(tmp_path):
 
 def test_superpowers_reference_fails(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/clay/agents/builder.md", skill("builder") + "Use superpowers:tdd\n")
+    write(tmp_path, "plugins/clay/agents/builder.md", agent("builder") + ROOT_SENTENCE + "\nUse superpowers:tdd\n")
     assert any("builder.md" in p and "superpowers:" in p for p in validate(tmp_path))
 
 
 def test_missing_style_reference_fails(tmp_path):
     make_scaffold(tmp_path)
-    write(tmp_path, "plugins/clay/agents/builder.md", "---\nname: builder\ndescription: d\n---\nno ref\n")
+    write(tmp_path, "plugins/clay/agents/builder.md", "---\nname: builder\ndescription: d\n---\n" + ROOT_SENTENCE + "\n")
     assert any("builder.md" in p and "STYLE.md" in p for p in validate(tmp_path))
 
 
@@ -89,10 +115,26 @@ def test_orchestrator_reference_must_not_use_plugin_root_variable(tmp_path):
 def test_a_command_skill_may_read_several_parts_but_each_must_exist(tmp_path):
     make_scaffold(tmp_path)
     write(tmp_path, "plugins/clay/reference/lock.md", "lock\n")
-    write(tmp_path, "plugins/clay/skills/factory-unlock/SKILL.md", skill("factory-unlock", "disable-model-invocation: true\n") + "reference/lock.md\n")
+    write(tmp_path, "plugins/clay/skills/factory-unlock/SKILL.md", skill("factory-unlock", "disable-model-invocation: true\n") + "reference/lock.md reference/hosts.md\n")
     assert validate(tmp_path) == []
-    write(tmp_path, "plugins/clay/skills/factory-unlock/SKILL.md", skill("factory-unlock", "disable-model-invocation: true\n") + "reference/lock.md reference/gone.md\n")
+    write(tmp_path, "plugins/clay/skills/factory-unlock/SKILL.md", skill("factory-unlock", "disable-model-invocation: true\n") + "reference/lock.md reference/hosts.md reference/gone.md\n")
     assert any("factory-unlock/SKILL.md" in p and "gone.md" in p for p in validate(tmp_path))
+
+
+def test_manual_skill_pointing_to_a_missing_part_with_the_plugin_root_form_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/skills/factory-status/SKILL.md", skill("factory-status", "disable-model-invocation: true\n") + "Read <plugin root>/reference/orchestrator.md and <plugin root>/reference/gone.md\n")
+    assert any("factory-status/SKILL.md" in p and "gone.md" in p for p in validate(tmp_path))
+    write(tmp_path, "plugins/clay/skills/factory-status/SKILL.md", skill("factory-status", "disable-model-invocation: true\n") + "Read <plugin root>/reference/orchestrator.md\n")
+    assert validate(tmp_path) == []
+
+
+def test_spawning_skill_without_hosts_part_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/skills/factory-run/SKILL.md", skill("factory-run", "disable-model-invocation: true\n") + "reference/orchestrator.md\n")
+    assert any(p.startswith("plugins/clay/skills/factory-run/SKILL.md:") and "reference/hosts.md" in p for p in validate(tmp_path))
+    # a command that neither spawns nor asks needs no host part
+    assert not any("factory-status" in p for p in validate(tmp_path))
 
 
 def test_notice_requires_shipped_license_texts(tmp_path):
@@ -123,3 +165,246 @@ def test_backlog_skill_must_disable_model_invocation(tmp_path):
     make_scaffold(tmp_path)
     write(tmp_path, "plugins/clay/skills/factory-backlog/SKILL.md", skill("factory-backlog") + "reference/orchestrator.md\n")
     assert any("factory-backlog/SKILL.md" in p and "disable-model-invocation" in p for p in validate(tmp_path))
+
+
+def test_agent_with_plugin_root_variable_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/agents/builder.md", agent("builder") + ROOT_SENTENCE + "\n${CLAUDE_PLUGIN_ROOT}/STYLE.md\n")
+    assert any(p.startswith("plugins/clay/agents/builder.md:") and "CLAUDE_PLUGIN_ROOT" in p for p in validate(tmp_path))
+
+
+def test_agent_without_root_sentence_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/agents/builder.md", agent("builder"))
+    assert any(p.startswith("plugins/clay/agents/builder.md:") and "Plugin root:" in p for p in validate(tmp_path))
+
+
+def test_agent_root_sentence_after_first_heading_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/agents/builder.md", agent("builder") + "## What you are given\n" + ROOT_SENTENCE + "\n")
+    assert any(p.startswith("plugins/clay/agents/builder.md:") and "before the first" in p for p in validate(tmp_path))
+    write(tmp_path, "plugins/clay/agents/builder.md", agent("builder") + ROOT_SENTENCE + "\n## What you are given\nx\n")
+    assert validate(tmp_path) == []
+
+
+def test_agent_with_the_old_root_sentence_fails(tmp_path):
+    make_scaffold(tmp_path)
+    old = ROOT_SENTENCE.split(" If your prompt")[0]
+    write(tmp_path, "plugins/clay/agents/builder.md", agent("builder") + old + "\n")
+    assert any(p.startswith("plugins/clay/agents/builder.md:") and "Plugin root:" in p for p in validate(tmp_path))
+
+
+def test_skill_without_root_lines_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", FM.format(name="factory-plan", desc="d", extra="") + "See STYLE.md.\n")
+    assert any(p.startswith("plugins/clay/skills/factory-plan/SKILL.md:") and "Plugin root:" in p for p in validate(tmp_path))
+    write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", FM.format(name="factory-plan", desc="d", extra="") + ROOT_LINE + "\nSee STYLE.md.\n")
+    assert any(p.startswith("plugins/clay/skills/factory-plan/SKILL.md:") and "Plugin root:" in p for p in validate(tmp_path))
+
+
+def test_skill_with_second_plugin_root_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan", body="Follow ${CLAUDE_PLUGIN_ROOT}/STYLE.md.\n"))
+    assert any(p.startswith("plugins/clay/skills/factory-plan/SKILL.md:") and "CLAUDE_PLUGIN_ROOT" in p for p in validate(tmp_path))
+
+
+def test_skill_with_two_arguments_placeholders_fails(tmp_path):
+    make_scaffold(tmp_path)
+    body = "Arguments: $ARGUMENTS\n" + ARGS_FALLBACK + "\nRun x $ARGUMENTS\n"
+    write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan", body=body))
+    assert any(p.startswith("plugins/clay/skills/factory-plan/SKILL.md:") and "$ARGUMENTS" in p for p in validate(tmp_path))
+
+
+def test_skill_with_arguments_but_no_fallback_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan", body="Arguments: $ARGUMENTS\n"))
+    assert any(p.startswith("plugins/clay/skills/factory-plan/SKILL.md:") and "Arguments line" in p for p in validate(tmp_path))
+    write(tmp_path, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan", body="Arguments: $ARGUMENTS\n" + ARGS_FALLBACK + "\n"))
+    assert validate(tmp_path) == []
+
+
+def test_arguments_fallback_must_be_the_next_line_after_the_placeholder(tmp_path):
+    make_scaffold(tmp_path)
+    path = "plugins/clay/skills/factory-plan/SKILL.md"
+    for body in (
+        ARGS_FALLBACK + "\nArguments: $ARGUMENTS\n",
+        "Arguments: $ARGUMENTS\nOther text.\n" + ARGS_FALLBACK + "\n",
+        "Arguments: $ARGUMENTS\n" + "Other text. " + ARGS_FALLBACK + "\n",
+    ):
+        write(tmp_path, path, skill("factory-plan", body=body))
+        assert any(p.startswith(path + ":") and "Arguments line" in p for p in validate(tmp_path)), body
+    write(tmp_path, path, skill("factory-plan", body="Arguments: $ARGUMENTS\n\n" + ARGS_FALLBACK + "\n"))
+    assert validate(tmp_path) == []
+
+
+def test_skill_with_other_dollar_brace_variable_fails(tmp_path):
+    make_scaffold(tmp_path)
+    path = "plugins/clay/skills/factory-plan/SKILL.md"
+    write(tmp_path, path, skill("factory-plan", body="Read ${CLAUDE_SKILL_DIR}/x.md\n"))
+    assert any(p.startswith(path + ":") and "${" in p for p in validate(tmp_path))
+    write(tmp_path, path, skill("factory-plan", body="Home is ${HOME}\n"))
+    assert any(p.startswith(path + ":") and "${" in p for p in validate(tmp_path))
+
+
+def test_skill_with_positional_argument_leftover_fails(tmp_path):
+    make_scaffold(tmp_path)
+    path = "plugins/clay/skills/factory-plan/SKILL.md"
+    for body in ("The id is $1\n", "Text $9 here\n", "All: $ARGUMENTS[0]\n"):
+        write(tmp_path, path, skill("factory-plan", body=body))
+        assert any(p.startswith(path + ":") and ("$1" in p or "$ARGUMENTS[" in p) for p in validate(tmp_path)), body
+
+
+def edit_json(root: Path, rel: str, **changes) -> None:
+    data = json.loads((root / rel).read_text())
+    data.update(changes)
+    put_json(root, rel, data)
+
+
+def test_missing_codex_manifest_fails(tmp_path):
+    make_scaffold(tmp_path)
+    (tmp_path / "plugins/clay/.codex-plugin/plugin.json").unlink()
+    assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "missing" in p for p in validate(tmp_path))
+
+
+def test_missing_cursor_manifest_and_marketplace_fail(tmp_path):
+    make_scaffold(tmp_path)
+    (tmp_path / "plugins/clay/.cursor-plugin/plugin.json").unlink()
+    (tmp_path / ".cursor-plugin/marketplace.json").unlink()
+    problems = validate(tmp_path)
+    assert any(p.startswith("plugins/clay/.cursor-plugin/plugin.json:") and "missing" in p for p in problems)
+    assert any(p.startswith(".cursor-plugin/marketplace.json:") and "missing" in p for p in problems)
+
+
+def test_version_mismatch_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.cursor-plugin/plugin.json", version="0.2.0")
+    assert any("plugins/clay/.cursor-plugin/plugin.json" in p and "plugins/clay/.claude-plugin/plugin.json" in p and "version" in p for p in validate(tmp_path))
+
+
+def test_codex_description_mismatch_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", description="other")
+    assert any("plugins/clay/.codex-plugin/plugin.json" in p and "description" in p for p in validate(tmp_path))
+
+
+def test_cursor_unknown_key_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.cursor-plugin/plugin.json", types="./types/index.d.ts")
+    assert any(p.startswith("plugins/clay/.cursor-plugin/plugin.json:") and "types" in p for p in validate(tmp_path))
+
+
+def test_cursor_marketplace_unknown_key_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, ".cursor-plugin/marketplace.json", version="1")
+    assert any(p.startswith(".cursor-plugin/marketplace.json:") and "version" in p for p in validate(tmp_path))
+
+
+def test_cursor_marketplace_source_mismatch_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, ".cursor-plugin/marketplace.json", plugins=[{"name": "clay", "source": "./plugins/other", "description": DESC}])
+    assert any(p.startswith(".cursor-plugin/marketplace.json:") and "clay" in p and "source" in p for p in validate(tmp_path))
+
+
+def test_cursor_marketplace_plugin_list_mismatch_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, ".cursor-plugin/marketplace.json", plugins=[])
+    assert any(p.startswith(".cursor-plugin/marketplace.json:") and "clay" in p for p in validate(tmp_path))
+
+
+def test_codex_hooks_not_empty_inline_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", hooks="./hooks/hooks.json")
+    assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "hooks" in p for p in validate(tmp_path))
+
+
+def test_cursor_hooks_not_empty_inline_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.cursor-plugin/plugin.json", hooks="./hooks/hooks.json")
+    assert any(p.startswith("plugins/clay/.cursor-plugin/plugin.json:") and "hooks" in p for p in validate(tmp_path))
+
+
+def test_codex_path_without_dot_slash_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", skills="skills/")
+    assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "./" in p for p in validate(tmp_path))
+
+
+def test_codex_bare_dot_slash_path_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", skills="./")
+    assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "./" in p for p in validate(tmp_path))
+
+
+def test_codex_path_list_is_checked_entry_by_entry(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", skills=["./skills/", "more/"])
+    assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "./" in p for p in validate(tmp_path))
+    edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", skills=["./skills/", "./"])
+    assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "./" in p for p in validate(tmp_path))
+    edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", skills=["./skills/", "./more/"])
+    assert validate(tmp_path) == []
+
+
+@pytest.mark.parametrize("key", ["skills", "agents"])
+def test_cursor_manifest_must_not_declare_skills_or_agents(tmp_path, key):
+    make_scaffold(tmp_path)
+    assert validate(tmp_path) == []
+    edit_json(tmp_path, "plugins/clay/.cursor-plugin/plugin.json", **{key: "./" + key + "/"})
+    assert any(p.startswith("plugins/clay/.cursor-plugin/plugin.json:") and repr(key) in p and "default" in p for p in validate(tmp_path))
+
+
+def test_claude_marketplace_version_must_match_plugin_version(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, ".claude-plugin/marketplace.json", plugins=[{"name": "clay", "source": "./plugins/clay", "description": DESC, "version": "0.2.0", "category": "skill"}])
+    assert any(p.startswith(".claude-plugin/marketplace.json:") and "version" in p and "0.2.0" in p for p in validate(tmp_path))
+
+
+def test_codex_category_must_match_marketplace_entry(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", interface={"displayName": "Clay", "category": "other"})
+    assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "category" in p for p in validate(tmp_path))
+
+
+def test_manual_skill_without_openai_yaml_fails(tmp_path):
+    make_scaffold(tmp_path)
+    (tmp_path / "plugins/clay/skills/factory-run/agents/openai.yaml").unlink()
+    assert any("factory-run/agents/openai.yaml" in p and "missing" in p for p in validate(tmp_path))
+
+
+def test_manual_skill_openai_yaml_must_disable_implicit_invocation(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/skills/factory-run/agents/openai.yaml", "policy:\n  allow_implicit_invocation: true\n")
+    assert any("factory-run/agents/openai.yaml" in p and "allow_implicit_invocation: false" in p for p in validate(tmp_path))
+
+
+def test_openai_yaml_policy_line_must_be_a_real_line_under_policy(tmp_path):
+    make_scaffold(tmp_path)
+    path = "plugins/clay/skills/factory-run/agents/openai.yaml"
+    for text in (
+        "policy:\n  # allow_implicit_invocation: false\n",
+        "# allow_implicit_invocation: false\n",
+        "policy:\n  allow_implicit_invocation: true\n# allow_implicit_invocation: false\n",
+        "allow_implicit_invocation: false\n",
+        "policy:\nother:\n  allow_implicit_invocation: false\n",
+        "policy:\n  note: allow_implicit_invocation: false\n",
+        "policy:\n  other:\n    allow_implicit_invocation: false\n",
+        "policy:\n  nested: x\n    allow_implicit_invocation: false\n",
+        "policy: {allow_implicit_invocation: true}\n",
+    ):
+        write(tmp_path, path, text)
+        assert any("factory-run/agents/openai.yaml" in p and "allow_implicit_invocation: false" in p for p in validate(tmp_path)), text
+    for text in (
+        OPENAI_YAML,
+        "interface:\n  x: y\npolicy:\n  allow_implicit_invocation: false\n",
+        "policy:\n    allow_implicit_invocation: false\n",
+        "policy:\n  allow_implicit_invocation: false  # user only\n",
+        "policy: {allow_implicit_invocation: false}\n",
+    ):
+        write(tmp_path, path, text)
+        assert validate(tmp_path) == [], text
+
+
+def test_auto_skill_with_openai_yaml_fails(tmp_path):
+    make_scaffold(tmp_path)
+    write(tmp_path, "plugins/clay/skills/factory-plan/agents/openai.yaml", OPENAI_YAML)
+    assert any("factory-plan/agents/openai.yaml" in p for p in validate(tmp_path))

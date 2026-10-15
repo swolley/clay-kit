@@ -6,9 +6,11 @@ argument-hint: <plan file> [inline]
 ---
 
 Plugin root: ${CLAUDE_PLUGIN_ROOT}
-Follow ${CLAUDE_PLUGIN_ROOT}/STYLE.md. Read these parts of the shared reference together, in one message: ${CLAUDE_PLUGIN_ROOT}/reference/orchestrator.md, ${CLAUDE_PLUGIN_ROOT}/reference/lock.md, ${CLAUDE_PLUGIN_ROOT}/reference/start.md, ${CLAUDE_PLUGIN_ROOT}/reference/job-loop.md. Read `questions.md` only when an agent asks something, `inline.md` only with the word `inline`, and `completion.md` once every task has landed (all in the same folder). Use the plugin root above wherever they say `<plugin root>`.
+If the line above does not show an absolute path, the plugin root is the folder two levels above the folder that holds this SKILL.md (the folder that contains skills/).
+Follow <plugin root>/STYLE.md. Read these parts of the shared reference together, in one message: <plugin root>/reference/orchestrator.md, <plugin root>/reference/lock.md, <plugin root>/reference/start.md, <plugin root>/reference/job-loop.md, <plugin root>/reference/hosts.md. Read `questions.md` only when an agent asks something, `inline.md` only with the word `inline`, and `completion.md` once every task has landed (all in the same folder). Use the plugin root above wherever they say `<plugin root>`.
 
 Arguments: $ARGUMENTS (a plan, may be empty: see "Resolving a plan" in `start.md`; the word `inline` asks for the mode in `inline.md`)
+If the Arguments line still shows a placeholder that starts with $, the arguments are the text the user typed after the command name.
 
 1. Resolve the plan, take the run lock (`lock.md`: stop if another run holds the plan), then Preconditions, Resume and the mode question (`start.md`, `orchestrator.md`). The pace is guided unless the user
    chooses otherwise: see "Pace" in `job-loop.md`.

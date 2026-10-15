@@ -6,12 +6,12 @@ The source of truth is a file, never the prompt. A subagent cannot ask the user;
 `STATUS: NEEDS_INPUT` and numbered questions in build.md.
 
 1. Copy the questions to `questions-<k>.md` (next unused `k`) and set `stage: "waiting-input"` before asking anything.
-2. Ask the user with the question tool, batching the job's questions, each option labeled and the agent's
+2. Ask the user with the question tool (`hosts.md`, "Asking the user"), batching the job's questions up to the host's per-call limit, each option labeled and the agent's
    recommended answer first. Write the answers to `answers-<k>.md` only when the user has actually given them.
 3. Anything that is not an answer leaves the job waiting: a dismissed prompt, a timeout or auto-continue, or an
    unrelated message from the user. Handle an unrelated message normally, never apply a default or the
    recommended answer, and do not touch the job. Keep working on the other, independent jobs.
-4. When answers exist, set `stage: "build"` and start a fresh builder (named `builder-<job-id>`) that is told to
+4. When answers exist, set `stage: "build"` and start a fresh builder (named `builder-<job-id>`, spawned as in step 2 of `job-loop.md`) that is told to
    read `answers-<k>.md` and update build.md. This does not use up the review resumes.
 5. If the user says they do not know, set `needs-human` and quote the open questions.
 

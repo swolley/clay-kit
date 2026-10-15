@@ -25,10 +25,14 @@ second round more often than not over their first five jobs.
 
 The model is what makes a tier real: some hosts' spawn tool accepts a model but no effort, and then the effort column is a
 recommendation, not a guarantee. That is why `light` and `medium` use the faster models and `careful` and `heavy` the stronger
-one; with one model for every tier the tier would change nothing. The orchestrator passes `model` when it spawns the builder, and
-`effort` too when the host accepts a per-call value; otherwise the agent file's frontmatter default applies.
+one; with one model for every tier the tier would change nothing. The orchestrator takes what it passes from
+`scripts/state.py model`, whose Claude Code defaults are the two tables here; `factory/models.json` in the target repo maps the
+tiers and agents for the other hosts (and may override them on Claude Code). The fixed effort of every agent except the builder
+is also in the `effort:` of its agent file's frontmatter, which Claude Code applies when no per-call effort is passed.
+`reference/hosts.md` says what each host can take.
 
-Fallback: if the host does not accept `fable`, use `opus` with `xhigh`.
+Fallback: on Claude Code, if the session does not accept `fable`, use `opus` with `xhigh`; on the other hosts `state.py model`
+resolves `fable` as `heavy` unless `factory/models.json` gives it an entry.
 
 `fable` is never started without the user's confirmation: it is the most costly tier, so a plan that names it does not decide
 alone. `run` asks once before it starts such tasks (see `reference/start.md`); only an explicit `tier=fable` on `factory-task` skips the question.

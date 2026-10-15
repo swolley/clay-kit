@@ -4,10 +4,13 @@ description: Use before creative work such as a new feature, component, behavior
 argument-hint: <idea or goal>
 ---
 
+Plugin root: ${CLAUDE_PLUGIN_ROOT}
+If the line above does not show an absolute path, the plugin root is the folder two levels above the folder that holds this SKILL.md (the folder that contains skills/).
+
 # Brainstorm
 
 Turn an idea into a design the user has approved, before any code is written.
-Follow `${CLAUDE_PLUGIN_ROOT}/STYLE.md` for questions, explanations and length.
+Follow `<plugin root>/STYLE.md` for questions, explanations and length.
 
 Derived from the superpowers `brainstorming` skill (MIT); see NOTICE.md.
 
@@ -38,7 +41,8 @@ approves only what was actually shown. Reading the project is always allowed.
 - Read the repo's instructions, recent commits and the files the idea touches.
 - If the idea spans several independent subsystems, say so and split it; design
   the first piece only.
-- Ask for what is missing, one question at a time (`STYLE.md` rule 1): purpose,
+- Ask for what is missing, one question at a time (`STYLE.md` rule 1, with the question tool
+  `<plugin root>/reference/hosts.md` names for this host): purpose,
   who it is for, constraints, what success looks like. Do not ask what the request
   or the repo already answers.
 - Write back your understanding in a few lines, separating what the user said from
@@ -60,7 +64,9 @@ approves only what was actually shown. Reading the project is always allowed.
   `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`. Commit it.
 - Check it once yourself: no placeholders, no contradictions, one plan's worth of scope,
   no requirement that can be read two ways. Fix inline.
-- Spawn the `reviewer-spec` agent (model and effort in `tiers.md`) with the spec path. Its reply starts with
+- Spawn the `reviewer-spec` agent as `<plugin root>/reference/hosts.md` says, with the model and effort that
+  `python3 <plugin root>/scripts/state.py model --host <host> --agent reviewer-spec --root <repo>` prints (`<repo>` is this
+  repository's root), and a prompt of `Plugin root: <plugin root>`, the spec path and the repo. Its reply starts with
   `VERDICT: PASS` or `VERDICT: CHANGES`. Fix every issue it raises in the spec and say what you changed; one
   round is enough, do not loop.
 - Ask the user to review the written spec. Wait for approval.
