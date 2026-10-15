@@ -48,7 +48,7 @@ model, and what it cost in time and tokens. The usage of your own session is not
    reads line one of every file of `rerun`, stores the verdicts in `job.json`, and exits 1 if a file or a verdict line
    is missing; `all_pass` counts the carried verdicts too. A reviewer's chat reply is a claim, not a verdict: only its file counts. A reviewer that wrote no file gets one more time, with a reminder to write it; if it still has no verdict line, stop and tell the user. The builder stays untouched until the whole round is in.
 5. **Decide.** `all_pass`: approve. Any CHANGES with resumes left (max 2 after round 1): `state.py stage <job> build`,
-   resume the builder as `hosts.md` says (or a fresh builder if the session lost it), saying the reviews are in `round-N/` and to
+   resume the builder as `hosts.md` says, saying the reviews are in `round-N/` and to
    answer every CHANGES; then check the first line of build.md as in step 2, run step 3 again (the diff may have grown) and start the
    next round. When the resumes are used up, you write `decision.md` yourself: first line `ESCALATE`, then a sentence naming
    the lenses that still ask for changes, and go to step 8.

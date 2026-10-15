@@ -14,7 +14,7 @@ nothing to run. `<host>` in the commands is `claude`, `codex` or `cursor` accord
 | | Claude Code | Codex | Cursor |
 |---|---|---|---|
 | Start an agent | the named agent `clay:<role>` | `spawn_agent`, generic message | the plugin's agent `<role>`; generic message if the host does not list it |
-| Per call | `model`; `effort` only if the tool shows it | `model`, `reasoning_effort` | `model`, only `fast` or `inherit`; no effort |
+| Per call | `model`; `effort` only if the tool shows it | `model`, `reasoning_effort` | `model`, reported to take only `fast` or `inherit`; no effort |
 | Resume the builder | `SendMessage` to the agent id | `send_input` to the agent id | a fresh builder |
 | Ask the user | `AskUserQuestion`, up to 4 options | `request_user_input`, 2 to 3 options | the ask-question tool |
 
@@ -44,7 +44,7 @@ user and stop.
 
 **Recording.** `job.json` `agents` (`after-agent`, `agent`) records what was actually passed, never a value that was not applied:
 leave `model` empty when none was passed and leave `effort` empty when the host did not accept one. On Claude Code, when no
-per-call effort was passed, record the frontmatter `effort:` of the agent file instead, since that one applied (builder: empty).
+per-call effort was passed, record the frontmatter `effort:` of the agent file instead, since that one applied: it equals the `effort` that `state.py model --host claude --agent <role>` prints (builder: empty).
 The usage comes from the spawn result: on Claude Code `subagent_tokens`, `tool_uses` and `duration_ms`; elsewhere what the
 result carries, else leave it out.
 
@@ -68,7 +68,7 @@ replaced the same way.
 default and is refused for subagents. Cursor's ask-question tool is reported to be offered depending on the model, and headless mode to skip it.
 
 **Option limit.** At most 4 options per question on Claude Code, and on Cursor, which documents no limit. On Codex the tool takes
-2 to 3; a question with 4 goes to the plain-text form.
+2 to 3; a question with 4 goes to the plain-text form. Questions per call: Claude Code one, as `STYLE.md` says; Codex 1 to 3, and more go in further calls or the plain-text form.
 
 **Plain-text form.** Use it when there is no question tool or the host refuses it, and on Codex when a list is longer than 3.
 Write the question in your reply with numbered options, each with its consequence and the recommended one first, end the turn,
