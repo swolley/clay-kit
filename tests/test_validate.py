@@ -2,6 +2,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from validate import validate  # noqa: E402
 
@@ -309,10 +311,13 @@ def test_cursor_marketplace_plugin_list_mismatch_fails(tmp_path):
     assert any(p.startswith(".cursor-plugin/marketplace.json:") and "clay" in p for p in validate(tmp_path))
 
 
-def test_hooks_not_empty_inline_fails(tmp_path):
+def test_codex_hooks_not_empty_inline_fails(tmp_path):
     make_scaffold(tmp_path)
     edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", hooks="./hooks/hooks.json")
     assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "hooks" in p for p in validate(tmp_path))
+
+
+def test_cursor_hooks_not_empty_inline_fails(tmp_path):
     make_scaffold(tmp_path)
     edit_json(tmp_path, "plugins/clay/.cursor-plugin/plugin.json", hooks="./hooks/hooks.json")
     assert any(p.startswith("plugins/clay/.cursor-plugin/plugin.json:") and "hooks" in p for p in validate(tmp_path))
@@ -322,6 +327,36 @@ def test_codex_path_without_dot_slash_fails(tmp_path):
     make_scaffold(tmp_path)
     edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", skills="skills/")
     assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "./" in p for p in validate(tmp_path))
+
+
+def test_codex_bare_dot_slash_path_fails(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", skills="./")
+    assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "./" in p for p in validate(tmp_path))
+
+
+def test_codex_path_list_is_checked_entry_by_entry(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", skills=["./skills/", "more/"])
+    assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "./" in p for p in validate(tmp_path))
+    edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", skills=["./skills/", "./"])
+    assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "./" in p for p in validate(tmp_path))
+    edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", skills=["./skills/", "./more/"])
+    assert validate(tmp_path) == []
+
+
+@pytest.mark.parametrize("key", ["skills", "agents"])
+def test_cursor_manifest_must_not_declare_skills_or_agents(tmp_path, key):
+    make_scaffold(tmp_path)
+    assert validate(tmp_path) == []
+    edit_json(tmp_path, "plugins/clay/.cursor-plugin/plugin.json", **{key: "./" + key + "/"})
+    assert any(p.startswith("plugins/clay/.cursor-plugin/plugin.json:") and repr(key) in p and "default" in p for p in validate(tmp_path))
+
+
+def test_claude_marketplace_version_must_match_plugin_version(tmp_path):
+    make_scaffold(tmp_path)
+    edit_json(tmp_path, ".claude-plugin/marketplace.json", plugins=[{"name": "clay", "source": "./plugins/clay", "description": DESC, "version": "0.2.0", "category": "skill"}])
+    assert any(p.startswith(".claude-plugin/marketplace.json:") and "version" in p and "0.2.0" in p for p in validate(tmp_path))
 
 
 def test_codex_category_must_match_marketplace_entry(tmp_path):
@@ -340,6 +375,24 @@ def test_manual_skill_openai_yaml_must_disable_implicit_invocation(tmp_path):
     make_scaffold(tmp_path)
     write(tmp_path, "plugins/clay/skills/factory-run/agents/openai.yaml", "policy:\n  allow_implicit_invocation: true\n")
     assert any("factory-run/agents/openai.yaml" in p and "allow_implicit_invocation: false" in p for p in validate(tmp_path))
+
+
+def test_openai_yaml_policy_line_must_be_a_real_line_under_policy(tmp_path):
+    make_scaffold(tmp_path)
+    path = "plugins/clay/skills/factory-run/agents/openai.yaml"
+    for text in (
+        "policy:\n  # allow_implicit_invocation: false\n",
+        "# allow_implicit_invocation: false\n",
+        "policy:\n  allow_implicit_invocation: true\n# allow_implicit_invocation: false\n",
+        "allow_implicit_invocation: false\n",
+        "policy:\nother:\n  allow_implicit_invocation: false\n",
+        "policy:\n  note: allow_implicit_invocation: false\n",
+    ):
+        write(tmp_path, path, text)
+        assert any("factory-run/agents/openai.yaml" in p and "allow_implicit_invocation: false" in p for p in validate(tmp_path)), text
+    for text in (OPENAI_YAML, "interface:\n  x: y\npolicy:\n  allow_implicit_invocation: false\n"):
+        write(tmp_path, path, text)
+        assert validate(tmp_path) == [], text
 
 
 def test_auto_skill_with_openai_yaml_fails(tmp_path):

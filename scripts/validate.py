@@ -15,6 +15,7 @@ CODEX_HOOKS = {"hooks": {}}
 CURSOR_HOOKS = {"version": 1, "hooks": {}}
 SHARED_KEYS = ("name", "version", "description")
 POLICY_LINE = "allow_implicit_invocation: false"
+POLICY_RE = re.compile(r"^[ \t]+allow_implicit_invocation:[ \t]*false[ \t]*(#.*)?$")
 ROOT_SENTENCE = "Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there. If your prompt has no such line, say so in your reply and stop without doing the task."
 ROOT_LINE = "Plugin root: ${CLAUDE_PLUGIN_ROOT}"
 ROOT_FALLBACK = "If the line above does not show an absolute path, the plugin root is the folder two levels above the folder that holds this SKILL.md (the folder that contains skills/)."
@@ -31,6 +32,19 @@ def frontmatter(text: str) -> dict[str, str]:
             k, v = line.split(":", 1)
             out[k.strip()] = v.strip()
     return out
+
+
+def has_policy_line(text: str) -> bool:
+    """True when a non-comment `allow_implicit_invocation: false` line is indented under a top-level `policy:` line."""
+    under_policy = False
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if not line[0].isspace():
+            under_policy = line.split("#")[0].strip() == "policy:"
+        elif under_policy and POLICY_RE.match(line):
+            return True
+    return False
 
 
 def validate(root: Path) -> list[str]:
@@ -85,19 +99,26 @@ def validate(root: Path) -> list[str]:
             for key in SHARED_KEYS:
                 if data.get(key) != claude.get(key):
                     problems.append(f"{rel(f)}: {key} {data.get(key)!r} differs from {rel(claude_file)} ({claude.get(key)!r})")
+        entry = claude_entries.get(claude.get("name") if claude else None)
+        if claude is not None and entry is not None and entry.get("version") != claude.get("version"):
+            problems.append(f".claude-plugin/marketplace.json: plugin {claude.get('name')!r} version {entry.get('version')!r} differs from {rel(claude_file)} ({claude.get('version')!r})")
         if codex is not None:
             if codex.get("hooks") != CODEX_HOOKS:
                 problems.append(f"{rel(codex_file)}: hooks must be the empty inline object {json.dumps(CODEX_HOOKS)} (keeps hooks/hooks.json, the Claude Code mod, from loading)")
             for key in ("skills", "commands", "mcpServers", "apps"):
-                if isinstance(codex.get(key), str) and not codex[key].startswith("./"):
-                    problems.append(f"{rel(codex_file)}: path in {key} must start with ./")
-            entry = claude_entries.get(claude.get("name") if claude else None)
+                value = codex.get(key)
+                for path in value if isinstance(value, list) else [value]:
+                    if isinstance(path, str) and (not path.startswith("./") or path == "./"):
+                        problems.append(f"{rel(codex_file)}: path {path!r} in {key} must start with ./ and name something after it")
             interface = codex.get("interface")
             if entry and entry.get("category") and (not isinstance(interface, dict) or interface.get("category") != entry["category"]):
                 problems.append(f"{rel(codex_file)}: interface.category must equal the category of the plugin in .claude-plugin/marketplace.json ({entry['category']!r})")
         if cursor is not None:
             for key in sorted(set(cursor) - CURSOR_PLUGIN_KEYS):
                 problems.append(f"{rel(cursor_file)}: key {key!r} is not in the Cursor plugin schema")
+            for key in ("skills", "agents"):
+                if key in cursor:
+                    problems.append(f"{rel(cursor_file)}: must not declare {key!r} (Cursor finds the {key} of a plugin by default)")
             if cursor.get("hooks") != CURSOR_HOOKS:
                 problems.append(f"{rel(cursor_file)}: hooks must be the empty inline object {json.dumps(CURSOR_HOOKS)} (keeps hooks/hooks.json, the Claude Code mod, from loading)")
 
@@ -117,8 +138,8 @@ def validate(root: Path) -> list[str]:
             if skill_dir.name in MANUAL_ONLY:
                 if not yaml.exists():
                     problems.append(f"{rel(yaml)}: missing (Codex needs it to keep a user-only skill from implicit use)")
-                elif POLICY_LINE not in yaml.read_text():
-                    problems.append(f"{rel(yaml)}: must set {POLICY_LINE}")
+                elif not has_policy_line(yaml.read_text()):
+                    problems.append(f"{rel(yaml)}: must set {POLICY_LINE} on a line (not a comment) under policy:")
             elif skill_dir.name in AUTO_ALLOWED and yaml.exists():
                 problems.append(f"{rel(yaml)}: must not exist (this skill may be used implicitly)")
 
