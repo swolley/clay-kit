@@ -268,15 +268,15 @@ def test_the_parts_a_run_needs_only_sometimes_are_read_when_needed():
 
 
 # hosts.md is left out of the per-command shares: unlock reads it only to ask a question, and every command that spawns
-# or asks needs it. So that it cannot grow unnoticed, the last assert caps hosts.md itself at 16% of the whole reference
-# (about 13.8% when the cap was set, plus about 15% headroom).
+# or asks needs it. So that it cannot grow unnoticed, the last assert caps hosts.md itself at 18% of the whole reference
+# (about 13.8% when first set; raised from 16% to 18% when the Codex thread-limit rule was added, 16.4% then, about 10% headroom).
 def test_the_small_commands_read_a_fraction_of_the_reference():
     size = {p.name: len(p.read_text()) for p in (PLUGIN / "reference").glob("*.md") if p.name != "hosts.md"}
     total = sum(size.values())
     for skill, limit in (("factory-unlock", 0.1), ("factory-status", 0.4), ("factory-approve", 0.6)):
         assert sum(size[n] for n in parts_read_by(skill) - {"hosts.md"}) < limit * total, skill
     hosts = len(read("reference/hosts.md"))
-    assert hosts < 0.16 * (total + hosts), "hosts.md grew past its cap"
+    assert hosts < 0.18 * (total + hosts), "hosts.md grew past its cap"
 
 
 def test_a_job_loop_spawns_only_the_lenses_to_rerun_and_hands_out_the_ready_made_diff():
@@ -408,8 +408,10 @@ def test_hosts_closes_codex_agents():
 
 def test_hosts_handles_refused_spawn_on_thread_limit():
     flat = " ".join(read("reference/hosts.md").split())
-    assert "refused for the thread limit is not a failed agent" in flat
-    assert "start the reviewers that did not fit once a slot is free" in flat
+    assert "`AgentLimitReached`) is not a failed agent" in flat
+    assert "start the reviewers that did not fit and retry the refused spawn" in flat
+    # the builder is the last thing closed: running reviewers are waited for first
+    assert flat.index("`wait_agent` for the reviewers still running") < flat.index("only if no slot is free yet, close the builder")
     assert "a later round starts a fresh builder" in flat
 
 

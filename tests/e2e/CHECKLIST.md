@@ -117,7 +117,7 @@ Fresh fixture, opened in Codex. The commands are `$factory-<verb>` or the `/skil
 - [ ] The plugin root the session worked out is an absolute path that contains `skills/`; state what the session printed.
 - [ ] A two-task run (`$factory-run` on a plan with two tasks): the second task starts without hitting a thread limit, because each reviewer and the approver were closed with `close_agent` after their files were read.
 - [ ] A CHANGES round resumes the builder through `send_input` (no fresh builder), and the builder is closed when the job lands.
-- [ ] Force the thread limit (set `agents.max_concurrent_threads_per_session` to 3, or use a task that routes four reviewers): a refused spawn is retried after a slot frees, the reviewers that did not fit run afterwards, and no job goes `needs-human` because of it.
+- [ ] Force the thread limit (set `agents.max_concurrent_threads_per_session` to 3, or use a task that routes four reviewers): a refused spawn is retried after a slot frees, the reviewers that did not fit run afterwards, and no job goes `needs-human` because of it. (If the builder had to be closed to free a slot, the next CHANGES round starts a fresh builder: expected here, unlike the line above.)
 - [ ] The Claude Code mod hooks file (`hooks/hooks.json`) is not loaded: no hook trust prompt, no band or pane, no error about it.
 
 ## L. Cursor
