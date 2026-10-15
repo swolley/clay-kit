@@ -24,7 +24,7 @@ the one the calling part gives; `<paths>` opens with `Plugin root: <plugin root>
 On Codex always, and on Cursor when the host does not list the plugin's agent, start a generic agent whose message is
 `Read <plugin root>/agents/<role>.md and follow it as your instructions.` followed by `<paths>` and the rest of the prompt.
 Keep the agent id the spawn returns (on Codex wait for the agent with `wait_agent` before reading its file). Pass only what
-the spawn tool takes: one that takes no name, or does not accept an effort, gets neither.
+the spawn tool takes: a tool that takes no name gets none, and a tool that does not accept an effort gets none.
 
 ## Model and effort
 

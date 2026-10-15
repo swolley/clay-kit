@@ -5,8 +5,8 @@ Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is t
 ## Resolving a plan
 
 For `factory-run` without a plan, run `python3 <plugin root>/scripts/state.py preflight --root <repo>` (it lists `plans`, the plans with open steps, and `unclassified`;
-`resolve.py plans` is the script behind it): one plan with open steps is the plan; none, point to `factory-brainstorm` and `factory-plan`. Several: list as many of the most
-recent (by the date in the file name) as the host's option limit allows (`hosts.md`), as path and open over total tasks, say how many more
+`resolve.py plans` is the script behind it): one plan with open steps is the plan; none, point to `factory-brainstorm` and `factory-plan`. Several: list up to 4 plans, the most
+recent (by the date in the file name), which on Codex goes to the plain-text form (`hosts.md`), as path and open over total tasks, say how many more
 there are, and accept a fragment of a name typed by the user (match it the same way as a job token).
 
 A plan's declared `status:` (completed, done, shipped, superseded) closes it whatever its checkboxes say (the convention of
