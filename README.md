@@ -6,6 +6,13 @@ Personal marketplace of plugins, skills and tools for Claude Code, Codex and Cur
 |------|--------------|
 | [clay](plugins/clay) | From an idea to merged code: `/factory-brainstorm`, `/factory-plan`, then `/factory-run`, with routed review and approval. |
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark.png">
+  <img alt="Factory board: jobs grouped by plan and repository, with stage, tier, reviewer verdicts and ready commands" src="docs/images/dashboard-light.png" width="800">
+</picture>
+
+The clay dashboard, rendered from the test fixtures.
+
 ## Install
 
 The marketplace is called `clay-kit` and the plugin `clay`.
@@ -55,6 +62,8 @@ python3 -m venv .venv && .venv/bin/pip install pytest
 `scripts/typecheck-mod.sh <loaded copy of the mod>` type-checks the progress mod against the engine's own types (a missing
 identifier in a render hook makes the engine skip the whole hook and draw nothing, and the static validation does not see it).
 `node --test tests/mod/` runs the pure logic of the mod.
+`node scripts/screenshots.mjs` renders the dashboard on the fixture jobs and refreshes the README previews in `docs/images/`
+(needs `python3` and the `playwright` package).
 
 `scripts/validate.py` checks manifests, skill and agent frontmatter, and the rules of the tool
 (no dependency on other plugins, one style contract, invocation policy of each command).

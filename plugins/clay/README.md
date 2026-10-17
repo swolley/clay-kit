@@ -65,6 +65,13 @@ State lives in `factory/jobs/` (ignored by git). A static dashboard shows it, wi
 `/factory-run` copies the page to `factory/jobs/dashboard.html`; serve that folder with
 `cd factory/jobs && python3 -m http.server` and open `/dashboard.html`.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/images/dashboard-dark.png">
+  <img alt="Factory board: jobs grouped by plan and repository, with stage, tier, reviewer verdicts and ready commands" src="../../docs/images/dashboard-light.png" width="800">
+</picture>
+
+The band and the pane render only inside Claude Code, so this page is the preview shown here.
+
 ## Plan format and why it follows superpowers
 
 Plans live in `docs/superpowers/plans/YYYY-MM-DD-<feature>.md` and specs in `docs/superpowers/specs/`, with
