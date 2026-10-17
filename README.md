@@ -2,9 +2,8 @@
 
 Personal marketplace of plugins, skills and tools for Claude Code, Codex and Cursor.
 
-| Tool | What it does |
-|------|--------------|
-| [clay](plugins/clay) | From an idea to merged code: `/factory-brainstorm`, `/factory-plan`, then `/factory-run`, with routed review and approval. |
+**clay** takes an idea to reviewed, merged code. You design and plan with the model in a conversation.
+Then every task is built, checked by the reviewers its change needs, and approved or handed back to you.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark.png">
@@ -12,6 +11,35 @@ Personal marketplace of plugins, skills and tools for Claude Code, Codex and Cur
 </picture>
 
 The clay dashboard, rendered from the test fixtures.
+
+## How it works
+
+```mermaid
+flowchart LR
+  idea([Idea]) --> brainstorm["/factory-brainstorm<br/>approved design"]
+  brainstorm --> plan["/factory-plan<br/>tasks, tiers, acceptance"]
+  plan --> run["/factory-run"]
+  subgraph task [For each task]
+    builder[Builder] --> reviewers["Reviewers<br/>code, ui, ux, security"]
+    reviewers --> approver{Approver}
+    approver -- rework --> builder
+  end
+  run --> builder
+  approver -- lands --> branch([Your branch])
+  approver -- escalates --> you([You decide])
+```
+
+- **Reviews by route.** Code review always runs. ui, ux and security join only when the changed paths call for them.
+- **Tiers pick the model.** Light tasks run on a fast model, careful and heavy ones on a stronger one.
+- **Your checkout stays clean.** The recommended setup is a development branch per plan with one worktree per job. Nothing is ever pushed.
+- **You stay in charge.** After each task the run asks whether to go on. Escalations come to you with the choices ready.
+- **One run per plan.** A lock stops a second run on the same plan and keeps the plan and its spec read-only.
+- **Progress you can see.** A band and a pane inside Claude Code, a static dashboard on every host.
+- **Plans you already have.** Plans follow the superpowers layout, so existing ones run without migration.
+
+| Tool | What it does |
+|------|--------------|
+| [clay](plugins/clay) | From an idea to merged code: `/factory-brainstorm`, `/factory-plan`, then `/factory-run`, with routed review and approval. |
 
 ## Install
 
