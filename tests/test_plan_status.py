@@ -96,8 +96,8 @@ def test_a_completed_plan_with_open_boxes_is_done_and_inconsistent(tmp_path):
 
 
 def test_an_open_plan_with_every_box_flagged_is_inconsistent(tmp_path):
-    _plan(tmp_path / "docs/superpowers/plans/2026-01-01-p.md", "- [x] a", front="superseded")
-    assert _one(tmp_path)["inconsistency"] == "front-matter says superseded but every step is flagged"
+    _plan(tmp_path / "docs/superpowers/plans/2026-01-01-p.md", "- [x] a", front="open")
+    assert _one(tmp_path)["inconsistency"] == "front-matter says open but every step is flagged"
 
 
 def test_a_completed_banner_without_front_matter_disagreeing_is_inconsistent(tmp_path):
@@ -615,3 +615,10 @@ def test_a_delivery_status_on_a_plan_that_is_not_closed_is_an_inconsistency(tmp_
     found = {p["file"]: p["inconsistency"] for p in scan_plans(tmp_path, discover(tmp_path))}
     assert found["2026-01-01-p.md"] == "delivery status written but the plan reads partial (1/2 steps flagged)"
     assert found["2026-01-02-q.md"] is None
+
+
+def test_a_superseded_plan_with_every_step_resolved_is_consistent(tmp_path):
+    _plan(tmp_path / "docs/superpowers/plans/2026-01-01-p.md", "- [x] a\n- [-] b (superseded)\n\n## Delivery status (2026-01-02): superseded\n",
+          front="superseded")
+    plan = _one(tmp_path)
+    assert plan["state"] == "superseded" and plan["inconsistency"] is None

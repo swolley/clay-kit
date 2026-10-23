@@ -113,7 +113,8 @@ def inconsistency(declared: str | None, banner: str | None, checkbox_state: str,
         return f"banner says completed but {checked}/{total} steps are flagged"
     if declared is not None and effective == "done" and checkbox_state != "done":
         return f"front-matter says {declared} but {checked}/{total} steps are flagged"
-    if declared is not None and effective != "done" and checkbox_state == "done":
+    # A superseded plan resolves its steps too, cancelled or done: that is its normal end.
+    if declared is not None and effective not in ("done", "superseded") and checkbox_state == "done":
         return f"front-matter says {declared} but every step is flagged"
     return None
 
