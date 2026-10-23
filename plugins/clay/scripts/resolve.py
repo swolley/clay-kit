@@ -61,8 +61,8 @@ def _scan(root: Path):
 
 def list_plans(root: Path) -> list[dict]:
     """Plans that still have work. A declared status (completed, shipped, superseded) closes a plan whatever its
-    checkboxes say. A task counts as done when its steps are ticked or a job of this plan landed it, since the
-    steps are only ticked at the end of a run; a task with no steps is not work we can run."""
+    checkboxes say. A task counts as done when its steps are ticked or a job of this plan landed it, since a
+    landing can leave the tick uncommitted after a crash; a task with no steps is not work we can run."""
     plans = []
     for f, parsed, landed in _scan(root):
         if parsed.state != "open":

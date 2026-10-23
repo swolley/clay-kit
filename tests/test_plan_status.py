@@ -96,8 +96,8 @@ def test_a_completed_plan_with_open_boxes_is_done_and_inconsistent(tmp_path):
 
 
 def test_an_open_plan_with_every_box_flagged_is_inconsistent(tmp_path):
-    _plan(tmp_path / "docs/superpowers/plans/2026-01-01-p.md", "- [x] a", front="superseded")
-    assert _one(tmp_path)["inconsistency"] == "front-matter says superseded but every step is flagged"
+    _plan(tmp_path / "docs/superpowers/plans/2026-01-01-p.md", "- [x] a", front="open")
+    assert _one(tmp_path)["inconsistency"] == "front-matter says open but every step is flagged"
 
 
 def test_a_completed_banner_without_front_matter_disagreeing_is_inconsistent(tmp_path):
@@ -509,3 +509,116 @@ def test_out_writes_a_file_instead_of_stdout(tmp_path, capsys):
     code, out, _ = _run(capsys, "--root", tmp_path, "--format", "json", "--out", target)
     assert code == 0 and out == f"Written: {target}\n"
     assert json.loads(target.read_text())["totals"]["plans"] == 7
+
+
+# ---- last change and documentation of finished plans
+
+
+def _git(root: Path, *args: str, date: str = "2026-03-04T10:00:00") -> None:
+    import os
+    import subprocess
+
+    env = {**os.environ, "GIT_AUTHOR_DATE": date, "GIT_COMMITTER_DATE": date}
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=root, env=env, check=True,
+                   capture_output=True)
+
+
+def test_last_change_is_the_last_commit_not_the_checkout_time(tmp_path):
+    _git(tmp_path, "init", "-q")
+    plan = _plan(tmp_path / "docs/superpowers/plans/2026-01-01-p.md", "- [ ] a")
+    spec = _write(tmp_path / "docs/superpowers/specs/2026-01-01-s-design.md", "# S\n")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "one", date="2026-03-04T10:00:00")
+    plan.write_text(plan.read_text() + "- [ ] b\n")
+    _git(tmp_path, "commit", "-q", "-am", "two", date="2026-05-06T10:00:00")
+    report = build_report(tmp_path, Options(all=True))
+    [p], [s] = report["plans"], report["specs"]
+    assert (p["updated"], p["updated_source"]) == ("2026-05-06", "git")
+    assert (s["updated"], s["updated_source"]) == ("2026-03-04", "git")
+
+
+def test_an_uncommitted_or_untracked_file_takes_its_modification_date(tmp_path):
+    from datetime import date
+
+    _git(tmp_path, "init", "-q")
+    plan = _plan(tmp_path / "docs/superpowers/plans/2026-01-01-p.md", "- [ ] a")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "one")
+    plan.write_text(plan.read_text() + "- [ ] b\n")
+    _plan(tmp_path / "docs/superpowers/plans/2026-01-02-new.md", "- [ ] a")
+    sources = {p["file"]: (p["updated"], p["updated_source"]) for p in scan_plans(tmp_path, discover(tmp_path))}
+    today = date.today().isoformat()
+    assert sources == {"2026-01-01-p.md": (today, "worktree"), "2026-01-02-new.md": (today, "worktree")}
+
+
+def test_outside_git_the_last_change_is_the_modification_date_marked_as_such(tmp_path, capsys):
+    _plan(tmp_path / "docs/superpowers/plans/2026-01-01-p.md", "- [ ] a")
+    assert _one(tmp_path)["updated_source"] == "mtime"
+    _, out, _ = _run(capsys, "--root", tmp_path)
+    assert "~upd " in out
+
+
+def test_sort_by_last_change_puts_the_most_recent_first(tmp_path):
+    _git(tmp_path, "init", "-q")
+    _plan(tmp_path / "docs/superpowers/plans/2026-01-01-old.md", "- [ ] a")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "one", date="2026-03-04T10:00:00")
+    old = tmp_path / "docs/superpowers/plans/2026-01-01-old.md"
+    old.write_text(old.read_text() + "- [ ] b\n")
+    _plan(tmp_path / "docs/superpowers/plans/2026-02-01-new.md", "- [ ] a")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "two", date="2026-05-06T10:00:00")
+    _plan(tmp_path / "docs/superpowers/plans/2026-03-01-untouched.md", "- [ ] a")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "three", date="2026-04-01T10:00:00")
+    files = [p["file"] for p in build_report(tmp_path, Options(sort="updated"))["plans"]]
+    assert files[-1] == "2026-03-01-untouched.md" and set(files[:2]) == {"2026-01-01-old.md", "2026-02-01-new.md"}
+
+
+def test_a_finished_plan_must_name_documentation_that_exists(tmp_path):
+    _write(tmp_path / "docs/guide.md", "# Guide\n")
+    plans = tmp_path / "docs/superpowers/plans"
+    _plan(plans / "2026-01-01-named.md", "- [x] a", head="\n**Documented in:** `docs/guide.md`\n")
+    _plan(plans / "2026-01-02-bare.md", "- [x] a")
+    _plan(plans / "2026-01-03-broken.md", "- [x] a", head="\n**Documented in:** `docs/gone.md`, docs/guide.md\n")
+    _plan(plans / "2026-01-04-none.md", "- [x] a", head="\n**Documented in:** none, internal refactor\n")
+    _plan(plans / "2026-01-05-example.md", "- [x] a", head="\n```\n**Documented in:** `docs/guide.md`\n```\n")
+    _plan(plans / "2026-01-06-open.md", "- [ ] a")
+    found = {p["file"]: (p["documented_in"], p["docs_issue"]) for p in scan_plans(tmp_path, discover(tmp_path))}
+    assert found["2026-01-01-named.md"] == (["docs/guide.md"], None)
+    assert "no Documented in line" in found["2026-01-02-bare.md"][1]
+    assert found["2026-01-03-broken.md"] == (["docs/gone.md", "docs/guide.md"], "documentation not found: docs/gone.md")
+    assert found["2026-01-04-none.md"] == ([], None)
+    assert "no Documented in line" in found["2026-01-05-example.md"][1]
+    assert found["2026-01-06-open.md"] == ([], None)
+    report = build_report(tmp_path, Options(all=True))
+    assert report["totals"]["undocumented_plans"] == 3
+    table = render_table(report, Options(all=True, width=120))
+    assert "documentation not found: docs/gone.md" in table and "3 finished plan(s) do not point" in table
+    assert "documentation not found" in render_html(report, Options(all=True))
+
+
+def test_only_paths_on_the_documented_in_line_are_documents(tmp_path):
+    _write(tmp_path / "Modules/Core/README.md", "# Core\n")
+    _write(tmp_path / "Modules/Core/docs/rag/MODULE.md", "# Module\n")
+    _plan(tmp_path / "docs/superpowers/plans/2026-01-01-p.md", "- [x] a",
+          head="\n**Documented in:** `Modules/Core/README.md` (`AI_INDEX`, `meta['tuning']`, `ai:tune`), and\n"
+               "`Modules/Core/docs/rag/MODULE.md` (*Search*).\n\nNext paragraph `docs/not-a-doc.md`.\n")
+    plan = _one(tmp_path)
+    assert plan["documented_in"] == ["Modules/Core/README.md", "Modules/Core/docs/rag/MODULE.md"]
+    assert plan["docs_issue"] is None
+
+
+def test_a_delivery_status_on_a_plan_that_is_not_closed_is_an_inconsistency(tmp_path):
+    _plan(tmp_path / "docs/superpowers/plans/2026-01-01-p.md", "- [x] a\n- [ ] b\n\n## Delivery status (2026-01-02): built\n")
+    _plan(tmp_path / "docs/superpowers/plans/2026-01-02-q.md", "- [ ] a\n\n```\n## Delivery status (date): example\n```\n")
+    found = {p["file"]: p["inconsistency"] for p in scan_plans(tmp_path, discover(tmp_path))}
+    assert found["2026-01-01-p.md"] == "delivery status written but the plan reads partial (1/2 steps flagged)"
+    assert found["2026-01-02-q.md"] is None
+
+
+def test_a_superseded_plan_with_every_step_resolved_is_consistent(tmp_path):
+    _plan(tmp_path / "docs/superpowers/plans/2026-01-01-p.md", "- [x] a\n- [-] b (superseded)\n\n## Delivery status (2026-01-02): superseded\n",
+          front="superseded")
+    plan = _one(tmp_path)
+    assert plan["state"] == "superseded" and plan["inconsistency"] is None

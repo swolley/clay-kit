@@ -50,7 +50,7 @@ work that exists, or plan work that is already planned. It only reads; never edi
 | State | Found | Action |
 |-------|-------|--------|
 | done | all non-cancelled steps checked | skip |
-| landed, not ticked | stage `merged` or `committed` | tick its steps, skip |
+| landed, not ticked | stage `merged` or `committed` | tick its steps (`state.py tick-plan`), commit the plan, skip |
 | interrupted | stage `spec`, `build`, `review` or `approve` | resume from that stage |
 | needs-human | stage `needs-human` | do not touch; list it |
 | waiting-input | stage `waiting-input` | read the pending `questions-<k>.md` and ask again; see `questions.md` |
@@ -71,5 +71,5 @@ continue from them, stash them or stop. Before continuing, say in one line per j
 `factory/jobs/_runs/adhoc-<YYYYMMDD-HHMMSS>-<slug>.md` (title from the first words of the text, tier `medium` unless a leading `tier=<name>` says
 `light`, `medium`, `careful`, `heavy` or `fable`, one `Accept` criterion taken from the text) and prints `plan_file`, `plan_stem`, `title` and `tier`; an
 unknown tier or an empty text exits 2. The file is local and git ignores it, so it never reaches the repo's plans folder. Use `plan_file` as the plan path
-for `run`, `lock`, `new-job` and `begin-job`, and run it through the Job loop and Completion. Completion skips `tick-plan` and the plan commit (there is nothing in the
+for `run`, `lock`, `new-job` and `begin-job`, and run it through the Job loop and Completion. Landing skips the tick and Completion skips `close-plan` and the plan commit (there is nothing in the
 repo to tick), then releases the lock and runs `clean`, which also deletes the working plan.

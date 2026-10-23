@@ -233,7 +233,33 @@ def test_brainstorm_has_the_spec_reviewer_and_the_excuses_table():
 
 def test_completion_records_the_run_in_the_plan_and_cleans_the_local_jobs():
     t = reference()
-    assert "Execution record" in t and "state.py clean" in t and "does not\nremove worktrees" in t
+    assert "Execution record" in t and "state.py clean" in t and "does not remove worktrees" in t
+
+
+def test_landing_ticks_the_task_in_its_own_commit():
+    landing = read("reference/orchestrator.md").split("## Landing")[1]
+    assert "--task <n>" in landing and "--no-commit" in landing and "never closes the plan" in landing
+
+
+def test_completion_closes_the_plan_with_its_documentation_and_never_deletes_it():
+    t = read("reference/completion.md")
+    assert "state.py close-plan" in t and "Documented in" in t and "Divergences" in t
+    assert "The plan is never deleted" in t and "Never edit the documentation yourself" in t
+
+
+def test_builder_keeps_documentation_and_records_deviations():
+    t = read("agents/builder.md")
+    assert "## Documentation" in t and "`Docs`" in t and "## Deviations" in t.split("## build.md")[1]
+
+
+def test_code_review_blocks_stale_documentation():
+    t = read("agents/reviewer-code.md")
+    assert "Is the documentation still true?" in t and "`Docs: none`" in t and "## Deviations" in t
+
+
+def test_plan_skill_asks_for_docs_and_keeps_index_without_status():
+    t = read("skills/factory-plan/SKILL.md")
+    assert "**Docs:**" in t and "none: <reason>" in t and "No status there" in t and "plan_status.py" in t
 
 
 def parts_read_by(skill: str) -> set[str]:
@@ -333,11 +359,11 @@ def test_adhoc_task_makes_its_working_plan_with_state_adhoc():
     skill = read("skills/factory-task/SKILL.md")
     assert "Do not write a plan file" not in skill and "state.py adhoc" in skill
     assert "tier=" in skill.split("---")[1]
-    assert "tick-plan" in skill and "clean" in skill
+    assert "close-plan" in skill and "clean" in skill
     for rel in ("reference/start.md", "reference/completion.md"):
         t = read(rel)
         assert "state.py adhoc" in t and "factory/jobs/_runs" in t, rel
-    assert "tick-plan" in read("reference/start.md").split("## Ad hoc task")[1]
+    assert "close-plan" in read("reference/start.md").split("## Ad hoc task")[1]
 
 
 def test_readme_shows_the_tier_option_of_factory_task():

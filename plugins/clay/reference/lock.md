@@ -14,8 +14,8 @@ original permissions.
   take over; take over with `--force`, which keeps the original permissions.
 - Release it with `state.py lock release --root <repo> --plan <plan-stem> --run-id <id>` when the run completes, when the user stops it, and when the
   run ends because a job needs a person in `auto` pace. A run that goes on after a decision in guided pace keeps the lock.
-- The plan's steps are ticked at the end with `state.py tick-plan --root <repo> --plan-file <plan>`, which works on the read-only file and leaves it
-  read-only. Never edit the plan or the spec yourself while the lock is held, and tell the builders not to.
+- The plan's steps are ticked as each task lands with `state.py tick-plan --root <repo> --plan-file <plan> --task <n>`, and the plan is closed
+  with `state.py close-plan`; both work on the read-only file and leave it read-only. Never edit the plan or the spec yourself while the lock is held, and tell the builders not to.
 - A command that acts on a job (`approve`, `rework`, `answer`) from a session that does not hold the lock, on a plan with a recent heartbeat, asks the
   user to confirm before acting, because the session that runs the plan may be acting on the same job.
 

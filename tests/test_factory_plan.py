@@ -16,7 +16,20 @@ def test_superset_fields_parsed():
     assert t.depends == [] and t.files == ["app/Http/Foo.php", "tests/FooTest.php"]
     assert t.accept == ["Returns 200.", "Rejects bad input."]
     assert t.verify == "`php artisan test`"
+    assert t.docs == ["docs/api.md"] and t.docs_none == ""
     assert t.defaults_applied == []
+
+
+def test_docs_none_records_the_reason_and_counts_as_declared():
+    text = "# P\n\n### Task 1: A\n\n**Tier:** careful\n**Docs:** none: internal refactor\n\n- [ ] do\n"
+    t = parse_plan(text).tasks[0]
+    assert t.docs == [] and t.docs_none == "internal refactor" and "docs" not in t.defaults_applied
+
+
+def test_missing_docs_is_a_default_except_on_light_tasks():
+    text = "# P\n\n### Task 1: A\n\n**Tier:** light\n\n- [ ] do\n\n### Task 2: B\n\n**Tier:** medium\n\n- [ ] do\n"
+    light, medium = parse_plan(text).tasks
+    assert "docs" not in light.defaults_applied and "docs" in medium.defaults_applied
 
 
 def test_field_lines_not_steps():

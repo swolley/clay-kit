@@ -18,6 +18,8 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
   state.py verify JOB --cmd COMMAND [--reuse] [--timeout S] --root DIR
   state.py checks JOB --root DIR
   state.py land JOB --stage committed|merged --head SHA --root DIR
+  state.py tick-plan --plan-file P [--task N] --root DIR
+  state.py close-plan --plan-file P --root DIR
 """
 import argparse
 import hashlib
@@ -32,7 +34,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from factory_plan import SECTION, TIERS, TASK_HEADING, describe_plan, parse_plan
+from factory_plan import CLOSED, SECTION, TIERS, TASK_HEADING, describe_plan, parse_plan
 from models import ModelsError, resolve as resolve_model
 from resolve import PLANS_DIR, audit_plans, list_plans, list_unclassified, load_jobs
 from route import load_rules, route
@@ -130,6 +132,10 @@ def render_brief(plan_file: str, task, default_repo: str) -> str:
         lines.append("**Depends:** " + ", ".join(map(str, task.depends)))
     if task.files:
         lines.append("**Files:** " + ", ".join(f"`{f}`" for f in task.files))
+    if task.docs:
+        lines.append("**Docs:** " + ", ".join(f"`{d}`" for d in task.docs))
+    elif task.docs_none:
+        lines.append(f"**Docs:** none: {task.docs_none}")
     if task.constraints:
         lines.append(f"**Constraints:** {task.constraints}")
     if task.accept:
@@ -526,12 +532,27 @@ def lock_list(root, stale_minutes: int = STALE_MINUTES) -> list[dict]:
     return out
 
 
-def tick_plan(root, plan_file: str) -> dict:
-    """Tick the open steps of every task a job has landed. Works on a read-only plan and leaves it read-only."""
+def _plan_path(root, plan_file: str) -> Path:
+    return Path(plan_file) if Path(plan_file).is_absolute() else Path(root) / plan_file
+
+
+def _write_plan(path: Path, text: str) -> None:
+    """Write a plan that the run lock keeps read-only, and leave it read-only."""
+    mode = stat.S_IMODE(path.stat().st_mode)
+    path.chmod(mode | 0o200)
+    try:
+        path.write_text(text)
+    finally:
+        path.chmod(mode)
+
+
+def tick_plan(root, plan_file: str, task: int | None = None) -> dict:
+    """Tick the open steps of every task a job has landed, and of `task` when given, so that the tick can travel in the
+    commit that lands the task. Never closes the plan: that is `close_plan`. Works on a read-only plan and leaves it
+    read-only."""
     root = Path(root)
-    path = Path(plan_file) if Path(plan_file).is_absolute() else root / plan_file
-    plan = parse_plan(path.read_text())
-    landed = set()
+    path = _plan_path(root, plan_file)
+    landed = set() if task is None else {task}
     for f in jobs_dir(root).glob("*/job.json"):
         j = json.loads(f.read_text())
         if j.get("plan") == path.stem and j.get("stage") in TERMINAL:
@@ -549,24 +570,32 @@ def tick_plan(root, plan_file: str) -> dict:
             line = line.replace("[ ]", "[x]", 1)
             ticked += 1
         out.append(line)
-    text = "".join(out)
-    after = parse_plan(text)
-    stepped = [b for b in after.blocks if b.steps]
-    closed = bool(stepped) and all(b.done for b in stepped) and after.status not in ("completed", "done", "shipped")
-    if closed:
-        text = close_header(text)
-        if RECORD_TITLE not in text:
-            text = text.rstrip("\n") + "\n\n" + execution_record(root, path.stem)
-    mode = stat.S_IMODE(path.stat().st_mode)
-    path.chmod(mode | 0o200)
-    try:
-        path.write_text(text)
-    finally:
-        path.chmod(mode)
-    return {"ok": True, "ticked": ticked, "closed": closed}
+    if ticked:
+        _write_plan(path, "".join(out))
+    return {"ok": True, "ticked": ticked}
 
 
-RECORD_TITLE = "## Execution record"
+def close_plan(root, plan_file: str) -> dict:
+    """Tick what has landed, then, when every checklist of the plan is resolved, declare it completed in the front
+    matter and append one `## Delivery status` section: the documentation that describes the work now, the divergences
+    from the plan, and the execution record. Closing twice writes nothing the second time."""
+    ticked = tick_plan(root, plan_file)["ticked"]
+    path = _plan_path(root, plan_file)
+    text = path.read_text()
+    plan = parse_plan(text)
+    stepped = [b for b in plan.blocks if b.steps]
+    if not stepped or not all(b.done for b in stepped) or plan.status in CLOSED:
+        return {"ok": True, "ticked": ticked, "closed": False}
+    text = close_header(text)
+    docs = list(dict.fromkeys(d for t in plan.tasks for d in t.docs))
+    if DELIVERY_TITLE not in text and RECORD_TITLE not in text:
+        text = text.rstrip("\n") + "\n\n" + delivery_status(root, path.stem, plan, docs)
+    _write_plan(path, text)
+    return {"ok": True, "ticked": ticked, "closed": True, "documented_in": docs}
+
+
+DELIVERY_TITLE = "## Delivery status"
+RECORD_TITLE = "### Execution record"  # older plans carry it as a `##` section, which this also matches
 
 
 def _plan_jobs(root, plan_stem: str) -> list[dict]:
@@ -614,6 +643,44 @@ def execution_record(root, plan_stem: str) -> str:
     return f"{RECORD_TITLE}\n\n{head}" + "\n".join(rows) + f"\n\nTotal: {tokens} tokens, {ms // 1000}s of agent time.\n"
 
 
+def _deviations(build: Path) -> list[str]:
+    """The items of the `## Deviations` section of a build.md, one line each; `None.` and blank lines are no items.
+    Checkbox marks are dropped, so plan tools never count a divergence as a step."""
+    if not build.exists():
+        return []
+    body = re.split(r"^## ", build.read_text().partition("\n## Deviations")[2], maxsplit=1, flags=re.M)[0]
+    items = []
+    for line in body.splitlines()[1:]:  # the first line is the rest of the heading
+        item = re.sub(r"^\s*(?:[-*]|\d+[.)])\s+(?:\[[ xX-]\]\s*)?", "", line).strip()
+        if item and not re.fullmatch(r"none\.?", item, re.I):
+            items.append(item)
+    return items
+
+
+def divergences(root, plan_stem: str, plan) -> list[str]:
+    """What the run did differently from the plan: each landed job's `## Deviations`, then every cancelled step with
+    the reason written next to it."""
+    found = []
+    for j in _plan_jobs(root, plan_stem):
+        if j.get("stage") in TERMINAL:
+            found += [f"Task {j.get('task')}: {item}" for item in _deviations(jobs_dir(root) / j["id"] / "build.md")]
+    for t in plan.tasks:
+        found += [f"Task {t.number}: step cancelled: {s.text}" for s in t.steps if s.state == "cancelled"]
+    return found
+
+
+def delivery_status(root, plan_stem: str, plan, docs: list[str]) -> str:
+    """The closing section of a plan, written once by `close_plan`. Without checkboxes, so plan tools do not read it
+    as work. `Documented in` names the documentation the tasks declared, which is where the behaviour lives now: the
+    plan stays as the dated record of what was decided and what was deliberately not built."""
+    day = datetime.now(timezone.utc).date().isoformat()
+    documented = ", ".join(f"`{d}`" for d in docs) if docs else "none, no task names documentation"
+    items = divergences(root, plan_stem, plan)
+    listed = "\n".join(f"- {i}" for i in items) if items else "None recorded."
+    return (f"{DELIVERY_TITLE} ({day}): delivered by clay run\n\n**Documented in:** {documented}\n\n"
+            f"### Divergences\n\n{listed}\n\n{execution_record(root, plan_stem)}")
+
+
 def clean_jobs(root, plan_stem: str) -> dict:
     """Remove the local job folders and run state of a finished plan. Refuses while any job of the plan is not landed."""
     jobs = _plan_jobs(root, plan_stem)
@@ -653,6 +720,10 @@ def main(argv: list[str]) -> int:
     tp = sub.add_parser("tick-plan")
     tp.add_argument("--root", default=".")
     tp.add_argument("--plan-file", required=True)
+    tp.add_argument("--task", type=int)
+    cp = sub.add_parser("close-plan")
+    cp.add_argument("--root", default=".")
+    cp.add_argument("--plan-file", required=True)
     ah = sub.add_parser("adhoc")
     ah.add_argument("--root", default=".")
     ah.add_argument("--text", required=True)
@@ -725,7 +796,10 @@ def main(argv: list[str]) -> int:
             return 2
         return 0
     if a.cmd == "tick-plan":
-        print(json.dumps(tick_plan(a.root, a.plan_file), indent=2))
+        print(json.dumps(tick_plan(a.root, a.plan_file, a.task), indent=2))
+        return 0
+    if a.cmd == "close-plan":
+        print(json.dumps(close_plan(a.root, a.plan_file), indent=2))
         return 0
     if a.cmd == "lock":
         stem = a.plan or (Path(a.plan_file).stem if a.plan_file else "")

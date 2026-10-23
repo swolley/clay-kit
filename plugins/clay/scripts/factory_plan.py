@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 TASK_HEADING = re.compile(r"^#{2,4}\s+((?:Task|Phase|Step|Milestone|Wave)\b[^\n]*)$", re.I)
-FIELD = re.compile(r"^\s*\*\*(Repo|Tier|Depends|Files|Constraints|Accept|Verify):\*\*\s*(.*)$")
+FIELD = re.compile(r"^\s*\*\*(Repo|Tier|Depends|Files|Docs|Constraints|Accept|Verify):\*\*\s*(.*)$")
 TIERS = {"light", "medium", "careful", "heavy", "fable"}
 STEP = re.compile(r"^\s*[-*] \[([ xX-])\]\s*(.*)$")
 STATES = {" ": "open", "x": "done", "X": "done", "-": "cancelled"}
@@ -32,6 +32,8 @@ class Task:
     tier: str = "medium"
     depends: list[int] = field(default_factory=list)
     files: list[str] = field(default_factory=list)
+    docs: list[str] = field(default_factory=list)  # the documentation the task keeps true, from `**Docs:**`
+    docs_none: str = ""  # why the task changes no documentation, from `**Docs:** none: <reason>`
     constraints: str = ""
     accept: list[str] = field(default_factory=list)
     verify: str = ""
@@ -121,6 +123,11 @@ def _apply_field(task: Task, name: str, value: str) -> None:
         task.depends = [int(n) for n in re.findall(r"\d+", value)]
     elif key == "files":
         task.files = re.findall(r"`([^`]+)`", value) or [v.strip() for v in value.split(",") if v.strip()]
+    elif key == "docs":
+        if m := re.match(r"none\b[\s:,.-]*(.*)$", value, re.I):
+            task.docs, task.docs_none = [], m.group(1).strip() or "none"
+        else:
+            task.docs = re.findall(r"`([^`]+)`", value) or [v.strip() for v in value.split(",") if v.strip()]
     elif key == "constraints":
         task.constraints = value
     elif key == "accept":
@@ -241,6 +248,9 @@ def parse_plan(text: str, default_repo: str = "") -> Plan:
         for name in ("tier", "repo", "depends", "files", "accept", "verify"):
             if name not in t.fields_seen:
                 t.defaults_applied.append(name)
+        # A light task that names no documentation declares that it changes none; any other tier is told so.
+        if "docs" not in t.fields_seen and t.tier != "light":
+            t.defaults_applied.append("docs")
         if "repo" not in t.fields_seen:
             t.repo = default_repo
         if "accept" not in t.fields_seen:

@@ -15,6 +15,7 @@ If the Arguments line still shows a placeholder that starts with $, the argument
 
 1. Run `python3 <plugin root>/scripts/plan_status.py <arguments>`, where `<arguments>` is the Arguments line above, from the repository (or workspace) the user is working in.
    With no arguments it lists the open work only; `--all` adds finished and superseded plans and planned specs.
-2. Report the result in the language of the chat: what is open per repository, which specs have no plan, and what to do first.
+2. Report the result in the language of the chat: what is open per repository, which specs have no plan, which finished plans
+   name no existing documentation, and what to do first.
    Keep the tool's numbers and file names as printed. If it fails, show its message and stop.
 3. Do not edit any plan or spec, and do not start a run.

@@ -296,6 +296,51 @@ def test_tick_plan_ticks_only_landed_tasks_even_on_a_read_only_plan(locked_repo)
     assert not writable(locked_repo / PLAN_FILE)
 
 
+def test_tick_plan_ticks_the_task_being_landed_and_never_closes(locked_repo):
+    state.lock_acquire(locked_repo, PLAN_FILE, run_id="run-a")
+    j = new(locked_repo, 1)
+    state.land_job(locked_repo, j["id"], "committed", head="abc")
+    out = state.tick_plan(locked_repo, PLAN_FILE, task=2)  # task 2 has no landed job yet: it lands in the same commit
+    text = (locked_repo / PLAN_FILE).read_text()
+    assert out["ticked"] == 3 and "- [ ]" not in text
+    assert "status:" not in text and "## Delivery status" not in text
+    assert not writable(locked_repo / PLAN_FILE)
+
+
+def test_close_plan_writes_documentation_and_divergences_once(locked_repo):
+    path = locked_repo / PLAN_FILE
+    text = path.read_text().replace("**Files:** `app/util.py`\n", "**Files:** `app/util.py`\n**Docs:** `docs/util.md`\n")
+    path.write_text(text.replace("- [ ] **Step 1: Do it**", "- [ ] **Step 1: Do it**\n- [-] **Step 2: Migrate old sessions** not needed, none exist"))
+    for n in (1, 2):
+        j = new(locked_repo, n)
+        if n == 1:
+            (locked_repo / "factory/jobs" / j["id"] / "build.md").write_text(
+                "STATUS: READY\n\n## Summary\nx\n\n## Deviations\n- Named it `slug` instead of `slugify`: clashes with a builtin.\n\n## Commit\nfeat: x\n")
+        else:
+            (locked_repo / "factory/jobs" / j["id"] / "build.md").write_text("STATUS: READY\n\n## Deviations\nNone.\n")
+        state.land_job(locked_repo, j["id"], "committed", head="abc")
+    out = state.close_plan(locked_repo, PLAN_FILE)
+    text = path.read_text()
+    assert out["closed"] is True and out["documented_in"] == ["docs/util.md"]
+    section = text.split("## Delivery status (")[1]
+    assert "**Documented in:** `docs/util.md`" in section
+    assert "- Task 1: Named it `slug` instead of `slugify`: clashes with a builtin." in section
+    assert "- Task 2: step cancelled: Migrate old sessions not needed, none exist" in section
+    assert "None." not in section and "- [" not in section
+    assert "### Execution record" in section
+    state.close_plan(locked_repo, PLAN_FILE)
+    assert path.read_text().count("## Delivery status") == 1
+
+
+def test_close_plan_says_when_no_task_names_documentation(locked_repo):
+    for n in (1, 2):
+        j = new(locked_repo, n)
+        state.land_job(locked_repo, j["id"], "committed", head="abc")
+    state.close_plan(locked_repo, PLAN_FILE)
+    text = (locked_repo / PLAN_FILE).read_text()
+    assert "**Documented in:** none, no task names documentation" in text and "None recorded." in text
+
+
 def test_cli_lock_acquire_exits_3_when_another_run_holds_the_plan(locked_repo, capsys):
     assert state.main(["lock", "acquire", "--root", str(locked_repo), "--plan-file", PLAN_FILE, "--run-id", "run-a"]) == 0
     capsys.readouterr()
@@ -303,40 +348,40 @@ def test_cli_lock_acquire_exits_3_when_another_run_holds_the_plan(locked_repo, c
     assert json.loads(capsys.readouterr().out)["held_by"] == "run-a"
 
 
-def test_tick_plan_closes_the_header_when_every_task_is_done(locked_repo):
+def test_close_plan_closes_the_header_when_every_task_is_done(locked_repo):
     for n in (1, 2):
         j = new(locked_repo, n)
         state.land_job(locked_repo, j["id"], "committed", head="abc")
-    out = state.tick_plan(locked_repo, PLAN_FILE)
+    out = state.close_plan(locked_repo, PLAN_FILE)
     text = (locked_repo / PLAN_FILE).read_text()
     assert out["closed"] is True
     assert text.startswith("---\nstatus: completed\nverified_on: 20")
     assert text.count("- [ ]") == 0
-    assert state.tick_plan(locked_repo, PLAN_FILE)["closed"] is False  # already closed: not written twice
+    assert state.close_plan(locked_repo, PLAN_FILE)["closed"] is False  # already closed: not written twice
     assert (locked_repo / PLAN_FILE).read_text().count("status:") == 1
 
 
-def test_tick_plan_replaces_an_existing_status_and_leaves_unfinished_plans_open(locked_repo):
+def test_close_plan_replaces_an_existing_status_and_leaves_unfinished_plans_open(locked_repo):
     path = locked_repo / PLAN_FILE
     path.write_text("---\ntitle: x\nstatus: open\n---\n" + path.read_text())
     j = new(locked_repo, 1)
     state.land_job(locked_repo, j["id"], "committed", head="abc")
-    assert state.tick_plan(locked_repo, PLAN_FILE)["closed"] is False
+    assert state.close_plan(locked_repo, PLAN_FILE)["closed"] is False
     assert "status: open" in path.read_text()
     j = new(locked_repo, 2)
     state.land_job(locked_repo, j["id"], "committed", head="abc")
-    assert state.tick_plan(locked_repo, PLAN_FILE)["closed"] is True
+    assert state.close_plan(locked_repo, PLAN_FILE)["closed"] is True
     text = path.read_text()
     assert text.count("status:") == 1 and "status: completed" in text and "title: x" in text
 
 
-def test_tick_plan_leaves_a_trailing_section_open_and_the_plan_unclosed(locked_repo):
+def test_close_plan_leaves_a_trailing_section_open_and_the_plan_unclosed(locked_repo):
     path = locked_repo / PLAN_FILE
     path.write_text(path.read_text() + "\n## Release gates\n\n- [ ] publish\n")
     for n in (1, 2):
         j = new(locked_repo, n)
         state.land_job(locked_repo, j["id"], "committed", head="abc")
-    out = state.tick_plan(locked_repo, PLAN_FILE)
+    out = state.close_plan(locked_repo, PLAN_FILE)
     text = path.read_text()
     assert out["closed"] is False and out["ticked"] == 3
     assert "- [ ] publish" in text and "status: completed" not in text
@@ -349,13 +394,13 @@ def test_closing_writes_an_execution_record_without_checkboxes(locked_repo):
         if n == 1:
             (locked_repo / "factory/jobs" / j["id"] / "rework-1.md").write_text("again")
         state.land_job(locked_repo, j["id"], "committed", head="abc")
-    state.tick_plan(locked_repo, PLAN_FILE)
+    state.close_plan(locked_repo, PLAN_FILE)
     text = (locked_repo / PLAN_FILE).read_text()
     assert "## Execution record" in text and "| Task | Tier |" in text
     assert "reworked 1x" in text and "Total: 2000 tokens, 10s" in text
     tail = text.split("## Execution record")[1]
     assert "- [ ]" not in tail and "- [x]" not in tail and "### Task" not in tail
-    state.tick_plan(locked_repo, PLAN_FILE)
+    state.close_plan(locked_repo, PLAN_FILE)
     assert (locked_repo / PLAN_FILE).read_text().count("## Execution record") == 1
 
 
@@ -369,7 +414,7 @@ def test_execution_record_counts_findings_per_round_and_lens(locked_repo):
     (folder / "round-2/review-code.md").write_text("VERDICT: PASS\n\n## Issues\nNone.\n")
     for j in (a, b):
         state.land_job(locked_repo, j["id"], "committed", head="abc")
-    state.tick_plan(locked_repo, PLAN_FILE)
+    state.close_plan(locked_repo, PLAN_FILE)
     text = (locked_repo / PLAN_FILE).read_text()
     assert "| Decision | Findings | Notes |" in text
     assert "r1 code 2, r1 ui 0, r2 code 0" in text
