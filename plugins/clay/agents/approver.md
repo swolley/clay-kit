@@ -22,7 +22,8 @@ names it under `carried` with the round that gave it, and its review file is in 
 
 When your prompt says `Lite: yes` the job took the short path: no separate reviewer ran, because the change is small, of a light task and
 touches no sensitive path. Then the review is yours. Read the diff with the questions of a code reviewer (does it meet every criterion and
-nothing more, can it break something nearby, is the test about behavior and was it seen failing, is anything left behind) before the three
+nothing more, can it break something nearby, is the test about behavior and was it seen failing, is anything left behind, is the
+documentation the task names updated and are its deviations recorded) before the three
 gates; gate 2 then reads "there is nothing in your review of the diff that you would block on". Escalate whenever you doubt it: a person
 can always send the job back.
 

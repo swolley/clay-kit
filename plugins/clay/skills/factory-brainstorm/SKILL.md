@@ -39,6 +39,10 @@ approves only what was actually shown. Reading the project is always allowed.
 ## 3. Understand
 
 - Read the repo's instructions, recent commits and the files the idea touches.
+- Run `python3 <plugin root>/scripts/plan_status.py` from the repo. When plans are still open, name them in one
+  line and recommend finishing one before starting new work; when the idea is already planned or specified, say so.
+  Go on if the user does.
+- When the specs or plans folder holds an `INDEX.md`, read it first and open only the files it points you to.
 - If the idea spans several independent subsystems, say so and split it; design
   the first piece only.
 - Ask for what is missing, one question at a time (`STYLE.md` rule 1, with the question tool
@@ -61,7 +65,9 @@ approves only what was actually shown. Reading the project is always allowed.
 ## 5. Write the spec (architectural path only)
 
 - Save to the place the repo's instructions name for specs; default
-  `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`. Commit it.
+  `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`. When that folder holds an `INDEX.md`, add one line
+  for the spec, its file name and what it covers, no status. Commit it. A spec records a decision at a date;
+  the behaviour it leads to is described in the repo's documentation once it ships.
 - Check it once yourself: no placeholders, no contradictions, one plan's worth of scope,
   no requirement that can be read two ways. Fix inline.
 - Spawn the `reviewer-spec` agent as `<plugin root>/reference/hosts.md` says, with the model and effort that

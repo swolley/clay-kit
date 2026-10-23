@@ -31,7 +31,7 @@ Every command is a skill named `factory-<verb>`, so on Claude Code it is typed `
 3. `/factory-run`: for each task a builder works at the task's tier, up to four reviewers check the real diff
    (code always; ui, ux and security only when the changed paths call for them, see `routing.md`); when a round needs both ui and ux they run as one combined reviewer that still writes a verdict per lens, then an
    approver lands it or escalates it. Reviewer findings are checked, not applied blindly; a builder is
-   resumed at most twice. A small `light` task takes a short path with no separate reviewer. After a rework round only the reviewers that asked for changes, or whose paths changed, run again; a lens that passed keeps its verdict. Reviewers and the approver read one ready-made `diff.patch` per round, and the builder's checks are recorded by `state.py verify` once per state of the code, so the suite is not run again by every agent. When a plan is finished its header says `status: completed` and an `## Execution record` table keeps the run's history in the plan; the local job folders are then removed. `/factory-run <plan> inline` builds light tasks in your session instead of in a subagent; the approver and the reviewers stay independent.
+   resumed at most twice. A small `light` task takes a short path with no separate reviewer. After a rework round only the reviewers that asked for changes, or whose paths changed, run again; a lens that passed keeps its verdict. Reviewers and the approver read one ready-made `diff.patch` per round, and the builder's checks are recorded by `state.py verify` once per state of the code, so the suite is not run again by every agent. Each task's steps are ticked in the commit that lands it. A builder keeps the documentation the task names under `Docs` true in the same change and records under `## Deviations` what it did differently from the plan; the code reviewer blocks a stale document. When a plan is finished its header says `status: completed` and one `## Delivery status` section names the documentation that describes the work now (`Documented in`), lists the divergences and keeps the run's history in an execution record; the plan is never deleted, and the local job folders are then removed. `/factory-run <plan> inline` builds light tasks in your session instead of in a subagent; the approver and the reviewers stay independent.
 4. When all tasks have landed, you choose how the work reaches your main branch. Nothing is ever pushed.
 
 **Pace.** The run is guided: after each task it asks whether to go on, stop, or run the rest without asking. When a task needs a decision
@@ -47,7 +47,7 @@ is untouched and different plans can run at once in different sessions. You can 
 run one at a time and are committed after approval.
 
 **One run per plan.** A run takes a lock on its plan: a second run on the same plan from another chat is refused, and the plan file and the spec
-it names are read-only while it lasts (the plugin also refuses edits with an explanation). The steps are ticked at the end. `/factory-unlock`
+it names are read-only while it lasts (the plugin also refuses edits with an explanation). The steps of a task are ticked as it lands. `/factory-unlock`
 releases a lock by hand.
 
 ## Progress in the terminal (Claude Code only)
@@ -70,8 +70,10 @@ State lives in `factory/jobs/` (ignored by git). A static dashboard shows it, wi
 Plans live in `docs/superpowers/plans/YYYY-MM-DD-<feature>.md` and specs in `docs/superpowers/specs/`, with
 `### Task N:` headings and `- [ ]` steps. This matches the superpowers conventions on purpose, for compatibility
 with projects already built with that tool: their plans run here without migration. Per-task fields
-(`Repo`, `Tier`, `Depends`, `Files`, `Constraints`, `Accept`, `Verify`) are optional; missing ones get defaults
-and `/factory-run` tells you which. You do not have to design with this plugin: brainstorm and plan with superpowers or by
+(`Repo`, `Tier`, `Depends`, `Files`, `Docs`, `Constraints`, `Accept`, `Verify`) are optional; missing ones get defaults
+and `/factory-run` tells you which. `Docs` names the documentation a task keeps true, or says `none: <reason>` for a change
+with no observable behaviour; a `light` task without it declares none. A cancelled step `- [-]` carries its reason on the
+same line. An `INDEX.md` next to the plans or specs lists each file with what it covers and no status, which the plans hold. You do not have to design with this plugin: brainstorm and plan with superpowers or by
 hand, and use `/factory-run` only to execute.
 
 ## Backlog outside the plugin
@@ -86,11 +88,15 @@ python3 plan_status.py --all --format html --out backlog.html
 ```
 
 It reads `docs/superpowers/plans/` and `docs/superpowers/specs/`, never edits anything, and `--help` lists every option.
+Each plan and spec shows its last change (`upd`), the date of the last commit that touched it; a file with uncommitted
+changes shows its modification date, and one git does not track shows it marked `~`. Nobody writes that date into the
+plan: it is read from git, so it cannot drift. `--sort updated` lists the most recently changed plans first. A finished plan
+that does not name existing documentation on a `**Documented in:**` line is reported.
 
 ## Requirements
 
 A host that runs plugins: Claude Code, Codex or Cursor (see [Hosts](#hosts)), plus `git` and `python3` (standard library only) for the plan parser, the reviewer routing and the run bookkeeping (`scripts/state.py`).
-The target repo's own `AGENTS.md` or `CLAUDE.md` must say how to set up a checkout and run its tests.
+The target repo's own `AGENTS.md` or `CLAUDE.md` must say how to set up a checkout and run its tests, and should say where its documentation lives; `/factory-plan` asks once when it does not.
 Optional: with the `savvy-progress` mod installed on Claude Code, `/factory-run` also reports progress to its bar; nothing depends on it.
 
 ## Hosts

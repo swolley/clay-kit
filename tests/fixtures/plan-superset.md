@@ -8,6 +8,7 @@
 **Tier:** careful
 **Depends:** none
 **Files:** `app/Http/Foo.php`, `tests/FooTest.php`
+**Docs:** `docs/api.md`
 **Accept:** 1. Returns 200. 2. Rejects bad input.
 **Verify:** `php artisan test`
 

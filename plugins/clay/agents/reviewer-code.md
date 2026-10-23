@@ -28,6 +28,10 @@ runs the command only when there is none.
 3. Do the tests exercise behavior, were they seen failing first, and would they catch a regression?
 4. Does it look like the rest of the repo, or does it duplicate something that already exists?
 5. Is anything left behind: debug output, dead code, unrelated edits, secrets?
+6. Is the documentation still true? The files under `Docs` in `task.md` are updated, and no other document of
+   the repo now describes behaviour the change altered. A stale or missing document is CHANGES; a document
+   that only restates the code is an Observation. A task with `Docs: none` that changes observable behaviour is CHANGES.
+7. Does `## Deviations` in build.md name every place where the diff departs from `task.md`?
 
 ## Output
 

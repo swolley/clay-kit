@@ -15,5 +15,5 @@ If the Arguments line still shows a placeholder that starts with $, the argument
 Call `python3 <plugin root>/scripts/state.py adhoc --root <repo> --text "<the task text>"` (see "Ad hoc task" in `start.md`).
 It writes the working plan under `factory/jobs/_runs/` and prints `plan_file`, `plan_stem`, `title` and `tier`; a leading `tier=<name>` in the text sets the tier
 (default `medium`), and an unknown tier or an empty text exits 2, which you report to the user. Use the printed `plan_file` as the plan, unchanged, and run the
-Preconditions, mode question, Job loop (`job-loop.md`) and Completion (`completion.md`) for it. Completion for an ad hoc plan skips `tick-plan` and the plan commit
-(there is nothing in the repo to tick), then releases the lock and runs `state.py clean`, which also deletes the working plan.
+Preconditions, mode question, Job loop (`job-loop.md`) and Completion (`completion.md`) for it. Landing skips the tick and Completion for an ad hoc plan
+skips `close-plan` and the plan commit (there is nothing in the repo to tick), then releases the lock and runs `state.py clean`, which also deletes the working plan.

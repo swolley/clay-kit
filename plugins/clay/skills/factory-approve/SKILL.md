@@ -16,4 +16,4 @@ Resolve the job as in "Resolving a job" in `commands.md`, with stages `needs-hum
 Respect the run lock (`lock.md`): if another session holds the plan with a recent heartbeat, say so and ask before acting.
 Follow "The other commands", approve, in `commands.md`. Read the job's decision.md and tell the user in two lines what is being approved before landing it. If the job has
 no decision.md (for example a blocked build with no reviews), say so and ask for explicit confirmation first.
-After landing, tell the user to rerun `/factory-run <plan>` so the steps are ticked and the finish step runs.
+Landing ticks the job's task in the plan. After landing, tell the user to rerun `/factory-run <plan>` so the remaining tasks run and the plan is closed.

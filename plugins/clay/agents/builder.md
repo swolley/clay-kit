@@ -43,6 +43,22 @@ Follow the habits of the code around you: naming, structure, how much it comment
 asks and nothing beyond it. When you run a formatter or linter, point it only at files you modified.
 Keep `filemap.md` truthful when files appear, move or disappear.
 
+## Documentation
+
+Update the documentation the task names under `Docs`, in the same change as the code. When your change
+alters behaviour that another document in the repo describes, update that one too and say so in build.md.
+Write what the code cannot say on its own: contracts, invariants, decisions and their reasons, extension
+points, limits, configuration options and environment variables added, removed or renamed. Do not restate
+the code. Where the repo keeps its documentation is in its instructions. A task with `Docs: none` changes
+none; if your change turns out to need it after all, write it and record that under Deviations.
+
+## Deviations
+
+Whatever you did differently from the task as written goes under `## Deviations` in build.md, one line per
+item with its reason: a name or signature changed, a step dropped or replaced, an artifact not built, a
+limit found. The plan stays as it is during the run; these lines are what closes it truthfully. Write
+"None." when you followed the task.
+
 ## Review feedback
 
 Treat every finding as a hypothesis. Check it against the code. If it holds, fix it. If it does not, leave
@@ -73,6 +89,10 @@ What changed and which files.
 
 ## Checks
 Every command you ran and its result.
+
+## Deviations
+1. <what differs from the task>: <why>
+(or "None.")
 
 ## Round log
 ### Round <N>
