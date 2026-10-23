@@ -596,3 +596,22 @@ def test_a_finished_plan_must_name_documentation_that_exists(tmp_path):
     table = render_table(report, Options(all=True, width=120))
     assert "documentation not found: docs/gone.md" in table and "3 finished plan(s) do not point" in table
     assert "documentation not found" in render_html(report, Options(all=True))
+
+
+def test_only_paths_on_the_documented_in_line_are_documents(tmp_path):
+    _write(tmp_path / "Modules/Core/README.md", "# Core\n")
+    _write(tmp_path / "Modules/Core/docs/rag/MODULE.md", "# Module\n")
+    _plan(tmp_path / "docs/superpowers/plans/2026-01-01-p.md", "- [x] a",
+          head="\n**Documented in:** `Modules/Core/README.md` (`AI_INDEX`, `meta['tuning']`, `ai:tune`), and\n"
+               "`Modules/Core/docs/rag/MODULE.md` (*Search*).\n\nNext paragraph `docs/not-a-doc.md`.\n")
+    plan = _one(tmp_path)
+    assert plan["documented_in"] == ["Modules/Core/README.md", "Modules/Core/docs/rag/MODULE.md"]
+    assert plan["docs_issue"] is None
+
+
+def test_a_delivery_status_on_a_plan_that_is_not_closed_is_an_inconsistency(tmp_path):
+    _plan(tmp_path / "docs/superpowers/plans/2026-01-01-p.md", "- [x] a\n- [ ] b\n\n## Delivery status (2026-01-02): built\n")
+    _plan(tmp_path / "docs/superpowers/plans/2026-01-02-q.md", "- [ ] a\n\n```\n## Delivery status (date): example\n```\n")
+    found = {p["file"]: p["inconsistency"] for p in scan_plans(tmp_path, discover(tmp_path))}
+    assert found["2026-01-01-p.md"] == "delivery status written but the plan reads partial (1/2 steps flagged)"
+    assert found["2026-01-02-q.md"] is None

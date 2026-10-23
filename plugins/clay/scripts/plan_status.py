@@ -36,8 +36,11 @@ TODO_SELF = ("scripts/plan-status.php", "scripts/tests/plan-status-test.sh")
 # comment (`//`, `#`, `/*`, a docblock `*`, `<!--`, `{{--`).
 TODO_PATTERN = re.compile(r"(?://|#|/\*+|^\s*\*|<!--|\{\{--)\s*(TODO|FIXME|XXX|@todo)\b:?\s*")
 REFERENCE_PATTERN = re.compile(r"^\s*(?:[-*]\s+)?(?:\*\*)?Plan:?(?:\*\*)?:?\s*not required\b", re.IGNORECASE)
-DOCUMENTED_PATTERN = re.compile(r"^\s*(?:[-*]\s+)?\*\*Documented in:\*\*\s*(.*)$", re.IGNORECASE | re.MULTILINE)
+# The line and the lines that continue it, up to the first blank line.
+DOCUMENTED_PATTERN = re.compile(r"^\s*(?:[-*]\s+)?\*\*Documented in:\*\*[ \t]*((?:.+\n?)*)", re.IGNORECASE | re.MULTILINE)
 DOC_PATH = re.compile(r"`([^`\s]+)`|([\w./-]+/[\w./-]+\.(?:md|mdx|rst|adoc|txt))\b")
+DOC_LIKE = re.compile(r"^[\w./-]+$")
+DELIVERY_PATTERN = re.compile(r"^## Delivery status", re.MULTILINE)
 
 
 def discover(root: Path | str) -> dict[str, str]:
@@ -173,14 +176,21 @@ class LastChange:
         return day, "worktree" if known is not None and file.name in known[1] else "mtime"
 
 
+def _without_fences(text: str) -> str:
+    """The text without its fenced blocks, where a plan may quote a closing section as an example."""
+    return re.sub(r"^```.*?^```", "", text, flags=re.M | re.S)
+
+
 def documentation(text: str, root: Path, relative: str) -> tuple[list[str], str | None]:
     """The documents a closed plan names on its `**Documented in:**` line, and what is wrong with that: no such line,
     or a named document that does not exist. `none` on the line is an explicit answer and is accepted."""
-    match = DOCUMENTED_PATTERN.search(re.sub(r"^```.*?^```", "", text, flags=re.M | re.S))
+    match = DOCUMENTED_PATTERN.search(_without_fences(text))
     if match is None:
         return [], "closed but names no documentation (no Documented in line)"
     value = match.group(1).strip()
-    paths = list(dict.fromkeys(a or b for a, b in DOC_PATH.findall(value)))
+    # A backticked word is a document only when it reads as a path: a variable or a command named next to it is not.
+    found = (a or b for a, b in DOC_PATH.findall(value))
+    paths = list(dict.fromkeys(f for f in found if DOC_LIKE.match(f) and ("/" in f or re.search(r"\.(md|mdx|rst|adoc|txt)$", f))))
     if not paths:
         return [], None if re.match(r"none\b", value, re.I) else "Documented in names no document"
     missing = [d for d in paths if not ((root / relative / d).exists() or (root / d).exists())]
@@ -225,6 +235,9 @@ def _scan_plan(file: Path, root: Path, repo: str, relative: str, plan_dir: str, 
     updated, updated_source = (last_change or LastChange()).of(file)
     state = effective_state(declared, checkbox_state)
     documented_in, docs_issue = documentation(text, root, relative) if state == "done" else ([], None)
+    disagreement = inconsistency(declared, banner, checkbox_state, checked, total)
+    if disagreement is None and state not in ("done", "superseded") and DELIVERY_PATTERN.search(_without_fences(text)):
+        disagreement = f"delivery status written but the plan reads {state} ({checked}/{total} steps flagged)"
     return {
         "kind": "plan",
         "repo": repo,
@@ -243,7 +256,7 @@ def _scan_plan(file: Path, root: Path, repo: str, relative: str, plan_dir: str, 
         "checked_steps": checked,
         "checkbox_state": checkbox_state,
         "state": state,
-        "inconsistency": inconsistency(declared, banner, checkbox_state, checked, total),
+        "inconsistency": disagreement,
         "documented_in": documented_in,
         "docs_issue": docs_issue,
     }
