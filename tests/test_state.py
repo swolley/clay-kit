@@ -1302,3 +1302,11 @@ def test_adhoc_takes_a_one_word_verify(tmp_path):
 def test_adhoc_without_verify_declares_none(tmp_path):
     out = state.adhoc_plan(tmp_path, "Fix it")
     assert out["verify"] == "" and "**Verify:**" not in Path(out["plan_file"]).read_text()
+
+
+def test_an_ad_hoc_task_with_verify_is_eligible_without_files(repo):
+    out = state.adhoc_plan(repo, "tier=light verify=true Fix the slug")
+    pre = state.preflight(repo, out["plan_file"], "demo")
+    assert pre["plan"]["tasks"][0]["lean"] is True and pre["lean_count"] == 1
+    plain = state.adhoc_plan(repo, "tier=light Fix the slug again")
+    assert state.preflight(repo, plain["plan_file"], "demo")["plan"]["tasks"][0]["lean_reason"] == "no Verify"

@@ -43,8 +43,10 @@ work that exists, or plan work that is already planned. It only reads; never edi
    falls back to opus xhigh) and `opus` with `high`; elsewhere a `fable` with no entry of its own resolves as `heavy`. In every case the models
    recorded in `agents` are the ones actually passed, and the plan file is never edited. The answer holds for the whole run and is
    asked again on a resumed run. `factory-task` with an explicit `tier=fable` is not asked again, the user chose it.
-3. The target repo is a git repo. Isolated mode needs a clean main checkout only for the final merge.
-4. Resume (below), then mode choice, then start.
+3. Lean: `preflight` also gives each task `lean` and `lean_reason`, and `lean_count` and `long`; with `lean_count` above 0 the
+   mode question adds the lean choice and the start message the note on the session's model (`lean.md`).
+4. The target repo is a git repo. Isolated mode needs a clean main checkout only for the final merge.
+5. Resume (below), then mode choice, then start.
 
 ## Resume
 
@@ -60,7 +62,8 @@ work that exists, or plan work that is already planned. It only reads; never edi
 | not started | no job | start |
 
 Resuming: keep the worktree and branch, never recreate. If they are missing, or the branch no
-longer points at the `head` in `job.json`, set `needs-human` and say why. `build` with a build.md for the recorded `build_round` and `STATUS: READY`: go straight to Route (step 3).
+longer points at the `head` in `job.json`, set `needs-human` and say why. `build` with a build.md for the recorded `build_round` and `STATUS: READY`: go straight to Route (step 3), or to `lean-check` for a job
+with `lean` (`lean.md`).
 `build` without build.md: start a fresh
 builder with the task and the commits already on the branch. Round partly done: keep finished
 review files, rerun only the missing reviewers. `approve` without decision.md: rerun the approver. `approve` on a short-path job (`lite` in `job.json`): run `state.py verdicts` first, since a

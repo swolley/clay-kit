@@ -9,7 +9,9 @@ deletes the working plan.
 When every task is landed, each one is already ticked (Landing, `orchestrator.md`). Then:
 
 1. **Final review.** Each task was reviewed alone; this reads the run's whole branch once, for what only shows across tasks. Skip it
-   for a plan of one task, whose only job was already reviewed, and for an ad hoc plan. On a resume, `final` in the run state says
+   for a plan of one task, whose only job was already reviewed, and for an ad hoc plan, unless a job of the run was lean: then it
+   always runs, for one task and for an ad hoc plan too, since it is the only independent reading a lean job gets (`final-diff` prints
+   `lean`, the number of lean jobs). On a resume, `final` in the run state says
    how far it got: `review` recorded skips the first review, `fix_job` recorded goes on from that job, `recheck` recorded ends the
    step. `final-diff` asked again for a span it already wrote returns it unchanged (`reused: true`), so a resume never widens a review.
    - Run `state.py final-diff --root <repo> --plan <plan-stem>`. It writes `_runs/<plan-stem>-final.patch` and prints `patch` and

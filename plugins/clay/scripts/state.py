@@ -210,7 +210,7 @@ def preflight(root, plan_file: str | None = None, repo_name: str = "") -> dict:
     out["plan"] = describe_plan(text, repo_name, root)
     rules = _rules(root)
     for task, view in zip(parse_plan(text, default_repo=repo_name).tasks, out["plan"]["tasks"]):
-        view["lean"], view["lean_reason"] = lean_eligibility(task, rules)
+        view["lean"], view["lean_reason"] = lean_eligibility(task, rules, adhoc=path.parent.name == "_runs")
     out["lean_count"] = sum(1 for t in out["plan"]["tasks"] if t["lean"])
     out["long"] = out["lean_count"] > LONG_LEAN
     out["jobs"] = [
@@ -377,12 +377,13 @@ def _declared_paths(files: list[str]) -> list[str]:
     return out
 
 
-def lean_eligibility(task, rules) -> tuple[bool, str]:
-    """Whether the session may build the task itself, proved by its own checks, and if not, why."""
+def lean_eligibility(task, rules, adhoc: bool = False) -> tuple[bool, str]:
+    """Whether the session may build the task itself, proved by its own checks, and if not, why. An ad hoc task declares no
+    files, so for it only `lean-check`, on the real diff, judges the paths."""
     if task.tier not in LEAN_TIERS:
         return False, f"tier {task.tier}"
     paths = [] if "files" in task.defaults_applied else _declared_paths(task.files)
-    if not paths:
+    if not paths and not adhoc:
         return False, "no Files"
     lenses = [lens for lens in route(paths, rules) if lens != "code"]
     if lenses:

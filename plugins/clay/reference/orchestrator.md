@@ -18,6 +18,7 @@ decisions yourself. Never push. Never reset or discard a user's changes.
 | `commands.md` | resolving a job, approve, rework, answer, status | approve, rework, answer, status |
 | `questions.md` | questions from agents | answer; run, task and rework when an agent asks something |
 | `inline.md` | building in the session | run, task, only with `inline` |
+| `lean.md` | lean tasks, built in the session and gated by their checks | run, task, when a task is lean or the user chose lean |
 | `completion.md` | closing a finished plan | run, task, once every task has landed |
 
 ## Files
