@@ -103,7 +103,6 @@ that does not name existing documentation on a `**Documented in:**` line is repo
 
 A host that runs plugins: Claude Code, Codex or Cursor (see [Hosts](#hosts)), plus `git` and `python3` (standard library only) for the plan parser, the reviewer routing and the run bookkeeping (`scripts/state.py`).
 The target repo's own `AGENTS.md` or `CLAUDE.md` must say how to set up a checkout and run its tests, and should say where its documentation lives; `/factory-plan` asks once when it does not.
-Optional: with the `savvy-progress` mod installed on Claude Code, `/factory-run` also reports progress to its bar; nothing depends on it.
 
 ## Hosts
 

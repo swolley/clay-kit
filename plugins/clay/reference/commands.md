@@ -1,7 +1,5 @@
 # Commands that act on a job
 
-Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is the path your skill states. Follow `<plugin root>/STYLE.md`. `<repo>` is the root of the target repository's own checkout.
-
 ## Resolving a job
 
 A command may get a short token or nothing. Resolve a job with

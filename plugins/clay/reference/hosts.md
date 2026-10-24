@@ -1,10 +1,6 @@
 # Hosts
 
-Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is the path your skill states. Follow `<plugin root>/STYLE.md`. `<repo>` is the root of the target repository's own checkout.
-
-The few things that differ between the hosts: starting an agent, its model and effort, resuming it, asking the user. The other
-parts say "as `hosts.md` says" and "the question tool" for them: both mean this file and your host part. Everything else is the
-same everywhere.
+"As `hosts.md` says" and "the question tool" in the other parts mean this file and your host part.
 
 ## Which host
 

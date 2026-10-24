@@ -10,7 +10,8 @@ If the line above does not show an absolute path, the plugin root is the folder 
 # Plan
 
 Turn an approved spec into a plan of small tasks that someone who has not seen this
-conversation can execute. Follow `<plugin root>/STYLE.md`.
+conversation can execute. Follow `<plugin root>/STYLE.md`. `<repo>` in the parts of `reference/` is the root of the target
+repository's own checkout.
 
 Derived from the superpowers `writing-plans` skill (MIT); see NOTICE.md.
 

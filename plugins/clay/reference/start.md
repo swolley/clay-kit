@@ -1,7 +1,5 @@
 # Starting a run
 
-Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is the path your skill states. Follow `<plugin root>/STYLE.md`. `<repo>` is the root of the target repository's own checkout.
-
 ## Resolving a plan
 
 For `factory-run` without a plan, run `python3 <plugin root>/scripts/state.py preflight --root <repo>` (it lists `plans`, the plans with open steps, and `unclassified`;
@@ -12,22 +10,15 @@ Plans are found where `plan_status.py` finds them, subfolders and nested reposit
 checkout it belongs to relative to `<repo>`, and `path`, the plan relative to that checkout: when `root` is not empty, show the plan as
 `<root>/<path>` and, once it is chosen, `<repo>/<root>` is `<repo>` for the rest of the run.
 
-A plan's declared `status:` (completed, done, shipped, superseded) closes it whatever its checkboxes say (the convention of
-plan tools that keep a front matter status); a task with no steps is not runnable. Two more checks guard the lists, both part of the preflight:
-`unclassified` lists plans with no steps and no declared status (never offered to run; tell the user how
-many there are), and `audit` is the second check (`resolve.py plans --unclassified` and `--audit` print them alone): a plan declared closed whose planned commits and created
-files are not in the repo, or an open plan whose tasks all show them. The preflight with a plan returns the audit for that plan only: if it names
-that plan, tell the user in one line and ask before running.
-
-Before choosing what to work on, see what is already open: run `python3 <plugin root>/scripts/plan_status.py` from the repository
-(the user's `/factory-backlog` does the same). It lists plans with steps left and specs that have no plan, so you do not start
-work that exists, or plan work that is already planned. It only reads; never edit a plan or spec because of its output.
+A plan whose front matter declares it closed is never offered, and a task with no steps is not runnable. `unclassified` lists
+plans with no steps and no declared status: they are never offered to run; tell the user how many there are. The preflight with a
+plan returns its `audit` (a plan declared closed whose work is not in the repo, or an open plan whose work all is): if it names that
+plan, tell the user in one line and ask before running.
 
 ## Preconditions (run)
 
 1. The plan file exists. One call gathers what the start needs: `python3 <plugin root>/scripts/state.py preflight --root <repo> --plan-file <plan> --repo-name <name>`.
-   It returns `plan` (the plan parsed, as `factory_plan.py <plan> --repo <name> --root <repo>` prints it), `jobs` (the jobs the plan already has, for Resume), `audit` (what
-   the audit says about this plan) and `unclassified`. If there are no tasks, point to the `factory-brainstorm` and `factory-plan` skills and stop.
+   It returns `plan` (as `factory_plan.py <plan> --repo <name> --root <repo>` prints it), `jobs` (for Resume), `audit` and `unclassified`. If there are no tasks, point to the `factory-brainstorm` and `factory-plan` skills and stop.
 2. Tell the user which defaults the parser applied (`defaults_applied`) and any `warnings`, in one line per task.
    Look for work that may already be done: a task that has no job and carries `done_signals` (its planned commit
    is already in the git history, or every file it creates exists) may already be implemented, for instance a plan that
@@ -38,9 +29,7 @@ work that exists, or plan work that is already planned. It only reads; never edi
    (a fable task skipped as already-done is not asked about). Otherwise ask once with the question tool, on every host (it is about cost), listing those tasks, with these options:
    `heavy` (recommended) runs them as tier `heavy` (approver on its risky model); `fable` as the plan says runs them as tier `fable`;
    lower to `careful` runs them as tier `careful` (the approver follows the normal risk rule). Label each option with the builder's
-   model and effort that `state.py model --host <host> --tier <tier>` prints for it (a null model is the session's). On Claude Code,
-   with no `factory/models.json`, that reads `opus` with `xhigh`, `fable` with `high` (if the host does not accept fable, `tiers.md`
-   falls back to opus xhigh) and `opus` with `high`; elsewhere a `fable` with no entry of its own resolves as `heavy`. In every case the models
+   model and effort that `state.py model --host <host> --tier <tier>` prints for it (a null model is the session's). In every case the models
    recorded in `agents` are the ones actually passed, and the plan file is never edited. The answer holds for the whole run and is
    asked again on a resumed run. `factory-task` with an explicit `tier=fable` is not asked again, the user chose it.
 3. Lean: `preflight` also gives each task `lean` and `lean_reason`, and `lean_count` and `long`; with `lean_count` above 0 the
@@ -78,5 +67,4 @@ continue from them, stash them or stop. Before continuing, say in one line per j
 `factory/jobs/_runs/adhoc-<YYYYMMDD-HHMMSS>-<slug>.md` (title from the first words of the text, tier `medium` unless a leading `tier=<name>` says
 `light`, `medium`, `careful`, `heavy` or `fable`, one `Accept` criterion taken from the text) and prints `plan_file`, `plan_stem`, `title` and `tier`; an
 unknown tier or an empty text exits 2. The file is local and git ignores it, so it never reaches the repo's plans folder. Use `plan_file` as the plan path
-for `run`, `lock`, `new-job` and `begin-job`, and run it through the Job loop and Completion. Landing skips the tick and Completion skips the final review (unless the job was lean), `close-plan` and the plan commit (there is nothing in the
-repo to tick), then releases the lock and runs `clean`, which also deletes the working plan.
+for `run`, `lock`, `new-job` and `begin-job`, and run it through the Job loop and Completion. Landing skips the tick (there is nothing in the repo to tick), and Completion does what `completion.md` says for an ad hoc plan.

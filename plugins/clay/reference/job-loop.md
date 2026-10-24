@@ -1,11 +1,8 @@
 # Job loop and pace
 
-Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is the path your skill states. Follow `<plugin root>/STYLE.md`. `<repo>` is the root of the target repository's own checkout.
-
 ## Job loop
 
-Do the bookkeeping with `python3 <plugin root>/scripts/state.py` instead of editing files by hand: it writes `job.json`, keeps the
-phase log and the times, and does the checks. Every command takes `--root <repo>` and prints JSON.
+`state.py` is `python3 <plugin root>/scripts/state.py`; every command takes `--root <repo>` and prints JSON.
 
 Start every agent as `hosts.md` says, with a prompt that opens with the job's coordinates (`<paths>` below): first
 `Plugin root: <plugin root>`, then its folder `<repo>/factory/jobs/<job-id>/`, the worktree path, the branch, the mode and the base, then `State: python3 <plugin root>/scripts/state.py`, the job id and the repo root `<repo>`: the agents run
@@ -13,9 +10,8 @@ and read checks with them (`verify`, `checks`). A reviewer and the approver also
 
 When an agent finishes, record its model, effort and usage at once, with all the agents that finished together in one call:
 `state.py after-agent <job-id> --agents '[{"role":"code","model":"sonnet","effort":"medium","tokens":9000,"ms":20000,"tools":5}]'` (roles `builder`, `code`,
-`security`, `interface`, `approver`; what each field holds is the recording rule in `hosts.md`, "Model and effort"; `state.py agent <job-id> <role> --model <m> --effort <e> --tokens <n>
---ms <n> --tools <n>` records one agent). The progress views show who has the job, on which
-model, and what it cost in time and tokens. The usage of your own session is not included: it is not reported to you.
+`security`, `interface`, `approver`; the fields follow the recording rule in `hosts.md`; `state.py agent <job-id> <role>` with the same
+fields as options records one agent). The usage of your own session is not reported to you.
 
 0. **Once per run.** Take the run lock (see `lock.md`), then `state.py setup --plugin-root <plugin root>` (creates `factory/jobs/`, ignored by git, and copies the
    dashboard) and `state.py run --plan-file <plan> --mode <mode> --pace <pace>` (writes the run state: total, tasks, and `done`
@@ -31,10 +27,8 @@ model, and what it cost in time and tokens. The usage of your own session is not
    Keep the agent id the spawn returns; it replaces the name when you resume the builder.
    The first line of build.md decides what happens next: `STATUS: READY` moves on, `STATUS: NEEDS_INPUT` goes to
    `questions.md`, `STATUS: BLOCKED` sends the job to step 8.
-3. **Route.** `state.py route <job>` takes the changed paths (`git diff --name-only <base>...<branch>`; in current-branch mode
-   `git diff --name-only HEAD` plus `git ls-files --others --exclude-standard`), applies the routing table (the repo's `factory/routing.md`
-   if that file exists) and sets up the round: it writes `reviewers`, creates `round-N/` with `diff.patch` (commits, file list, what changed since the
-   previous round, diff: no agent runs those git commands again) and sets the stage. It prints `reviewers`, `rerun`, `carried`, `lite` and `diff`.
+3. **Route.** `state.py route <job>` routes the change through the routing table (the repo's `factory/routing.md` if that file
+   exists) and sets up the round with its `round-N/diff.patch`, which every agent reads instead of running git. It prints `reviewers`, `rerun`, `carried`, `lite` and `diff`.
    **Carried lenses.** After round 1 a lens that passed keeps its verdict and is not run again while nothing its rules watch has changed since
    that round: `carried` names the round it was given in. The `code` lens watches every path, so it runs again whenever anything changed, and a
    lens that asked for changes always runs again. `rerun` is the list to spawn; it may be empty when nothing changed.

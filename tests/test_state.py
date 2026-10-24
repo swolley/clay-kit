@@ -689,6 +689,7 @@ def test_begin_job_creates_the_job_and_moves_it_to_build(repo):
     assert out["stage"] == "build" and job["stage"] == "build"
     assert [p["stage"] for p in job["phases"]] == ["spec", "build"] and job["phases"][0]["end"] is not None
     assert (repo / "factory/jobs" / out["id"] / "task.md").exists()
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", job["started"]) and job["updated"] >= job["started"]
 
 
 def test_after_agent_records_several_agents_in_one_call(repo):

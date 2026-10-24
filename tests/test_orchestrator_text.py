@@ -13,17 +13,20 @@ def reference() -> str:
 
 
 def test_current_branch_routing_uses_diff_not_porcelain():
-    t = reference()
-    assert "git status --porcelain | " not in t and "git ls-files --others --exclude-standard" in t
+    t = (PLUGIN / "scripts/state.py").read_text()
+    assert "git status --porcelain | " not in reference() and "ls-files" in t and "--exclude-standard" in t
+
+
+def step_zero() -> str:
+    return " ".join(read("reference/job-loop.md").split("0. **Once per run.**")[1].split("\n1. ")[0].split())
 
 
 def test_jobs_folder_ignores_itself():
-    assert "factory/jobs/.gitignore" in reference()
+    assert "`state.py setup" in step_zero() and "ignored by git" in step_zero()
 
 
 def test_dashboard_is_copied_next_to_jobs():
-    t = reference()
-    assert "copy" in t.lower() and "factory/jobs/dashboard.html" in t
+    assert "copies the dashboard" in step_zero()
 
 
 def test_parallel_only_when_declared():
@@ -71,8 +74,8 @@ def test_dashboard_marks_waiting_input():
 
 
 def test_run_state_carries_task_counts_for_the_progress_band():
-    t = reference()
-    assert "`total`" in t and "`done`" in t and "each time a job lands" in t
+    assert "total" in step_zero() and "`done`" in step_zero()
+    assert "refreshes `done` in the run state" in read("reference/orchestrator.md").split("## Landing")[1]
 
 
 def test_progress_mod_is_wired_into_the_plugin():
@@ -86,15 +89,9 @@ def test_progress_mod_is_wired_into_the_plugin():
     assert (PLUGIN / "types/index.d.ts").exists()
 
 
-def test_job_state_carries_times_and_run_state_carries_the_task_list():
-    t = reference()
-    assert "`started`" in t and "`updated`" in t and "ISO 8601" in t
-    assert "`tasks`" in t and "`after`" in t
-
-
 def test_orchestrator_records_the_model_and_effort_of_each_agent():
-    t = reference()
-    assert "`agents` records" in t and "effort` you passed" in t
+    flat = " ".join(read("reference/hosts.md").split())
+    assert "`job.json` `agents` (`after-agent`, `agent`) records what was actually passed" in flat
 
 
 def test_run_warns_about_tasks_that_may_already_be_implemented():
@@ -274,8 +271,8 @@ def parts_read_by(skill: str) -> set[str]:
 def test_every_part_of_the_reference_is_listed_in_the_core_and_exists():
     import re
 
-    listed = set(re.findall(r"^\| `([\w-]+\.md)` \|", read("reference/orchestrator.md"), re.M))
-    present = {p.name for p in (PLUGIN / "reference").glob("*.md")}
+    listed = set(re.findall(r"^\| `([\w-]+\.md)` \|", read("reference/README.md"), re.M))
+    present = {p.name for p in (PLUGIN / "reference").glob("*.md") if p.name != "README.md"}
     assert listed == present and len(present) > 1
 
 
@@ -296,16 +293,41 @@ def test_the_parts_a_run_needs_only_sometimes_are_read_when_needed():
         assert part not in "".join(f"reference/{x}" for x in parts_read_by("factory-run")), part
 
 
-# hosts.md is left out of the per-command shares: unlock reads it only to ask a question, and every command that spawns
-# or asks needs it. So that it cannot grow unnoticed, the last assert caps hosts.md itself at 18% of the whole reference
-# (about 13.8% when first set; raised from 16% to 18% when the Codex thread-limit rule was added, 16.4% then, about 10% headroom).
+# The host parts are left out of the per-command shares: every command that spawns or asks reads them, and the word budget
+# below caps what a run reads at the start, hosts.md and the host part included.
 def test_the_small_commands_read_a_fraction_of_the_reference():
-    size = {p.name: len(p.read_text()) for p in (PLUGIN / "reference").glob("*.md") if p.name != "hosts.md"}
+    size = {p.name: len(p.read_text()) for p in (PLUGIN / "reference").glob("*.md") if not p.name.startswith("hosts") and p.name != "README.md"}
     total = sum(size.values())
     for skill, limit in (("factory-unlock", 0.1), ("factory-status", 0.4), ("factory-approve", 0.6)):
         assert sum(size[n] for n in parts_read_by(skill) - {"hosts.md"}) < limit * total, skill
-    hosts = len(read("reference/hosts.md"))
-    assert hosts < 0.18 * (total + hosts), "hosts.md grew past its cap"
+
+
+def words(rel: str) -> int:
+    return len(read(rel).split())
+
+
+def test_a_run_reads_at_most_4600_words_at_the_start():
+    for skill in ("factory-run", "factory-task"):
+        for host in ("claude", "codex", "cursor"):
+            start = words(f"skills/{skill}/SKILL.md") + sum(words(f"reference/{p}") for p in parts_read_by(skill))
+            assert start + words(f"reference/hosts-{host}.md") <= 4600, (skill, host)
+
+
+def test_parts_have_no_shared_header():
+    for p in (PLUGIN / "reference").glob("*.md"):
+        assert "Part of the orchestrator reference" not in p.read_text(), p.name
+    assert "`<repo>` means" in read("reference/orchestrator.md")
+    for skill in ("factory-unlock", "factory-brainstorm", "factory-plan"):
+        assert "`<repo>`" in read(f"skills/{skill}/SKILL.md"), skill
+
+
+def test_job_json_is_written_only_by_the_script():
+    t = read("reference/orchestrator.md")
+    assert "written only by `state.py`" in t and '"id": "003-rate-limit"' not in t
+
+
+def test_savvy_progress_is_gone():
+    assert "savvy-progress" not in reference() and "savvy-progress" not in read("README.md")
 
 
 def test_a_job_loop_spawns_only_the_lenses_to_rerun_and_hands_out_the_ready_made_diff():
@@ -369,7 +391,8 @@ def test_adhoc_task_makes_its_working_plan_with_state_adhoc():
     for rel in ("reference/start.md", "reference/completion.md"):
         t = read(rel)
         assert "state.py adhoc" in t and "factory/jobs/_runs" in t, rel
-    assert "close-plan" in read("reference/start.md").split("## Ad hoc task")[1]
+    assert "`completion.md`" in read("reference/start.md").split("## Ad hoc task")[1]
+    assert "close-plan" in read("reference/completion.md").split("For an ad hoc plan")[1].split("\n\n")[0]
 
 
 def test_readme_shows_the_tier_option_of_factory_task():
@@ -393,7 +416,6 @@ def test_run_asks_once_before_starting_fable_tasks():
     assert "`fable` as the plan says runs them as tier `fable`" in flat
     assert "lower to `careful` runs them as tier `careful` (the approver follows the normal risk rule)" in flat
     assert "`state.py model --host <host> --tier <tier>`" in flat
-    assert "On Claude Code, with no `factory/models.json`, that reads `opus` with `xhigh`, `fable` with `high`" in flat and "`opus` with `high`" in flat
     assert "recorded in `agents` are the ones actually passed" in flat
     assert "plan file is never edited" in flat
 

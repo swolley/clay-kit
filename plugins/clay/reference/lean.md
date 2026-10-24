@@ -1,7 +1,5 @@
 # Lean tasks
 
-Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is the path your skill states. Follow `<plugin root>/STYLE.md`. `<repo>` is the root of the target repository's own checkout.
-
 A lean task is built by this session and proved by its own checks, with no builder agent, reviewer or approver of its own; the
 final review of the branch (`completion.md`) is its independent reading. Every other task of the same run keeps the full Job loop.
 
