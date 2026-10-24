@@ -87,7 +87,9 @@ python3 plan_status.py --root ~/work    # a whole workspace: every folder holdin
 python3 plan_status.py --all --format html --out backlog.html
 ```
 
-It reads `docs/superpowers/plans/` and `docs/superpowers/specs/`, never edits anything, and `--help` lists every option.
+It reads `docs/superpowers/plans/` and `docs/superpowers/specs/` (also `.cursor/plans/`, `.cursor/specs/` and
+`Modules/*/docs/plans/`), subfolders included, in the root and in each folder one level below it; `/factory-run`
+and the pane look in the same places. It never edits anything, and `--help` lists every option.
 Each plan and spec shows its last change (`upd`), the date of the last commit that touched it; a file with uncommitted
 changes shows its modification date, and one git does not track shows it marked `~`. Nobody writes that date into the
 plan: it is read from git, so it cannot drift. `--sort updated` lists the most recently changed plans first. A finished plan

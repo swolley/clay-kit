@@ -622,3 +622,17 @@ def test_a_superseded_plan_with_every_step_resolved_is_consistent(tmp_path):
           front="superseded")
     plan = _one(tmp_path)
     assert plan["state"] == "superseded" and plan["inconsistency"] is None
+
+
+def test_plans_and_specs_in_subfolders_are_read_and_named_from_their_folder(tmp_path):
+    _plan(tmp_path / "docs/superpowers/plans/lantern/2026-01-01-wick.md", "- [ ] a")
+    _write(tmp_path / "docs/superpowers/plans/lantern/INDEX.md", "# index\n- [ ] not a plan\n")
+    _write(tmp_path / "docs/superpowers/specs/lantern/2026-01-01-wick-design.md", "# Wick\n")
+    _write(tmp_path / "docs/superpowers/specs/lantern/deep/2026-01-02-oil-design.md", "# Oil\n")
+    plan = _one(tmp_path)
+    assert (plan["file"], plan["path"]) == ("lantern/2026-01-01-wick.md", "docs/superpowers/plans/lantern/2026-01-01-wick.md")
+    specs = scan_specs(tmp_path, discover(tmp_path), [plan])
+    assert [(s["file"], s["state"]) for s in specs] == [
+        ("lantern/2026-01-01-wick-design.md", "plan_uncited"),
+        ("lantern/deep/2026-01-02-oil-design.md", "unplanned"),
+    ]

@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar, reviewerLabel, verdictMark, roleOf, jobIdFromPrompt, shortModel, workingNow, taskRows, situationText, rowStatus, formatTokens, parseLock, isStale, protectedBy, lockNote, backlogCounts, backlogText } from '../../plugins/clay/hooks/model.ts'
+import { parseJob, parseRun, summarize, bar, phaseLabel, waitingIds, scan, activePlans, barParts, waitingLabel, stageStep, tierColor, formatDuration, jobElapsed, planElapsed, labeledBar, reviewerLabel, verdictMark, roleOf, jobIdFromPrompt, shortModel, workingNow, taskRows, situationText, rowStatus, formatTokens, parseLock, isStale, protectedBy, lockNote, backlogCounts, backlogText, scanBacklog } from '../../plugins/clay/hooks/model.ts'
 
 const job = (over: Record<string, unknown> = {}) =>
   parseJob(JSON.stringify({ id: '001-a', plan: 'p1', repo: 'api', tier: 'medium', stage: 'build', round: 0, reviewers: [], reviews: {}, ...over }))!
@@ -478,4 +478,16 @@ test('scan skips the working plans (.md) next to the run and lock files', async 
   const out = await scan(fs)
   assert.equal(out.runs.length, 1)
   assert.equal(out.locks.length, 1)
+})
+
+test('scanBacklog reads subfolders and the folders one level below, as plan_status.py does', async () => {
+  const fs = fakeFs({
+    'docs/superpowers/plans/area/2026-01-a.md': '# A\n- [ ] one\n',
+    'docs/superpowers/plans/INDEX.md': '- [ ] not a plan\n',
+    'orchard/docs/superpowers/plans/2026-01-b.md': '# B\n- [ ] one\n',
+    'orchard/.cursor/specs/deep/2026-01-c-design.md': '# nobody cites this',
+    'harbor/Modules/Tide/docs/plans/2026-01-d.md': '# D\n- [ ] one\n',
+    'node_modules/x/docs/superpowers/plans/2026-01-e.md': '# E\n- [ ] one\n',
+  })
+  assert.deepEqual(await scanBacklog(fs), { openPlans: 3, unplannedSpecs: 1 })
 })

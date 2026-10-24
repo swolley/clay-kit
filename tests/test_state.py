@@ -808,3 +808,11 @@ def test_adhoc_same_second_same_text_gets_a_numeric_suffix_even_when_the_first_i
 def test_adhoc_tier_key_is_case_insensitive(tmp_path):
     out = json.loads(adhoc(tmp_path, "TIER=Careful Do the demo thing").stdout)
     assert out["tier"] == "careful" and out["title"] == "Do the demo thing"
+
+
+def test_preflight_audit_finds_a_plan_in_a_subfolder(repo):
+    rel = "docs/superpowers/plans/area/2026-01-02-other.md"
+    (repo / rel).parent.mkdir()
+    (repo / rel).write_text("---\nstatus: completed\n---\n# Other\n\n### Task 1: Create the thing\n\n**Files:**\n- Create: `app/never.py`\n\n- [x] **Step 1: Done**\n")
+    assert [f["path"] for f in state.preflight(repo, rel, "demo")["audit"]] == [rel]
+    assert state.preflight(repo, PLAN_FILE, "demo")["audit"] == []
