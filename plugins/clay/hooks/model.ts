@@ -435,7 +435,7 @@ export function verdictMark(verdict: string | undefined): string {
   return verdict === 'PASS' ? '' : verdict === 'CHANGES' ? '!' : '…'
 }
 
-// `clay:reviewer-ux` -> `ux`, `clay:builder` -> `builder`.
+// `clay:reviewer-code` -> `code`, `clay:builder` -> `builder`.
 export function roleOf(subagentType: string): string {
   return subagentType.slice(subagentType.lastIndexOf(':') + 1).replace(/^reviewer-/, '')
 }
@@ -465,8 +465,10 @@ export function workingNow(job: Job, observed: Record<string, { model: string }>
   const groups = new Map<string, string[]>()
   let mismatch = false
   for (const role of roles) {
-    const asked = job.agents[role] ?? (role === 'ui' || role === 'ux' ? job.agents.uiux : undefined)
-    const seen = (observed[role] ?? (role === 'ui' || role === 'ux' ? observed.uiux : undefined))?.model
+    // `ux` and `ui` share the interface reviewer; `uiux` is its role in jobs started before it existed.
+    const lens = role === 'ui' || role === 'ux'
+    const asked = job.agents[role] ?? (lens ? job.agents.interface ?? job.agents.uiux : undefined)
+    const seen = (observed[role] ?? (lens ? observed.interface ?? observed.uiux : undefined))?.model
     const differs = Boolean(asked && seen && !sameModel(asked.model, seen))
     mismatch = mismatch || differs
     const model = seen ? shortModel(seen) : asked?.model

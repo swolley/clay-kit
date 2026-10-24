@@ -13,7 +13,7 @@ and read checks with them (`verify`, `checks`). A reviewer and the approver also
 
 When an agent finishes, record its model, effort and usage at once, with all the agents that finished together in one call:
 `state.py after-agent <job-id> --agents '[{"role":"code","model":"sonnet","effort":"medium","tokens":9000,"ms":20000,"tools":5}]'` (roles `builder`, `code`,
-`security`, `ux`, `ui`, `uiux`, `approver`; what each field holds is the recording rule in `hosts.md`, "Model and effort"; `state.py agent <job-id> <role> --model <m> --effort <e> --tokens <n>
+`security`, `interface`, `approver`; what each field holds is the recording rule in `hosts.md`, "Model and effort"; `state.py agent <job-id> <role> --model <m> --effort <e> --tokens <n>
 --ms <n> --tools <n>` records one agent). The progress views show who has the job, on which
 model, and what it cost in time and tokens. The usage of your own session is not included: it is not reported to you.
 
@@ -42,10 +42,9 @@ model, and what it cost in time and tokens. The usage of your own session is not
    and the job goes straight to approve: the approver writes the code review itself, so tell it `Lite: yes` in its prompt. The round is set
    up as any other (`round-N/` with its `diff.patch`), with `code` as its only lens.
 4. **Review round N.** Spawn the reviewers in `rerun` in one message, as `hosts.md` says, each with the model and effort of
-   `state.py model --host <host> --agent reviewer-<lens>`, prompt `<paths> Review round N.`
-   plus `Port: 5101+10n` for ux and `5102+10n` for ui. When `rerun` holds both `ux` and `ui`, spawn one `reviewer-uiux` (`--agent reviewer-uiux`) for the two instead, with `Port: 5101+10n`:
-   it reads the change once and writes both `review-ux.md` and `review-ui.md`, and its usage is recorded under the role `uiux`. With only one of them, spawn that
-   lens's own reviewer. When they have finished, check the round in its own step: `state.py verdicts <job>`
+   `state.py model --host <host> --agent reviewer-<lens>`, prompt `<paths> Review round N.` The `ux` and `ui` lenses have one
+   reviewer: when `rerun` holds either or both, spawn one `reviewer-interface` (`--agent reviewer-interface`) with `Lenses:` and those
+   lenses and `Port: 5101+10n`; it writes `review-<lens>.md` for each, and its usage is recorded under the role `interface`. When they have finished, check the round in its own step: `state.py verdicts <job>`
    reads line one of every file of `rerun`, stores the verdicts in `job.json`, and exits 1 if a file or a verdict line
    is missing; `all_pass` counts the carried verdicts too. A reviewer's chat reply is a claim, not a verdict: only its file counts. A reviewer that wrote no file gets one more time, with a reminder to write it; if it still has no verdict line, stop and tell the user. The builder stays untouched until the whole round is in.
 5. **Decide.** `all_pass`: approve. An attempt has at most three rounds, counted from the start of the job or, after a rework, from the

@@ -53,7 +53,7 @@ session got there first, so try the next counter value. `job.json`:
   "reviews": { "code": "PASS", "security": "pending" } }
 ```
 
-`agents` records, per role (`builder`, `code`, `security`, `ux`, `ui`, `uiux`, `approver`), the `model` and `effort` you passed when
+`agents` records, per role (`builder`, `code`, `security`, `interface`, `approver`), the `model` and `effort` you passed when
 you spawned that agent, as the recording rule in `hosts.md` says; write it right after each spawn. The progress mod shows who has the job and on which model.
 `head` is the commit the job branch pointed at after the last build, and `build_round` the round that build was for; a
 resume uses them. `started` and `updated` are ISO 8601 UTC timestamps: set `started` when the job is created and refresh `updated`

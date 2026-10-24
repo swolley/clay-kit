@@ -261,6 +261,7 @@ test('parseJob reads the agents recorded by the orchestrator', () => {
 test('roleOf turns an agent type into the role the job uses', () => {
   assert.equal(roleOf('clay:builder'), 'builder')
   assert.equal(roleOf('clay:reviewer-ux'), 'ux')
+  assert.equal(roleOf('clay:reviewer-interface'), 'interface')
   assert.equal(roleOf('reviewer-security'), 'security')
   assert.equal(roleOf('clay:approver'), 'approver')
   assert.equal(roleOf('general-purpose'), 'general-purpose')
@@ -290,7 +291,16 @@ test('workingNow lists only the reviewers still pending, grouped by model', () =
   assert.equal(workingNow(j).text, 'ux, ui · sonnet medium')
 })
 
-test('workingNow finds the combined ui and ux reviewer for either pending lens', () => {
+test('workingNow finds the interface reviewer for either pending lens', () => {
+  const j = job({
+    stage: 'review', round: 1, reviewers: ['code', 'ux', 'ui'], reviews: { code: 'PASS', ux: 'pending', ui: 'pending' },
+    agents: { interface: { model: 'sonnet', effort: 'medium' } },
+  })
+  assert.equal(workingNow(j).text, 'ux, ui · sonnet medium')
+  assert.equal(workingNow(j, { interface: { model: 'claude-sonnet-5-5' } }).text, 'ux, ui · sonnet-5-5 medium')
+})
+
+test('workingNow still finds the combined reviewer of a job started before the interface reviewer', () => {
   const j = job({
     stage: 'review', round: 1, reviewers: ['code', 'ux', 'ui'], reviews: { code: 'PASS', ux: 'pending', ui: 'pending' },
     agents: { uiux: { model: 'sonnet', effort: 'medium' } },

@@ -312,7 +312,7 @@ def test_a_job_loop_spawns_only_the_lenses_to_rerun_and_hands_out_the_ready_made
 
 
 def test_agents_read_the_diff_file_and_the_recorded_checks():
-    for agent in ("reviewer-code", "reviewer-security", "reviewer-ui", "reviewer-ux", "approver"):
+    for agent in ("reviewer-code", "reviewer-security", "reviewer-interface", "approver"):
         assert "`Diff:`" in read(f"agents/{agent}.md"), agent
     for agent in ("builder", "reviewer-code", "approver"):
         assert "<State command>" in read(f"agents/{agent}.md"), agent
@@ -328,12 +328,15 @@ def test_the_composite_commands_replace_the_step_by_step_calls_in_the_loop():
     assert "state.py new-job" not in start and "factory_plan.py <plan> --repo <name> --root <repo>` prints it" in start
 
 
-def test_a_round_that_needs_both_interface_lenses_spawns_one_combined_reviewer():
+def test_interface_lenses_get_one_reviewer():
     loop = read("reference/job-loop.md")
-    assert "`reviewer-uiux`" in loop and "`review-ux.md` and `review-ui.md`" in loop and "role `uiux`" in loop
-    agent = read("agents/reviewer-uiux.md")
-    assert "review-ux.md" in agent and "review-ui.md" in agent and "reviewer-ux.md" in agent and "reviewer-ui.md" in agent
-    assert "reviewer-uiux" in read("tiers.md")
+    assert "`reviewer-interface`" in loop and "Lenses:" in loop and "role `interface`" in loop and "reviewer-uiux" not in loop
+    agent = read("agents/reviewer-interface.md")
+    assert "Lenses:" in agent and "review-<lens>.md" in agent and "\n## ux\n" in agent and "\n## ui\n" in agent
+    tiers = read("tiers.md")
+    assert "reviewer-interface" in tiers and "reviewer-uiux" not in tiers
+    for old in ("reviewer-ux", "reviewer-ui", "reviewer-uiux"):
+        assert not (PLUGIN / f"agents/{old}.md").exists(), old
 
 
 def test_tier_guidance_and_approver_rule():
