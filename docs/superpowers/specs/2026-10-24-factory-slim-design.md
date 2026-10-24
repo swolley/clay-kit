@@ -105,8 +105,8 @@ verdict, and it keeps both question lists under their lens.
   `Port: 5101+10n`; its usage is recorded under the role `interface`.
 - `models.py` and `tiers.md`: one entry, `reviewer-interface` (sonnet, medium), replaces the three. A `factory/models.json` that
   still names `reviewer-ux`, `reviewer-ui` or `reviewer-uiux` exits 2 naming the key and saying it is now `reviewer-interface`.
-- The progress mod (`hooks/model.ts`) shows `interface` for the `ux` and `ui` lenses, and still reads `uiux`, `ux` and `ui` in
-  the jobs of a run started before the change.
+- The progress mod (`hooks/model.ts`) keeps showing the pending lenses (`ux, ui`) and finds their model under the role
+  `interface`, and still under `uiux`, `ux` and `ui` in the jobs of a run started before the change.
 
 ## Testing
 
