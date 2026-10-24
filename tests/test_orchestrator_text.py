@@ -488,3 +488,26 @@ def test_completion_runs_the_final_review_first():
     for word in ("reviewer-final", "final-verdict", "--fix", "Scope: fix", "one task", "ad hoc"):
         assert word in t, word
     assert "-final.md" in read("reference/orchestrator.md")
+
+
+def test_lean_reference_names_its_commands():
+    t = read("reference/lean.md")
+    for word in ("lean-check", "promote", "begin-job", "--lean", "lean_reason", "long", "session's model", "inline"):
+        assert word in t, word
+
+
+def test_run_and_task_read_the_lean_part():
+    run, task = read("skills/factory-run/SKILL.md"), read("skills/factory-task/SKILL.md")
+    for t in (run, task):
+        hint = next(l for l in t.splitlines() if l.startswith("argument-hint:"))
+        assert "lean.md" in t and "lean" in hint
+    assert "full" in next(l for l in run.splitlines() if l.startswith("argument-hint:"))
+
+
+def test_completion_reviews_any_run_with_a_lean_job():
+    step = read("reference/completion.md").partition("1. **Final review.**")[2].partition("2. **Documentation pass.**")[0]
+    assert "lean" in step and "one task" in step and "ad hoc" in step
+
+
+def test_resume_sends_a_ready_lean_job_to_lean_check():
+    assert "lean-check" in read("reference/start.md")

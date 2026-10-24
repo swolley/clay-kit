@@ -1136,3 +1136,214 @@ def test_preflight_audit_finds_a_plan_in_a_subfolder(repo):
     (repo / rel).write_text("---\nstatus: completed\n---\n# Other\n\n### Task 1: Create the thing\n\n**Files:**\n- Create: `app/never.py`\n\n- [x] **Step 1: Done**\n")
     assert [f["path"] for f in state.preflight(repo, rel, "demo")["audit"]] == [rel]
     assert state.preflight(repo, PLAN_FILE, "demo")["audit"] == []
+
+
+def one_task(tier="light", files="`app/util.py`", accept="1. Works.", verify="`pytest -q`") -> str:
+    fields = [f"**Tier:** {tier}"]
+    fields += [f"**Files:** {files}"] if files else []
+    fields += [f"**Accept:** {accept}"] if accept else []
+    fields += [f"**Verify:** {verify}"] if verify else []
+    return "# P\n\n### Task 1: Do it\n\n" + "\n".join(fields) + "\n\n- [ ] **Step 1: Do**\n"
+
+
+def eligibility(tmp_path, **fields):
+    return state.lean_eligibility(state.parse_plan(one_task(**fields)).tasks[0], state._rules(tmp_path))
+
+
+def test_a_light_task_with_files_accept_and_verify_is_eligible(tmp_path):
+    assert eligibility(tmp_path) == (True, "")
+
+
+@pytest.mark.parametrize("fields, reason", [
+    ({"tier": "careful"}, "tier careful"),
+    ({"files": ""}, "no Files"),
+    ({"files": "the helpers"}, "no Files"),
+    ({"files": "`app/util.py`, `app/auth/session.py`"}, "Files route to security"),
+    ({"accept": ""}, "no Accept"),
+    ({"verify": ""}, "no Verify"),
+])
+def test_eligibility_reasons(tmp_path, fields, reason):
+    assert eligibility(tmp_path, **fields) == (False, reason)
+
+
+def test_preflight_marks_each_task_and_counts_the_eligible(repo):
+    out = state.preflight(repo, PLAN_FILE, "demo")
+    task1 = out["plan"]["tasks"][0]
+    assert (task1["lean"], task1["lean_reason"]) == (False, "no Verify") and out["lean_count"] == 0
+    (repo / PLAN_FILE).write_text(PLAN.replace("**Accept:** 1. Works.", "**Accept:** 1. Works.\n**Verify:** `pytest -q`"))
+    out = state.preflight(repo, PLAN_FILE, "demo")
+    assert out["plan"]["tasks"][0]["lean"] is True and out["lean_count"] == 1 and out["long"] is False
+    assert out["plan"]["tasks"][1]["lean_reason"] == "tier careful"
+
+
+def test_preflight_flags_a_long_lean_plan(repo):
+    body = one_task().split("### Task 1: Do it")[1]
+    text = "# P\n" + "".join(f"\n### Task {n}: Do {n}{body}" for n in range(1, 10))
+    (repo / PLAN_FILE).write_text(text)
+    out = state.preflight(repo, PLAN_FILE, "demo")
+    assert out["lean_count"] == 9 and out["long"] is True
+
+
+def lean_job(repo, verify="`true`", task=1):
+    (repo / PLAN_FILE).write_text(PLAN.replace("**Accept:** 1. Works.", f"**Accept:** 1. Works.\n**Verify:** {verify}"))
+    git(repo, "commit", "-q", "-am", "verify")
+    state.setup(repo, repo)
+    return state.begin_job(repo, PLAN_FILE, task, repo_name="demo", mode="current-branch", branch="main", worktree=str(repo), lean=True)
+
+
+def test_begin_job_lean_records_lean_and_the_verify_commands(repo):
+    j = lean_job(repo, "`pytest -q` and `ruff check`")
+    job = state.read_job(repo, j["id"])
+    assert job["lean"] is True and job["verify"] == ["pytest -q", "ruff check"] and job["stage"] == "build"
+
+
+def test_lean_check_lands_a_clean_code_change_with_a_passing_current_check(repo):
+    j = lean_job(repo)
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.run_check(repo, j["id"], "true")
+    assert state.lean_check(repo, j["id"]) == {"land": True}
+
+
+def test_lean_check_without_a_recorded_run_does_not_land(repo):
+    j = lean_job(repo)
+    (repo / "app/util.py").write_text("x = 2\n")
+    assert state.lean_check(repo, j["id"]) == {"land": False, "promote": "no recorded run: true"}
+
+
+def test_lean_check_on_a_stale_run_does_not_land(repo):
+    j = lean_job(repo)
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.run_check(repo, j["id"], "true")
+    (repo / "app/util.py").write_text("x = 3\n")
+    assert state.lean_check(repo, j["id"]) == {"land": False, "promote": "stale run: true"}
+
+
+def test_lean_check_on_a_failing_run_does_not_land(repo):
+    j = lean_job(repo, "`false`")
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.run_check(repo, j["id"], "false")
+    assert state.lean_check(repo, j["id"]) == {"land": False, "promote": "failing run: false"}
+
+
+def test_lean_check_promotes_after_two_failed_runs(repo):
+    flag = repo.parent / f"{repo.name}-ok"
+    cmd = f"test -f {flag}"
+    j = lean_job(repo, f"`{cmd}`")
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.run_check(repo, j["id"], cmd)
+    state.run_check(repo, j["id"], cmd)
+    flag.write_text("")
+    state.run_check(repo, j["id"], cmd)
+    assert state.lean_check(repo, j["id"])["promote"] == f"checks failed twice: {cmd}"
+
+
+def test_lean_check_promotes_a_change_that_routes_to_security(repo):
+    j = lean_job(repo)
+    (repo / "app/auth/session.py").write_text("N = 60\n")
+    state.run_check(repo, j["id"], "true")
+    assert state.lean_check(repo, j["id"]) == {"land": False, "promote": "routes to security"}
+
+
+def test_promote_clears_lean_and_route_then_reviews_it(repo):
+    j = lean_job(repo)
+    (repo / "app/auth/session.py").write_text("N = 60\n")
+    state.promote(repo, j["id"], "routes to security")
+    job = state.read_job(repo, j["id"])
+    assert job["lean"] is False and job["promoted"] == "routes to security"
+    out = state.route_job(repo, j["id"])
+    assert "security" in out["reviewers"] and out["lite"] is False
+
+
+def test_execution_record_shows_lean_and_promoted_jobs(repo):
+    a = lean_job(repo)
+    b = state.begin_job(repo, PLAN_FILE, 2, repo_name="demo", mode="current-branch", branch="main", worktree=str(repo), lean=True)
+    state.promote(repo, b["id"], "routes to security")
+    for j in (a, b):
+        state.land_job(repo, j["id"], "committed", head="abc")
+    record = state.execution_record(repo, STEM)
+    row1 = next(l for l in record.splitlines() if l.startswith("| 1 |")).split("|")
+    row2 = next(l for l in record.splitlines() if l.startswith("| 2 |")).split("|")
+    assert row1[5].strip() == "lean" and "lean" in row1[8]
+    assert row2[5].strip() != "lean" and "promoted: routes to security" in row2[8]
+
+
+def test_final_diff_reports_the_lean_jobs(repo):
+    j = lean_job(repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    commit(repo, "x = 2\n", "lean work")
+    state.land_job(repo, j["id"], "committed", head=head(repo))
+    assert state.final_diff(repo, STEM)["lean"] == 1
+
+
+def test_cli_lean_check_and_promote(repo, capsys):
+    j = lean_job(repo)
+    assert state.main(["lean-check", j["id"], "--root", str(repo)]) == 0
+    assert json.loads(capsys.readouterr().out)["land"] is False
+    assert state.main(["promote", j["id"], "--reason", "by hand", "--root", str(repo)]) == 0
+    assert state.read_job(repo, j["id"])["promoted"] == "by hand"
+
+
+def test_adhoc_takes_a_quoted_verify_command(tmp_path):
+    out = state.adhoc_plan(tmp_path, 'tier=light verify="pytest -q tests" Fix the slug')
+    text = Path(out["plan_file"]).read_text()
+    assert out["verify"] == "pytest -q tests" and out["title"] == "Fix the slug"
+    assert "**Verify:** `pytest -q tests`\n" in text and "**Accept:** 1. Fix the slug\n" in text
+
+
+def test_adhoc_takes_verify_before_or_after_tier(tmp_path):
+    out = state.adhoc_plan(tmp_path, "verify=`make test` tier=light Fix it")
+    assert (out["verify"], out["tier"], out["title"]) == ("make test", "light", "Fix it")
+
+
+def test_adhoc_takes_a_one_word_verify(tmp_path):
+    assert state.adhoc_plan(tmp_path, "verify=pytest Fix it")["verify"] == "pytest"
+
+
+def test_adhoc_without_verify_declares_none(tmp_path):
+    out = state.adhoc_plan(tmp_path, "Fix it")
+    assert out["verify"] == "" and "**Verify:**" not in Path(out["plan_file"]).read_text()
+
+
+def test_an_ad_hoc_task_with_verify_is_eligible_without_files(repo):
+    out = state.adhoc_plan(repo, "tier=light verify=true Fix the slug")
+    pre = state.preflight(repo, out["plan_file"], "demo")
+    assert pre["plan"]["tasks"][0]["lean"] is True and pre["lean_count"] == 1
+    plain = state.adhoc_plan(repo, "tier=light Fix the slug again")
+    assert state.preflight(repo, plain["plan_file"], "demo")["plan"]["tasks"][0]["lean_reason"] == "no Verify"
+
+
+@pytest.mark.parametrize("files", ["`app/util.py`, `package.json`", "`app/util.py`, `.env`", "`app/util.py:12-40`, `composer.lock`"])
+def test_a_sensitive_root_file_is_not_eligible(tmp_path, files):
+    assert eligibility(tmp_path, files=files) == (False, "Files route to security")
+
+
+def test_lean_check_refuses_a_job_that_is_not_lean_or_not_light_or_medium(repo):
+    j = lean_job(repo, task=2)
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.run_check(repo, j["id"], "true")
+    assert state.lean_check(repo, j["id"]) == {"land": False, "promote": "tier careful"}
+    state.promote(repo, j["id"], "by hand")
+    assert state.lean_check(repo, j["id"]) == {"land": False, "promote": "not a lean job"}
+
+
+def test_lean_check_does_not_land_an_empty_change(repo):
+    j = lean_job(repo)
+    state.run_check(repo, j["id"], "true")
+    assert state.lean_check(repo, j["id"]) == {"land": False, "promote": "no change"}
+
+
+def test_lean_check_in_isolated_mode_refuses_uncommitted_files(repo):
+    (repo / PLAN_FILE).write_text(PLAN.replace("**Accept:** 1. Works.", "**Accept:** 1. Works.\n**Verify:** `true`"))
+    git(repo, "commit", "-q", "-am", "verify")
+    state.setup(repo, repo)
+    base = head(repo)
+    git(repo, "checkout", "-q", "-b", "factory/demo/001")
+    j = state.begin_job(repo, PLAN_FILE, 1, repo_name="demo", mode="isolated", branch="factory/demo/001", worktree=str(repo), base=base, lean=True)
+    commit(repo, "from app.helper import y\n", "use helper")
+    (repo / "app/helper.py").write_text("y = 1\n")
+    state.run_check(repo, j["id"], "true")
+    assert state.lean_check(repo, j["id"]) == {"land": False, "promote": "uncommitted changes"}
+    git(repo, "add", "app/helper.py")
+    git(repo, "commit", "-q", "-m", "helper")
+    state.run_check(repo, j["id"], "true")
+    assert state.lean_check(repo, j["id"]) == {"land": True}

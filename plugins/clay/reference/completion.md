@@ -2,14 +2,16 @@
 
 Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is the path your skill states. Follow `<plugin root>/STYLE.md`. `<repo>` is the root of the target repository's own checkout.
 
-For an ad hoc plan (`factory/jobs/_runs/adhoc-*.md`, made by `state.py adhoc`) skip the final review, the documentation pass, `close-plan` and the plan
+For an ad hoc plan (`factory/jobs/_runs/adhoc-*.md`, made by `state.py adhoc`) skip the final review (unless its job was lean: see step 1), the documentation pass, `close-plan` and the plan
 commit, since the plan is local and there is nothing in the repo to close; release the lock and run `clean` as below, which also
 deletes the working plan.
 
 When every task is landed, each one is already ticked (Landing, `orchestrator.md`). Then:
 
 1. **Final review.** Each task was reviewed alone; this reads the run's whole branch once, for what only shows across tasks. Skip it
-   for a plan of one task, whose only job was already reviewed, and for an ad hoc plan. On a resume, `final` in the run state says
+   for a plan of one task, whose only job was already reviewed, and for an ad hoc plan, unless a job of the run was lean: then it
+   always runs, for one task and for an ad hoc plan too, since it is the only independent reading a lean job gets (`final-diff` prints
+   `lean`, the number of lean jobs). On a resume, `final` in the run state says
    how far it got: `review` recorded skips the first review, `fix_job` recorded goes on from that job, `recheck` recorded ends the
    step. `final-diff` asked again for a span it already wrote returns it unchanged (`reused: true`), so a resume never widens a review.
    - Run `state.py final-diff --root <repo> --plan <plan-stem>`. It writes `_runs/<plan-stem>-final.patch` and prints `patch` and
