@@ -1036,3 +1036,52 @@ def test_close_plan_without_a_final_review_writes_no_section(locked_repo):
     state.close_plan(locked_repo, PLAN_FILE)
     text = (locked_repo / PLAN_FILE).read_text()
     assert "### Execution record" in text and "### Final review" not in text and "| final |" not in text
+
+
+def test_rework_starts_a_new_attempt_from_the_current_round(repo):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    job = state.read_job(repo, j["id"])
+    job["round"], job["stage"] = 3, "needs-human"
+    state.write_job(repo, job)
+    assert state.rework(repo, j["id"]) == {"rework_from": 3}
+    job = state.read_job(repo, j["id"])
+    assert job["rework_from"] == 3 and job["stage"] == "build"
+    assert state.main(["rework", j["id"], "--root", str(repo)]) == 0
+
+
+def test_a_resumed_run_from_before_the_base_keeps_no_base(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    set_run(repo, base=None)
+    commit(repo, "x = 2\n", "work before the resume")
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    assert "base" not in run_state(repo) or run_state(repo)["base"] is None
+
+
+def test_final_diff_isolated_starts_where_the_integration_branch_left_main(repo):
+    state.setup(repo, repo)
+    git(repo, "checkout", "-q", "-b", "feature")
+    commit(repo, "x = 9\n", "feature work")
+    git(repo, "checkout", "-q", "main")
+    (repo / "app/auth/session.py").write_text("N = 45\n")
+    git(repo, "commit", "-q", "-am", "main moved on")
+    git(repo, "checkout", "-q", "feature")
+    state.write_run(repo, PLAN_FILE, "isolated")
+    git(repo, "branch", "factory/2026-01-01-demo", "main")
+    git(repo, "checkout", "-q", "factory/2026-01-01-demo")
+    (repo / "app/auth/session.py").write_text("N = 50\n")
+    git(repo, "commit", "-q", "-am", "run work")
+    git(repo, "checkout", "-q", "feature")
+    out = state.final_diff(repo, STEM)
+    text = Path(out["patch"]).read_text()
+    assert out["ok"] is True and "run work" in text and "main moved on" not in text and "feature work" not in text
+
+
+def test_final_diff_fix_with_no_new_commit_is_not_ok(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    commit(repo, "x = 2\n", "alpha change")
+    state.final_diff(repo, STEM)
+    out = state.final_diff(repo, STEM, fix=True)
+    assert out["ok"] is False and "no commit" in out["reason"]

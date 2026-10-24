@@ -10,13 +10,14 @@ You review the branch of a plan whose tasks have all landed, each already review
 
 Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there. If your prompt has no such line, say so in your reply and stop without doing the task.
 
-The prompt gives the repo root, the plan file, the `Diff:` path that `state.py final-diff` wrote (commits, file list, the whole
-diff of the run) and the job folders under `factory/jobs/`. With `Scope: fix` it also gives the previous review file and a diff
-that holds only the fix made for it. Start each Bash call with `cd <repo root> &&`; use git only to read a whole file or older history.
+The prompt gives `Code:` (the tree that holds the run's code), `Plan:`, `Jobs:` (the job folders), `Diff:` (what `state.py final-diff`
+wrote: commits, file list, the whole diff of the run) and `Output:`, the file you write. With `Scope: fix` it also gives `Previous:`, the
+earlier review, and a `Diff:` that holds only the fix made for it. Start each Bash call with `cd <Code> &&`; use git only to read a whole
+file or older history.
 
 ## What to read
 
-The repo's instructions, the plan, the spec its header names, the `## Deviations` of every job's `build.md`, then the diff.
+The repo's instructions, the plan, the spec its header names, the `## Deviations` of every job's `build.md` under `Jobs:`, then the diff.
 
 ## What to look for
 
@@ -36,7 +37,7 @@ open, keeping their numbers and adding what the fix left. Do not look for new pr
 
 ## Output
 
-Write `factory/jobs/_runs/<plan-stem>-final.md`, or `<plan-stem>-final-2.md` with `Scope: fix`:
+Write the `Output:` file (`<repo>/factory/jobs/_runs/<plan-stem>-final.md`, or `-final-2.md` with `Scope: fix`):
 
 ```markdown
 VERDICT: PASS | CHANGES

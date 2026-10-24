@@ -14,14 +14,17 @@ When every task is landed, each one is already ticked (Landing, `orchestrator.md
      `risky`. When it is not ok (a run started before this step existed, or the integration branch is gone), say so in one line with
      its `reason` and go on with step 2.
    - Spawn `reviewer-final` as `hosts.md` says, with the model and effort of `state.py model --host <host> --agent reviewer-final`, adding
-     `--risky` when `final-diff` printed `risky: true`, and the prompt `Plugin root: <plugin root>`, the repo root, the plan file,
-     `Diff: <patch>`. When it has finished, run `state.py final-verdict --root <repo> --plan <plan-stem> --agent '<usage JSON>'` in its own
+     `--risky` when `final-diff` printed `risky: true`, and the prompt `Plugin root: <plugin root>`, then `Code: <tree>` (the integration
+     worktree in isolated mode, since the repo's own checkout has none of the run's code; `<repo>` in current-branch mode), `Plan: <plan>`,
+     `Jobs: <repo>/factory/jobs`, `Diff: <patch>` and `Output: <repo>/factory/jobs/_runs/<plan-stem>-final.md`, all absolute paths. When it has finished, run `state.py final-verdict --root <repo> --plan <plan-stem> --agent '<usage JSON>'` in its own
      step (the usage as in the Job loop's recording rule). Not ok means the file or its verdict line is missing: the agent gets one more
      try with a reminder to write it; if it still has none, tell the user and go on with step 2.
    - `PASS`: go on with step 2. `CHANGES`: run one ad hoc task through the Job loop, `state.py adhoc --text "tier=medium Fix the final
-     review findings in factory/jobs/_runs/<plan-stem>-final.md"`, as the documentation pass does. When it lands, run `final-diff --fix`,
-     spawn `reviewer-final` again with `Scope: fix`, the previous file `_runs/<plan-stem>-final.md` and the new `Diff:`, then
-     `final-verdict --fix --fix-job <job-id>`. The findings the recheck still lists are not fixed again: tell the user, one line per
+     review findings in <repo>/factory/jobs/_runs/<plan-stem>-final.md"`, as the documentation pass does (see "Ad hoc tasks inside
+     Completion" below). When it lands, run `final-diff --fix`, spawn `reviewer-final` again with `Scope: fix`, `Previous:
+     <repo>/factory/jobs/_runs/<plan-stem>-final.md`, the new `Diff:` and `Output: <repo>/factory/jobs/_runs/<plan-stem>-final-2.md`, then
+     `final-verdict --fix --fix-job <job-id>`. When `final-diff --fix` is not ok because nothing landed, record no recheck and tell the
+     user the findings are still open. The findings the recheck still lists are not fixed again: tell the user, one line per
      finding, and go on. When the fix job goes `needs-human` instead, leave the recheck out: `close-plan` then records the first
      review's findings as open.
 2. **Documentation pass.** When two or more tasks named the same document under `Docs`, or a job's `## Deviations` contradicts what a
@@ -36,6 +39,11 @@ When every task is landed, each one is already ticked (Landing, `orchestrator.md
    still open (a skipped task, a section outside the tasks): say which, and leave the plan open.
 4. **Check.** Run `python3 <plugin root>/scripts/plan_status.py --root <repo> --all --plan <plan-stem>`. When it reports documentation
    missing for the plan, say so in one line.
+
+**Ad hoc tasks inside Completion.** The documentation pass and the final review's fix run inside this run, not as runs of their
+own: the run's mode, branch and lock stay as they are, and the ad hoc plan gets no `run`, `lock` or Completion of its own. In isolated
+mode the job's branch and worktree are cut from the plan's integration branch and land on it, as the plan's tasks do; in current-branch
+mode the job is committed on the current branch. Once it has landed, `state.py clean --root <repo> --plan <its plan_stem>` removes its job folder and working plan.
 
 The plan is never deleted. It stays as the dated record of what was decided and of what was deliberately not built, and it keeps the
 run's history, since the job folders are local; the documentation it names describes the present. A plan is finished when its

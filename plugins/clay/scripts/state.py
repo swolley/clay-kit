@@ -21,6 +21,7 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
   state.py tick-plan --plan-file P [--task N] --root DIR
   state.py close-plan --plan-file P --root DIR
   state.py escalate JOB --host H --root DIR
+  state.py rework JOB --root DIR
   state.py final-diff --plan STEM [--fix] --root DIR
   state.py final-verdict --plan STEM [--fix] [--fix-job ID] --agent JSON --root DIR
 """
@@ -221,6 +222,15 @@ def record_agent(root, job_id: str, role: str, model: str = "", effort: str = ""
 def record_agents(root, job_id: str, agents: list[dict]) -> dict:
     """The usage of several agents that finished together, each as record_agent takes it."""
     return {a["role"]: record_agent(root, job_id, a["role"], a.get("model", ""), a.get("effort", ""), int(a.get("tokens", 0)), int(a.get("ms", 0)), int(a.get("tools", 0))) for a in agents}
+
+
+def rework(root, job_id: str) -> dict:
+    """A person sent the job back with a note: a new attempt starts, and the rounds of step 5 count from here."""
+    job = read_job(root, job_id)
+    job["rework_from"] = job["round"]
+    write_job(root, job)
+    set_stage(root, job_id, "build")
+    return {"rework_from": job["round"]}
 
 
 ESCALATION = {"light": "medium", "medium": "careful", "careful": "heavy"}
@@ -448,10 +458,12 @@ def write_run(root, plan_file: str, mode: str, pace: str = "step") -> dict:
     path = Path(plan_file) if Path(plan_file).is_absolute() else root / plan_file
     plan = parse_plan(path.read_text())
     rp = run_path(root, path.stem)
-    run = json.loads(rp.read_text()) if rp.exists() else {}
+    existed = rp.exists()
+    run = json.loads(rp.read_text()) if existed else {}
     run.update(
         plan=path.stem, path=plan_file, mode=mode, pace=pace, integration=run.get("integration"), total=len(plan.tasks),
-        base=run.get("base") or git(root, "rev-parse", "HEAD").strip() or None,
+        # Only a new run records where it starts: a run resumed from before `base` existed would get a later commit.
+        base=run.get("base") if existed else git(root, "rev-parse", "HEAD").strip() or None,
         done=landed_count(root, path.stem),
         tasks=[{"n": t.number, "title": t.title, "tier": t.tier, "after": t.depends} for t in plan.tasks],
     )
@@ -468,6 +480,19 @@ def _section(text: str, title: str) -> str:
     return re.split(r"^## ", text.partition(f"## {title}")[2], maxsplit=1, flags=re.M)[0]
 
 
+def _commit(root, ref: str) -> str:
+    return git(root, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}", ok=(0, 1)).strip()
+
+
+def _main_branch(root) -> str:
+    """The repo's main branch, which an integration branch is created from: the remote's default, else `main` or `master`."""
+    remote = git(root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD", ok=(0, 1)).strip()
+    for ref in (remote.removeprefix("origin/"), remote, "main", "master"):
+        if ref and _commit(root, ref):
+            return ref
+    return ""
+
+
 def final_diff(root, plan_stem: str, fix: bool = False) -> dict:
     """The change of the whole run as the final reviewer reads it, in one file. Isolated: from where the integration branch
     left the repo to its tip; current branch: from the commit the run started on to HEAD. With `fix`, from the head the first
@@ -481,11 +506,13 @@ def final_diff(root, plan_stem: str, fix: bool = False) -> dict:
         return {"ok": False, "reason": "the run state has no base: the run started before the final review existed"}
     final = run.get("final", {})
     if run.get("mode") == "isolated":
-        branch = run.get("integration") or ""
-        tip = git(root, "rev-parse", "--verify", "--quiet", f"{branch}^{{commit}}", ok=(0, 1)).strip() if branch else ""
+        branch = run.get("integration") or f"factory/{plan_stem}"
+        tip = _commit(root, branch)
         if not tip:
-            return {"ok": False, "reason": f"integration branch {branch or '(none recorded)'} not found"}
-        start = git(root, "merge-base", tip, run["base"]).strip()
+            return {"ok": False, "reason": f"integration branch {branch} not found"}
+        start = git(root, "merge-base", tip, _main_branch(root) or run["base"]).strip()
+        if not start:
+            return {"ok": False, "reason": f"integration branch {branch} shares no history with the main branch"}
     else:
         tip, start = git(root, "rev-parse", "HEAD").strip(), run["base"]
     if fix:
@@ -494,6 +521,8 @@ def final_diff(root, plan_stem: str, fix: bool = False) -> dict:
         start = final["head"]
     span = f"{start}..{tip}"
     commits = git(root, "log", "--oneline", span).splitlines()
+    if fix and not commits:
+        return {"ok": False, "reason": "no commit since the first final review: the fix has not landed on the run's branch"}
     numstat = git(root, "diff", "--numstat", span)
     lines = [f"# Plan {plan_stem}, final review" + (" of the fix" if fix else ""), f"# Base {start}, head {tip}, mode {run.get('mode')}", "# Commits:"]
     lines += [f"#   {c}" for c in commits]
@@ -884,10 +913,10 @@ def main(argv: list[str]) -> int:
     cl = sub.add_parser("clean")
     cl.add_argument("--root", default=".")
     cl.add_argument("--plan", required=True)
-    for name in ("setup", "run", "preflight", "new-job", "begin-job", "stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks"):
+    for name in ("setup", "run", "preflight", "new-job", "begin-job", "stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks", "rework"):
         sp = sub.add_parser(name)
         sp.add_argument("--root", default=".")
-        if name in ("stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks"):
+        if name in ("stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks", "rework"):
             sp.add_argument("job")
         if name == "after-agent":
             sp.add_argument("--agents", required=True, help='JSON list of {"role","model","effort","tokens","ms","tools"}')
@@ -987,6 +1016,8 @@ def main(argv: list[str]) -> int:
         out = new_job(a.root, a.plan_file, a.task, a.repo_name, a.mode, a.branch, a.worktree, a.base)
     elif a.cmd == "begin-job":
         out = begin_job(a.root, a.plan_file, a.task, a.repo_name, a.mode, a.branch, a.worktree, a.base)
+    elif a.cmd == "rework":
+        out = rework(a.root, a.job)
     elif a.cmd == "after-agent":
         out = record_agents(a.root, a.job, json.loads(a.agents))
     elif a.cmd == "stage":
