@@ -839,3 +839,59 @@ def test_adhoc_same_second_same_text_gets_a_numeric_suffix_even_when_the_first_i
 def test_adhoc_tier_key_is_case_insensitive(tmp_path):
     out = json.loads(adhoc(tmp_path, "TIER=Careful Do the demo thing").stdout)
     assert out["tier"] == "careful" and out["title"] == "Do the demo thing"
+
+
+def test_escalate_moves_the_tier_one_step_and_prints_its_model(repo):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    out = state.escalate(repo, j["id"], "claude")
+    assert out == {"escalated": True, "tier": "medium", "escalated_from": "light", "model": "sonnet", "effort": "medium"}
+    job = state.read_job(repo, j["id"])
+    assert job["tier"] == "medium" and job["escalated_from"] == "light"
+
+
+def test_escalate_twice_changes_nothing_the_second_time(repo):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    first = state.escalate(repo, j["id"], "claude")
+    before = state.read_job(repo, j["id"])
+    assert state.escalate(repo, j["id"], "claude") == first
+    assert state.read_job(repo, j["id"]) == before
+
+
+@pytest.mark.parametrize("tier", ["heavy", "fable"])
+def test_heavy_and_fable_are_not_escalated(repo, tier):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    job = state.read_job(repo, j["id"])
+    job["tier"] = tier
+    state.write_job(repo, job)
+    assert state.escalate(repo, j["id"], "claude") == {"escalated": False, "tier": tier}
+    assert "escalated_from" not in state.read_job(repo, j["id"])
+
+
+def test_an_escalated_job_leaves_the_short_path_at_careful(repo):
+    (repo / PLAN_FILE).write_text(PLAN.replace("**Tier:** light", "**Tier:** medium"))
+    git(repo, "commit", "-q", "-am", "medium")
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    state.escalate(repo, j["id"], "claude")
+    (repo / "app/util.py").write_text("x = 2\n")
+    assert state.route_job(repo, j["id"])["lite"] is False
+
+
+def test_execution_record_shows_the_escalated_tier(locked_repo):
+    j = new(locked_repo, 1)
+    state.escalate(locked_repo, j["id"], "claude")
+    state.land_job(locked_repo, j["id"], "committed", head="abc")
+    state.land_job(locked_repo, new(locked_repo, 2)["id"], "committed", head="abc")
+    state.close_plan(locked_repo, PLAN_FILE)
+    row1 = next(l for l in (locked_repo / PLAN_FILE).read_text().splitlines() if l.startswith("| 1 |"))
+    assert row1.split("|")[2].strip() == "light→medium"
+
+
+def test_cli_escalate(repo, capsys):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    assert state.main(["escalate", j["id"], "--host", "claude", "--root", str(repo)]) == 0
+    assert json.loads(capsys.readouterr().out)["tier"] == "medium"

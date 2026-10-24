@@ -20,6 +20,7 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
   state.py land JOB --stage committed|merged --head SHA --root DIR
   state.py tick-plan --plan-file P [--task N] --root DIR
   state.py close-plan --plan-file P --root DIR
+  state.py escalate JOB --host H --root DIR
 """
 import argparse
 import hashlib
@@ -218,6 +219,23 @@ def record_agent(root, job_id: str, role: str, model: str = "", effort: str = ""
 def record_agents(root, job_id: str, agents: list[dict]) -> dict:
     """The usage of several agents that finished together, each as record_agent takes it."""
     return {a["role"]: record_agent(root, job_id, a["role"], a.get("model", ""), a.get("effort", ""), int(a.get("tokens", 0)), int(a.get("ms", 0)), int(a.get("tools", 0))) for a in agents}
+
+
+ESCALATION = {"light": "medium", "medium": "careful", "careful": "heavy"}
+
+
+def escalate(root, job_id: str, host: str) -> dict:
+    """Move the job one tier up for its last round, so a fresh, stronger builder tries before a person is asked. `heavy` and
+    `fable` stay as they are (`fable` needs the user's confirmation). A job already escalated is left as it is, so a resumed
+    run spawns the same builder."""
+    job = read_job(root, job_id)
+    if "escalated_from" not in job:
+        if job["tier"] not in ESCALATION:
+            return {"escalated": False, "tier": job["tier"]}
+        job["escalated_from"], job["tier"] = job["tier"], ESCALATION[job["tier"]]
+        write_job(root, job)
+    chosen = resolve_model(root, host, tier=job["tier"])
+    return {"escalated": True, "tier": job["tier"], "escalated_from": job["escalated_from"], "model": chosen["model"], "effort": chosen["effort"]}
 
 
 def changed(job: dict, root) -> tuple[list[str], int]:
@@ -642,7 +660,8 @@ def execution_record(root, plan_stem: str) -> str:
             notes.append(f"{n} answered question(s)")
         findings = _findings(folder, bool(j.get("reviews")))
         models = "/".join(sorted({a.get("model", "") for a in agents.values() if a.get("model")}))
-        rows.append(f"| {j.get('task')} | {j.get('tier', '')} | {models} | {j.get('round', 1)} | {verdicts} | {decision} | {findings} | {'; '.join(notes)} | {t} | {m // 1000}s |")
+        tier = f"{j['escalated_from']}→{j.get('tier', '')}" if j.get("escalated_from") else j.get("tier", "")
+        rows.append(f"| {j.get('task')} | {tier} | {models} | {j.get('round', 1)} | {verdicts} | {decision} | {findings} | {'; '.join(notes)} | {t} | {m // 1000}s |")
     head = "| Task | Tier | Models | Rounds | Reviews | Decision | Findings | Notes | Tokens | Agent time |\n|---|---|---|---|---|---|---|---|---|---|\n"
     return f"{RECORD_TITLE}\n\n{head}" + "\n".join(rows) + f"\n\nTotal: {tokens} tokens, {ms // 1000}s of agent time.\n"
 
@@ -737,6 +756,10 @@ def main(argv: list[str]) -> int:
     md.add_argument("--tier")
     md.add_argument("--agent")
     md.add_argument("--risky", action="store_true")
+    es = sub.add_parser("escalate")
+    es.add_argument("job")
+    es.add_argument("--root", default=".")
+    es.add_argument("--host", required=True)
     cl = sub.add_parser("clean")
     cl.add_argument("--root", default=".")
     cl.add_argument("--plan", required=True)
@@ -795,6 +818,13 @@ def main(argv: list[str]) -> int:
     if a.cmd == "model":
         try:
             print(json.dumps(resolve_model(a.root, a.host, a.tier, a.agent, a.risky), indent=2))
+        except ModelsError as e:
+            print(json.dumps({"error": str(e)}))
+            return 2
+        return 0
+    if a.cmd == "escalate":
+        try:
+            print(json.dumps(escalate(a.root, a.job, a.host), indent=2))
         except ModelsError as e:
             print(json.dumps({"error": str(e)}))
             return 2

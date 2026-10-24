@@ -56,6 +56,13 @@ otherwise. A job is risky when the routing selected the `security` reviewer (a s
 `reviewer-uiux` is `reviewer-ux` and `reviewer-ui` in one run. The run command spawns it instead of the two when a round needs both lenses, so the change is
 read once; it still writes one verdict file per lens.
 
+## Escalation
+
+A job whose second round still asks for changes gets one more round, built by a fresh builder one tier up: `light` becomes `medium`,
+`medium` becomes `careful`, `careful` becomes `heavy` (`state.py escalate`). `heavy` and `fable` are not escalated, since `fable`
+needs the user's confirmation; their third round resumes the builder. Risk follows the current tier, so a job escalated to `heavy`
+gets the approver on `opus`, and one escalated to `careful` leaves the short path. The execution record shows the move as `light→medium`.
+
 ## Short path
 
 A job of tier `light` or `medium` that is not risky and whose routing selects only the `code` reviewer takes the short path,

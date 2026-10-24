@@ -474,3 +474,9 @@ def test_short_path_has_no_size_limit_and_the_approver_writes_the_code_review():
     assert "30 lines" not in reference() and "30 lines" not in read("tiers.md")
     lite = read("agents/approver.md").partition("## Lite jobs")[2].partition("\n## ")[0]
     assert "review-code.md" in lite and "CHANGES" in lite
+
+
+def test_round_three_escalates_to_a_fresh_builder():
+    t = reference()
+    assert "state.py escalate" in t and "fresh builder" in t
+    assert "escalat" in read("tiers.md")

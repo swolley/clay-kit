@@ -48,11 +48,16 @@ model, and what it cost in time and tokens. The usage of your own session is not
    lens's own reviewer. When they have finished, check the round in its own step: `state.py verdicts <job>`
    reads line one of every file of `rerun`, stores the verdicts in `job.json`, and exits 1 if a file or a verdict line
    is missing; `all_pass` counts the carried verdicts too. A reviewer's chat reply is a claim, not a verdict: only its file counts. A reviewer that wrote no file gets one more time, with a reminder to write it; if it still has no verdict line, stop and tell the user. The builder stays untouched until the whole round is in.
-5. **Decide.** `all_pass`: approve. Any CHANGES with resumes left (max 2 after round 1): `state.py stage <job> build`,
+5. **Decide.** `all_pass`: approve. A job has at most three rounds. Any CHANGES after round 1: `state.py stage <job> build`,
    resume the builder as `hosts.md` says, saying the reviews are in `round-N/` and to
    answer every CHANGES; then check the first line of build.md as in step 2, run step 3 again (the diff may have grown) and start the
-   next round. When the resumes are used up, you write `decision.md` yourself: first line `ESCALATE`, then a sentence naming
-   the lenses that still ask for changes, and go to step 8.
+   next round. Any CHANGES after round 2: `state.py stage <job> build`, then `state.py escalate <job> --host <host>`. With
+   `escalated: true` it has moved the task one tier up: spawn a fresh builder (not a resume) with the model and effort it printed and
+   the prompt `<paths> Build round 3. Escalated from <tier>: every round's reviews are in round-*/. Read task.md, build.md and them,
+   then continue from the branch as it stands.`, and record it under `builder`. In an `inline` run this builder is a subagent too, since
+   the session cannot change its own model. With `escalated: false` (the task was `heavy` or `fable`) resume the builder as after round 1.
+   Any CHANGES after round 3: you write `decision.md` yourself: first line `ESCALATE`, then a sentence naming the lenses that still ask
+   for changes, and go to step 8.
 6. **Approve.** Only after the check in step 4 passed (or in the short path), and never in the same message as that check (a failed
    check must not still start the approver), `state.py stage <job> approve` and spawn the `approver` as `hosts.md` says with `<paths> Final round: N.`, its model and effort
    from `state.py model --host <host> --agent approver`, adding `--risky` when the job is risky (the rule is in `tiers.md`). In the short path, when
