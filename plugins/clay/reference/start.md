@@ -63,7 +63,8 @@ Resuming: keep the worktree and branch, never recreate. If they are missing, or 
 longer points at the `head` in `job.json`, set `needs-human` and say why. `build` with a build.md for the recorded `build_round` and `STATUS: READY`: go straight to Route (step 3).
 `build` without build.md: start a fresh
 builder with the task and the commits already on the branch. Round partly done: keep finished
-review files, rerun only the missing reviewers. `approve` without decision.md: rerun the approver.
+review files, rerun only the missing reviewers. `approve` without decision.md: rerun the approver. `approve` on a short-path job (`lite` in `job.json`): run `state.py verdicts` first, since a
+decision.md may be left from an earlier round; `CHANGES` or a missing review goes back to step 5 or reruns the approver, and only `all_pass` lets decision.md count.
 A named builder does not survive its session; a resumed builder is a new agent that reads build.md,
 the rounds and the branch log. In current-branch mode show leftover changes and ask whether to
 continue from them, stash them or stop. Before continuing, say in one line per job what you found.
@@ -74,5 +75,5 @@ continue from them, stash them or stop. Before continuing, say in one line per j
 `factory/jobs/_runs/adhoc-<YYYYMMDD-HHMMSS>-<slug>.md` (title from the first words of the text, tier `medium` unless a leading `tier=<name>` says
 `light`, `medium`, `careful`, `heavy` or `fable`, one `Accept` criterion taken from the text) and prints `plan_file`, `plan_stem`, `title` and `tier`; an
 unknown tier or an empty text exits 2. The file is local and git ignores it, so it never reaches the repo's plans folder. Use `plan_file` as the plan path
-for `run`, `lock`, `new-job` and `begin-job`, and run it through the Job loop and Completion. Landing skips the tick and Completion skips `close-plan` and the plan commit (there is nothing in the
+for `run`, `lock`, `new-job` and `begin-job`, and run it through the Job loop and Completion. Landing skips the tick and Completion skips the final review, `close-plan` and the plan commit (there is nothing in the
 repo to tick), then releases the lock and runs `clean`, which also deletes the working plan.

@@ -113,29 +113,49 @@ def test_route_uses_the_changed_files_and_sets_up_the_round(repo):
     assert (repo / "factory/jobs" / j["id"] / "round-1").is_dir()
 
 
-def test_light_small_change_takes_the_short_path_without_reviewers(repo):
-    state.setup(repo, repo)
-    j = new(repo, 1)
-    (repo / "app/util.py").write_text("x = 2\n")
-    out = state.route_job(repo, j["id"])
-    assert out["lite"] is True and out["reviewers"] == []
-    job = state.read_job(repo, j["id"])
-    assert job["stage"] == "approve" and job["lite"] is True and job["reviewers"] == []
-
-
-def test_light_but_large_change_keeps_its_reviewers(repo):
+def test_a_light_change_of_any_size_takes_the_short_path(repo):
     state.setup(repo, repo)
     j = new(repo, 1)
     (repo / "app/util.py").write_text("\n".join(f"x{i} = {i}" for i in range(80)) + "\n")
     out = state.route_job(repo, j["id"])
-    assert out["lite"] is False and out["reviewers"] == ["code"]
+    assert out["lite"] is True and out["reviewers"] == ["code"] and out["rerun"] == []
+    job = state.read_job(repo, j["id"])
+    assert job["stage"] == "approve" and job["lite"] is True and job["round"] == 1 and job["reviews"] == {"code": "pending"}
 
 
-def test_a_non_light_task_never_takes_the_short_path(repo):
+def test_a_medium_change_takes_the_short_path(repo):
+    (repo / PLAN_FILE).write_text(PLAN.replace("**Tier:** light", "**Tier:** medium"))
+    git(repo, "commit", "-q", "-am", "medium")
     state.setup(repo, repo)
-    j = new(repo, 2)
+    j = new(repo, 1)
     (repo / "app/util.py").write_text("x = 2\n")
-    assert state.route_job(repo, j["id"])["lite"] is False
+    assert state.route_job(repo, j["id"])["lite"] is True
+
+
+def test_careful_and_risky_jobs_keep_their_reviewers(repo):
+    state.setup(repo, repo)
+    careful = new(repo, 2)
+    (repo / "app/util.py").write_text("x = 2\n")
+    assert state.route_job(repo, careful["id"])["lite"] is False
+    git(repo, "checkout", "--", "app/util.py")
+    light = new(repo, 1)
+    (repo / "app/auth/session.py").write_text("N = 60\n")
+    out = state.route_job(repo, light["id"])
+    assert out["lite"] is False and "security" in out["reviewers"]
+
+
+def test_verdicts_read_the_approvers_code_review_on_the_short_path(repo):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.route_job(repo, j["id"])
+    folder = repo / "factory/jobs" / j["id"]
+    (folder / "decision.md").write_text("APPROVE\n")
+    out = state.check_verdicts(repo, j["id"])
+    assert out["ok"] is False and out["missing"] == ["code"]
+    (folder / "round-1/review-code.md").write_text("VERDICT: CHANGES\n\n## Issues\n1. x\n")
+    out = state.check_verdicts(repo, j["id"])
+    assert out["all_pass"] is False and state.read_job(repo, j["id"])["reviews"] == {"code": "CHANGES"}
 
 
 def test_verdict_check_fails_loudly_when_a_file_is_missing(repo):
@@ -547,13 +567,24 @@ def test_route_writes_the_diff_with_commits_files_and_what_changed_since_the_las
     assert "# Changed since the previous round: app/util.py" in text
 
 
-def test_the_short_path_gets_its_diff_in_the_job_folder(repo):
+def test_the_short_path_gets_its_diff_in_its_round_folder(repo):
     state.setup(repo, repo)
     j = new(repo, 1)
     (repo / "app/util.py").write_text("x = 2\n")
     out = state.route_job(repo, j["id"])
-    assert out["lite"] is True and out["diff"] == str(repo / "factory/jobs" / j["id"] / "diff.patch")
+    assert out["lite"] is True and out["diff"] == str(repo / "factory/jobs" / j["id"] / "round-1" / "diff.patch")
     assert "+x = 2" in Path(out["diff"]).read_text()
+
+
+def test_execution_record_notes_the_short_path(locked_repo):
+    j = new(locked_repo, 1)
+    (locked_repo / "app/util.py").write_text("x = 2\n")
+    state.route_job(locked_repo, j["id"])
+    state.land_job(locked_repo, j["id"], "committed", head="abc")
+    state.land_job(locked_repo, new(locked_repo, 2)["id"], "committed", head="abc")
+    state.close_plan(locked_repo, PLAN_FILE)
+    row1 = next(l for l in (locked_repo / PLAN_FILE).read_text().splitlines() if l.startswith("| 1 |"))
+    assert "short path" in row1.split("|")[-4]
 
 
 def test_isolated_job_diff_lists_the_commits_and_follows_the_branch(repo):
@@ -808,6 +839,295 @@ def test_adhoc_same_second_same_text_gets_a_numeric_suffix_even_when_the_first_i
 def test_adhoc_tier_key_is_case_insensitive(tmp_path):
     out = json.loads(adhoc(tmp_path, "TIER=Careful Do the demo thing").stdout)
     assert out["tier"] == "careful" and out["title"] == "Do the demo thing"
+
+
+def test_escalate_moves_the_tier_one_step_and_prints_its_model(repo):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    out = state.escalate(repo, j["id"], "claude")
+    assert out == {"escalated": True, "tier": "medium", "escalated_from": "light", "model": "sonnet", "effort": "medium"}
+    job = state.read_job(repo, j["id"])
+    assert job["tier"] == "medium" and job["escalated_from"] == "light"
+
+
+def test_escalate_twice_changes_nothing_the_second_time(repo):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    first = state.escalate(repo, j["id"], "claude")
+    before = state.read_job(repo, j["id"])
+    assert state.escalate(repo, j["id"], "claude") == first
+    assert state.read_job(repo, j["id"]) == before
+
+
+@pytest.mark.parametrize("tier", ["heavy", "fable"])
+def test_heavy_and_fable_are_not_escalated(repo, tier):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    job = state.read_job(repo, j["id"])
+    job["tier"] = tier
+    state.write_job(repo, job)
+    assert state.escalate(repo, j["id"], "claude") == {"escalated": False, "tier": tier}
+    assert "escalated_from" not in state.read_job(repo, j["id"])
+
+
+def test_an_escalated_job_leaves_the_short_path_at_careful(repo):
+    (repo / PLAN_FILE).write_text(PLAN.replace("**Tier:** light", "**Tier:** medium"))
+    git(repo, "commit", "-q", "-am", "medium")
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    state.escalate(repo, j["id"], "claude")
+    (repo / "app/util.py").write_text("x = 2\n")
+    assert state.route_job(repo, j["id"])["lite"] is False
+
+
+def test_execution_record_shows_the_escalated_tier(locked_repo):
+    j = new(locked_repo, 1)
+    state.escalate(locked_repo, j["id"], "claude")
+    state.land_job(locked_repo, j["id"], "committed", head="abc")
+    state.land_job(locked_repo, new(locked_repo, 2)["id"], "committed", head="abc")
+    state.close_plan(locked_repo, PLAN_FILE)
+    row1 = next(l for l in (locked_repo / PLAN_FILE).read_text().splitlines() if l.startswith("| 1 |"))
+    assert row1.split("|")[2].strip() == "light→medium"
+
+
+def test_cli_escalate(repo, capsys):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    assert state.main(["escalate", j["id"], "--host", "claude", "--root", str(repo)]) == 0
+    assert json.loads(capsys.readouterr().out)["tier"] == "medium"
+
+
+STEM = "2026-01-01-demo"
+
+
+def head(repo):
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+
+
+def run_state(repo):
+    return json.loads(state.run_path(repo, STEM).read_text())
+
+
+def set_run(repo, **fields):
+    run = run_state(repo)
+    for k, v in fields.items():
+        if v is None:
+            run.pop(k, None)
+        else:
+            run[k] = v
+    state.run_path(repo, STEM).write_text(json.dumps(run))
+
+
+def commit(repo, text, subject):
+    (repo / "app/util.py").write_text(text)
+    git(repo, "commit", "-q", "-am", subject)
+
+
+def test_run_records_its_base_once(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    first = head(repo)
+    commit(repo, "x = 2\n", "later work")
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    assert run_state(repo)["base"] == first
+
+
+def test_final_diff_current_branch_spans_the_run(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    commit(repo, "x = 2\n", "alpha change")
+    out = state.final_diff(repo, STEM)
+    text = Path(out["patch"]).read_text()
+    assert out["ok"] is True and out["commits"] == 1 and out["risky"] is False
+    assert "# Plan 2026-01-01-demo, final review" in text and "alpha change" in text and "+x = 2" in text
+    assert out["head"] == head(repo) == run_state(repo)["final"]["head"]
+
+
+def test_final_diff_isolated_spans_the_integration_branch(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "isolated")
+    set_run(repo, integration="factory/demo")
+    git(repo, "checkout", "-q", "-b", "factory/demo")
+    commit(repo, "x = 2\n", "on integration")
+    git(repo, "checkout", "-q", "main")
+    out = state.final_diff(repo, STEM)
+    text = Path(out["patch"]).read_text()
+    assert out["ok"] is True and "on integration" in text and "+x = 2" in text
+
+
+def test_final_diff_isolated_without_the_branch_is_not_ok(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "isolated")
+    set_run(repo, integration="factory/gone")
+    out = state.final_diff(repo, STEM)
+    assert out["ok"] is False and "factory/gone" in out["reason"]
+
+
+def test_final_diff_without_base_is_not_ok(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    set_run(repo, base=None)
+    assert state.final_diff(repo, STEM)["ok"] is False
+    assert state.main(["final-diff", "--root", str(repo), "--plan", STEM]) == 1
+
+
+def test_final_diff_fix_starts_from_the_recorded_head(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    commit(repo, "x = 2\n", "alpha change")
+    state.final_diff(repo, STEM)
+    commit(repo, "x = 3\n", "beta fix")
+    out = state.final_diff(repo, STEM, fix=True)
+    text = Path(out["patch"]).read_text()
+    assert out["patch"].endswith(f"{STEM}-final-2.patch") and out["commits"] == 1
+    assert "beta fix" in text and "alpha change" not in text and "+x = 3" in text
+    assert run_state(repo)["final"]["fix_head"] == head(repo)
+
+
+def test_final_diff_is_risky_when_any_job_was(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    j = new(repo, 1)
+    job = state.read_job(repo, j["id"])
+    job["reviewers"] = ["code", "security"]
+    state.write_job(repo, job)
+    commit(repo, "x = 2\n", "alpha change")
+    assert state.final_diff(repo, STEM)["risky"] is True
+
+
+FINAL = "VERDICT: CHANGES\n\n## Findings\n1. a.py:1: first\n2. b.py:2: second\n\n## Observations\n1. not a finding\n"
+
+
+def test_final_verdict_stores_the_verdict_and_fails_without_one(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    runs = repo / "factory/jobs/_runs"
+    usage = {"model": "opus", "effort": "high", "tokens": 100, "ms": 2000}
+    (runs / f"{STEM}-final.md").write_text(FINAL)
+    assert state.final_verdict(repo, STEM, False, usage) == {"ok": True, "verdict": "CHANGES", "findings": 2}
+    assert run_state(repo)["final"]["review"] == {"verdict": "CHANGES", "findings": 2, "agent": usage}
+    (runs / f"{STEM}-final.md").write_text("Looks fine to me.\n")
+    assert state.final_verdict(repo, STEM, False, usage)["ok"] is False
+    assert state.final_verdict(repo, STEM, True, usage)["ok"] is False
+    assert state.main(["final-verdict", "--root", str(repo), "--plan", STEM, "--fix", "--agent", "{}"]) == 1
+
+
+def test_close_plan_writes_the_final_review(locked_repo):
+    state.write_run(locked_repo, PLAN_FILE, "current-branch")
+    runs = locked_repo / "factory/jobs/_runs"
+    (runs / f"{STEM}-final.md").write_text(FINAL)
+    state.final_verdict(locked_repo, STEM, False, {"model": "opus", "tokens": 100, "ms": 2000})
+    (runs / f"{STEM}-final-2.md").write_text("VERDICT: CHANGES\n\n## Findings\n2. b.py:2: second, still open\n")
+    state.final_verdict(locked_repo, STEM, True, {"model": "opus", "tokens": 50, "ms": 1000}, fix_job="004-fix")
+    for n in (1, 2):
+        state.land_job(locked_repo, new(locked_repo, n)["id"], "committed", head="abc")
+    state.close_plan(locked_repo, PLAN_FILE)
+    section = (locked_repo / PLAN_FILE).read_text().split("### Final review")[1]
+    assert "First review: CHANGES, 2 finding(s)." in section and "Fix: job 004-fix." in section
+    assert "2. b.py:2: second, still open" in section.split("Left open:")[1] and "a.py:1" not in section.split("Left open:")[1]
+    row = next(l for l in (locked_repo / PLAN_FILE).read_text().splitlines() if l.startswith("| final |"))
+    assert "opus" in row and "150" in row
+
+
+def test_close_plan_without_a_final_review_writes_no_section(locked_repo):
+    state.write_run(locked_repo, PLAN_FILE, "current-branch")
+    for n in (1, 2):
+        state.land_job(locked_repo, new(locked_repo, n)["id"], "committed", head="abc")
+    state.close_plan(locked_repo, PLAN_FILE)
+    text = (locked_repo / PLAN_FILE).read_text()
+    assert "### Execution record" in text and "### Final review" not in text and "| final |" not in text
+
+
+def test_rework_starts_a_new_attempt_from_the_current_round(repo):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    job = state.read_job(repo, j["id"])
+    job["round"], job["stage"] = 3, "needs-human"
+    state.write_job(repo, job)
+    assert state.rework(repo, j["id"]) == {"rework_from": 3}
+    job = state.read_job(repo, j["id"])
+    assert job["rework_from"] == 3 and job["stage"] == "build"
+    assert state.main(["rework", j["id"], "--root", str(repo)]) == 0
+
+
+def test_a_resumed_run_from_before_the_base_keeps_no_base(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    set_run(repo, base=None)
+    commit(repo, "x = 2\n", "work before the resume")
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    assert "base" not in run_state(repo) or run_state(repo)["base"] is None
+
+
+def test_final_diff_isolated_starts_where_the_integration_branch_left_main(repo):
+    state.setup(repo, repo)
+    git(repo, "checkout", "-q", "-b", "feature")
+    commit(repo, "x = 9\n", "feature work")
+    git(repo, "checkout", "-q", "main")
+    (repo / "app/auth/session.py").write_text("N = 45\n")
+    git(repo, "commit", "-q", "-am", "main moved on")
+    git(repo, "checkout", "-q", "feature")
+    state.write_run(repo, PLAN_FILE, "isolated")
+    git(repo, "branch", "factory/2026-01-01-demo", "main")
+    git(repo, "checkout", "-q", "factory/2026-01-01-demo")
+    (repo / "app/auth/session.py").write_text("N = 50\n")
+    git(repo, "commit", "-q", "-am", "run work")
+    git(repo, "checkout", "-q", "feature")
+    out = state.final_diff(repo, STEM)
+    text = Path(out["patch"]).read_text()
+    assert out["ok"] is True and "run work" in text and "main moved on" not in text and "feature work" not in text
+
+
+def test_final_diff_fix_with_no_new_commit_is_not_ok(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    commit(repo, "x = 2\n", "alpha change")
+    state.final_diff(repo, STEM)
+    out = state.final_diff(repo, STEM, fix=True)
+    assert out["ok"] is False and "no commit" in out["reason"]
+
+
+def test_final_diff_again_reuses_the_recorded_review_span(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    commit(repo, "x = 2\n", "alpha change")
+    first = state.final_diff(repo, STEM)
+    commit(repo, "x = 3\n", "beta fix")
+    again = state.final_diff(repo, STEM)
+    assert again["reused"] is True and again["head"] == first["head"] and again["patch"] == first["patch"]
+    assert run_state(repo)["final"]["head"] == first["head"]
+    assert "beta fix" not in Path(again["patch"]).read_text()
+
+
+def test_escalate_records_the_builder_it_asks_for_and_keeps_the_earlier_model(locked_repo):
+    j = new(locked_repo, 1)
+    state.record_agent(locked_repo, j["id"], "builder", model="haiku", effort="low", tokens=10)
+    state.escalate(locked_repo, j["id"], "claude")
+    builder = state.read_job(locked_repo, j["id"])["agents"]["builder"]
+    assert (builder["model"], builder["effort"]) == ("sonnet", "medium") and builder["models"] == ["haiku", "sonnet"]
+    state.record_agent(locked_repo, j["id"], "builder", model="sonnet", effort="medium", tokens=20)
+    state.land_job(locked_repo, j["id"], "committed", head="abc")
+    state.land_job(locked_repo, new(locked_repo, 2)["id"], "committed", head="abc")
+    state.close_plan(locked_repo, PLAN_FILE)
+    row1 = next(l for l in (locked_repo / PLAN_FILE).read_text().splitlines() if l.startswith("| 1 |"))
+    assert row1.split("|")[3].strip() == "haiku/sonnet"
+
+
+def test_final_verdict_with_bad_usage_json_exits_2(repo, capsys):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    assert state.main(["final-verdict", "--root", str(repo), "--plan", STEM, "--agent", "{not json"]) == 2
+    assert "error" in json.loads(capsys.readouterr().out)
+
+
+def test_clean_removes_the_final_review_files(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    runs = repo / "factory/jobs/_runs"
+    for name in ("-final.patch", "-final.md", "-final-2.patch", "-final-2.md"):
+        (runs / f"{STEM}{name}").write_text("x")
+    assert state.clean_jobs(repo, STEM)["ok"] is True
+    assert not list(runs.glob(f"{STEM}-final*"))
 
 
 def test_preflight_audit_finds_a_plan_in_a_subfolder(repo):

@@ -468,3 +468,23 @@ def test_spawns_use_model_resolver():
 
 def test_paths_carry_plugin_root():
     assert "Plugin root: <plugin root>" in read("reference/job-loop.md")
+
+
+def test_short_path_has_no_size_limit_and_the_approver_writes_the_code_review():
+    assert "30 lines" not in reference() and "30 lines" not in read("tiers.md")
+    lite = read("agents/approver.md").partition("## Lite jobs")[2].partition("\n## ")[0]
+    assert "review-code.md" in lite and "CHANGES" in lite
+
+
+def test_round_three_escalates_to_a_fresh_builder():
+    t = reference()
+    assert "state.py escalate" in t and "fresh builder" in t
+    assert "escalat" in read("tiers.md")
+
+
+def test_completion_runs_the_final_review_first():
+    t = read("reference/completion.md")
+    assert t.index("final-diff") < t.index("Documentation pass")
+    for word in ("reviewer-final", "final-verdict", "--fix", "Scope: fix", "one task", "ad hoc"):
+        assert word in t, word
+    assert "-final.md" in read("reference/orchestrator.md")

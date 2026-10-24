@@ -38,8 +38,9 @@ model, and what it cost in time and tokens. The usage of your own session is not
    **Carried lenses.** After round 1 a lens that passed keeps its verdict and is not run again while nothing its rules watch has changed since
    that round: `carried` names the round it was given in. The `code` lens watches every path, so it runs again whenever anything changed, and a
    lens that asked for changes always runs again. `rerun` is the list to spawn; it may be empty when nothing changed.
-   **Short path.** When it prints `lite: true` (tier `light`, at most 3 files and 30 lines, only the `code` lens) no reviewer is spawned
-   and the job goes straight to approve: the approver reviews the diff itself, so tell it `Lite: yes` in its prompt.
+   **Short path.** When it prints `lite: true` (tier `light` or `medium`, not risky, only the `code` lens, any size) no reviewer is spawned
+   and the job goes straight to approve: the approver writes the code review itself, so tell it `Lite: yes` in its prompt. The round is set
+   up as any other (`round-N/` with its `diff.patch`), with `code` as its only lens.
 4. **Review round N.** Spawn the reviewers in `rerun` in one message, as `hosts.md` says, each with the model and effort of
    `state.py model --host <host> --agent reviewer-<lens>`, prompt `<paths> Review round N.`
    plus `Port: 5101+10n` for ux and `5102+10n` for ui. When `rerun` holds both `ux` and `ui`, spawn one `reviewer-uiux` (`--agent reviewer-uiux`) for the two instead, with `Port: 5101+10n`:
@@ -47,15 +48,22 @@ model, and what it cost in time and tokens. The usage of your own session is not
    lens's own reviewer. When they have finished, check the round in its own step: `state.py verdicts <job>`
    reads line one of every file of `rerun`, stores the verdicts in `job.json`, and exits 1 if a file or a verdict line
    is missing; `all_pass` counts the carried verdicts too. A reviewer's chat reply is a claim, not a verdict: only its file counts. A reviewer that wrote no file gets one more time, with a reminder to write it; if it still has no verdict line, stop and tell the user. The builder stays untouched until the whole round is in.
-5. **Decide.** `all_pass`: approve. Any CHANGES with resumes left (max 2 after round 1): `state.py stage <job> build`,
+5. **Decide.** `all_pass`: approve. An attempt has at most three rounds, counted from the start of the job or, after a rework, from the
+   `rework_from` round in `job.json` (round 4 of a job reworked at round 3 is that attempt's round 1). Any CHANGES after round 1: `state.py stage <job> build`,
    resume the builder as `hosts.md` says, saying the reviews are in `round-N/` and to
    answer every CHANGES; then check the first line of build.md as in step 2, run step 3 again (the diff may have grown) and start the
-   next round. When the resumes are used up, you write `decision.md` yourself: first line `ESCALATE`, then a sentence naming
-   the lenses that still ask for changes, and go to step 8.
+   next round. Any CHANGES after round 2: `state.py stage <job> build`, then `state.py escalate <job> --host <host>`. With
+   `escalated: true` it has moved the task one tier up: spawn a fresh builder (not a resume) with the model and effort it printed and
+   the prompt `<paths> Build round 3. Escalated from <tier>: every round's reviews are in round-*/. Read task.md, build.md and them,
+   then continue from the branch as it stands.`, and record it under `builder`. In an `inline` run this builder is a subagent too, since
+   the session cannot change its own model. With `escalated: false` (the task was `heavy` or `fable`) resume the builder as after round 1.
+   Any CHANGES after round 3: you write `decision.md` yourself: first line `ESCALATE`, then a sentence naming the lenses that still ask
+   for changes, and go to step 8.
 6. **Approve.** Only after the check in step 4 passed (or in the short path), and never in the same message as that check (a failed
    check must not still start the approver), `state.py stage <job> approve` and spawn the `approver` as `hosts.md` says with `<paths> Final round: N.`, its model and effort
-   from `state.py model --host <host> --agent approver`, adding `--risky` when the job is risky (the rule is in `tiers.md`). Line one of decision.md routes it:
-   `APPROVE` goes to step 7, `ESCALATE` to step 8.
+   from `state.py model --host <host> --agent approver`, adding `--risky` when the job is risky (the rule is in `tiers.md`). In the short path, when
+   the approver has finished, run `state.py verdicts <job>` in its own step, as in step 4: `CHANGES` goes to step 5 like any review, and
+   `all_pass` goes on to decision.md. Line one of decision.md routes it: `APPROVE` goes to step 7, `ESCALATE` to step 8.
 7. **Land.** As in Landing (`orchestrator.md`).
 8. **Needs human.** `state.py stage <job> needs-human`; keep the branch and worktree; name the waiting job for the user, give its
    worktree path, and quote either decision.md or the reason given for BLOCKED.

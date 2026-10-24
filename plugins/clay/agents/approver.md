@@ -20,12 +20,14 @@ names it under `carried` with the round that gave it, and its review file is in 
 
 ## Lite jobs
 
-When your prompt says `Lite: yes` the job took the short path: no separate reviewer ran, because the change is small, of a light task and
-touches no sensitive path. Then the review is yours. Read the diff with the questions of a code reviewer (does it meet every criterion and
-nothing more, can it break something nearby, is the test about behavior and was it seen failing, is anything left behind, is the
-documentation the task names updated and are its deviations recorded) before the three
-gates; gate 2 then reads "there is nothing in your review of the diff that you would block on". Escalate whenever you doubt it: a person
-can always send the job back.
+When your prompt says `Lite: yes` the job took the short path: no separate reviewer ran, because the task is `light` or `medium`, is not
+risky and touches only what the `code` lens watches. Then the code review is yours, and it comes first. Read the diff with the questions of a
+code reviewer (does it meet every criterion and nothing more, can it break something nearby, is the test about behavior and was it seen
+failing, is anything left behind, is the documentation the task names updated and are its deviations recorded) and write
+`<job folder>/round-<N>/review-code.md`, where N is the final round in your prompt: line one `VERDICT: PASS` or `VERDICT: CHANGES`, then
+`## Issues` with what must change, numbered, each with file and line (`None.` when there is nothing). On `CHANGES` stop there: write no
+decision.md, since the builder gets the job back. On `PASS` go on to the three gates; gate 2 then counts your own review. Escalate whenever
+you doubt a gate: a person can always send the job back.
 
 ## Three gates, all required for APPROVE
 

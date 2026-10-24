@@ -20,6 +20,10 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
   state.py land JOB --stage committed|merged --head SHA --root DIR
   state.py tick-plan --plan-file P [--task N] --root DIR
   state.py close-plan --plan-file P --root DIR
+  state.py escalate JOB --host H --root DIR
+  state.py rework JOB --root DIR
+  state.py final-diff --plan STEM [--fix] --root DIR
+  state.py final-verdict --plan STEM [--fix] [--fix-job ID] --agent JSON --root DIR
 """
 import argparse
 import hashlib
@@ -32,6 +36,7 @@ import sys
 import stat
 import time
 from datetime import datetime, timezone
+from glob import escape as glob_escape
 from pathlib import Path
 
 from factory_plan import CLOSED, SECTION, TIERS, TASK_HEADING, describe_plan, parse_plan
@@ -42,8 +47,6 @@ from route import load_rules, route
 TERMINAL = ("merged", "committed")
 VERDICTS = ("PASS", "CHANGES")
 STOPWORDS = {"the", "a", "an", "to", "of", "for", "and", "in", "on", "with"}
-LITE_MAX_FILES = 3
-LITE_MAX_LINES = 30
 STALE_MINUTES = 30
 
 
@@ -213,13 +216,54 @@ def record_agent(root, job_id: str, role: str, model: str = "", effort: str = ""
         "model": model or a.get("model", ""), "effort": effort,
         "tokens": a.get("tokens", 0) + tokens, "ms": a.get("ms", 0) + ms, "tools": a.get("tools", 0) + tools, "runs": a.get("runs", 0) + 1,
     }
+    if seen := _models(a, model):
+        job["agents"][role]["models"] = seen
     write_job(root, job)
     return job["agents"][role]
+
+
+def _models(agent: dict, model: str) -> list[str]:
+    """Every model a role ran on, when there was more than one (an escalated builder); empty otherwise."""
+    seen = sorted(set(agent.get("models", [])) | {m for m in (agent.get("model", ""), model) if m})
+    return seen if len(seen) > 1 else []
 
 
 def record_agents(root, job_id: str, agents: list[dict]) -> dict:
     """The usage of several agents that finished together, each as record_agent takes it."""
     return {a["role"]: record_agent(root, job_id, a["role"], a.get("model", ""), a.get("effort", ""), int(a.get("tokens", 0)), int(a.get("ms", 0)), int(a.get("tools", 0))) for a in agents}
+
+
+def rework(root, job_id: str) -> dict:
+    """A person sent the job back with a note: a new attempt starts, and the rounds of step 5 count from here."""
+    job = read_job(root, job_id)
+    job["rework_from"] = job["round"]
+    write_job(root, job)
+    set_stage(root, job_id, "build")
+    return {"rework_from": job["round"]}
+
+
+ESCALATION = {"light": "medium", "medium": "careful", "careful": "heavy"}
+
+
+def escalate(root, job_id: str, host: str) -> dict:
+    """Move the job one tier up for its last round, so a fresh, stronger builder tries before a person is asked. `heavy` and
+    `fable` stay as they are (`fable` needs the user's confirmation). A job already escalated is left as it is, so a resumed
+    run spawns the same builder."""
+    job = read_job(root, job_id)
+    if "escalated_from" not in job:
+        if job["tier"] not in ESCALATION:
+            return {"escalated": False, "tier": job["tier"]}
+        chosen = resolve_model(root, host, tier=ESCALATION[job["tier"]])
+        job["escalated_from"], job["tier"] = job["tier"], ESCALATION[job["tier"]]
+        # The builder about to be spawned is the one the progress views should show, and the record keeps the earlier model.
+        builder = job["agents"].get("builder", {})
+        if seen := _models(builder, chosen["model"] or ""):
+            builder["models"] = seen
+        builder.update(model=chosen["model"] or builder.get("model", ""), effort=chosen["effort"] or "")
+        job["agents"]["builder"] = builder
+        write_job(root, job)
+    chosen = resolve_model(root, host, tier=job["tier"])
+    return {"escalated": True, "tier": job["tier"], "escalated_from": job["escalated_from"], "model": chosen["model"], "effort": chosen["effort"]}
 
 
 def changed(job: dict, root) -> tuple[list[str], int]:
@@ -237,7 +281,7 @@ def changed(job: dict, root) -> tuple[list[str], int]:
         try:
             lines += len((Path(cwd) / extra).read_text().splitlines())
         except (OSError, UnicodeDecodeError):
-            lines += LITE_MAX_LINES + 1
+            lines += 1
     return sorted(set(names)), lines
 
 
@@ -297,15 +341,20 @@ def route_job(root, job_id: str, table: str | None = None) -> dict:
     own = jobs_dir(root).parent / "routing.md"
     rules = load_rules(Path(table) if table else own if own.exists() else default)
     reviewers = route(paths, rules)
-    lite = job["tier"] == "light" and reviewers == ["code"] and len(paths) <= LITE_MAX_FILES and lines <= LITE_MAX_LINES
+    # The short path: the approver reviews the code itself, so one agent fewer. Never for a risky job.
+    risky = "security" in reviewers or job["tier"] in ("heavy", "fable")
+    lite = not risky and job["tier"] in ("light", "medium") and reviewers == ["code"]
     folder = jobs_dir(root) / job_id
     if lite:
-        patch = folder / "diff.patch"
-        patch.write_text(build_patch(job, root, paths, job["round"], delta))
-        job.update(reviewers=[], reviews={}, rerun=[], carried={}, lite=True, fingerprints=prints)
+        job["round"] += 1
+        job.update(reviewers=["code"], reviews={"code": "pending"}, rerun=[], carried={}, lite=True, build_round=job["round"], fingerprints=prints)
         write_job(root, job)
+        rnd = folder / f"round-{job['round']}"
+        rnd.mkdir(exist_ok=True)
+        patch = rnd / "diff.patch"
+        patch.write_text(build_patch(job, root, paths, job["round"], delta))
         set_stage(root, job_id, "approve")
-        return {"reviewers": [], "rerun": [], "carried": {}, "lite": True, "paths": paths, "files": len(paths), "lines": lines, "diff": str(patch)}
+        return {"reviewers": ["code"], "rerun": [], "carried": {}, "lite": True, "paths": paths, "files": len(paths), "lines": lines, "diff": str(patch)}
     # A lens that passed keeps its verdict while nothing its rules watch has changed since that round. The code lens
     # watches every path, so it runs again whenever anything changed; a lens that asked for changes always runs again.
     touched = set(route(sorted(delta), rules)) if delta else set()
@@ -335,7 +384,8 @@ def check_verdicts(root, job_id: str) -> dict:
     verdicts: dict[str, str] = {}
     missing: list[str] = []
     invalid: list[str] = []
-    for r in job.get("rerun", job["reviewers"]):
+    # On the short path the approver writes the code review, so it is read although no reviewer was spawned.
+    for r in ["code"] if job.get("lite") else job.get("rerun", job["reviewers"]):
         f = rnd / f"review-{r}.md"
         if not f.exists():
             missing.append(r)
@@ -424,15 +474,109 @@ def write_run(root, plan_file: str, mode: str, pace: str = "step") -> dict:
     path = Path(plan_file) if Path(plan_file).is_absolute() else root / plan_file
     plan = parse_plan(path.read_text())
     rp = run_path(root, path.stem)
-    run = json.loads(rp.read_text()) if rp.exists() else {}
+    existed = rp.exists()
+    run = json.loads(rp.read_text()) if existed else {}
     run.update(
         plan=path.stem, path=plan_file, mode=mode, pace=pace, integration=run.get("integration"), total=len(plan.tasks),
+        # Only a new run records where it starts: a run resumed from before `base` existed would get a later commit.
+        base=run.get("base") if existed else git(root, "rev-parse", "HEAD").strip() or None,
         done=landed_count(root, path.stem),
         tasks=[{"n": t.number, "title": t.title, "tier": t.tier, "after": t.depends} for t in plan.tasks],
     )
     rp.parent.mkdir(parents=True, exist_ok=True)
     rp.write_text(json.dumps(run, indent=2))
     return run
+
+
+FINDING = re.compile(r"^\s*\d+[.)]\s", re.M)
+
+
+def _section(text: str, title: str) -> str:
+    """The body of a `## <title>` section, up to the next `## ` heading."""
+    return re.split(r"^## ", text.partition(f"## {title}")[2], maxsplit=1, flags=re.M)[0]
+
+
+def _commit(root, ref: str) -> str:
+    return git(root, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}", ok=(0, 1)).strip()
+
+
+def _main_branch(root) -> str:
+    """The repo's main branch, which an integration branch is created from: the remote's default, else `main` or `master`."""
+    remote = git(root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD", ok=(0, 1)).strip()
+    for ref in (remote.removeprefix("origin/"), remote, "main", "master"):
+        if ref and _commit(root, ref):
+            return ref
+    return ""
+
+
+def final_diff(root, plan_stem: str, fix: bool = False) -> dict:
+    """The change of the whole run as the final reviewer reads it, in one file. Isolated: from where the integration branch
+    left the repo to its tip; current branch: from the commit the run started on to HEAD. With `fix`, from the head the first
+    review read, so the second sees only the fix. `risky` says whether any job of the run was."""
+    root = Path(root)
+    rp = run_path(root, plan_stem)
+    if not rp.exists():
+        return {"ok": False, "reason": f"no run state for {plan_stem}"}
+    run = json.loads(rp.read_text())
+    if not run.get("base"):
+        return {"ok": False, "reason": "the run state has no base: the run started before the final review existed"}
+    final = run.get("final", {})
+    key = "fix_" if fix else ""
+    patch = rp.parent / f"{plan_stem}-final{'-2' if fix else ''}.patch"
+    risky = any("security" in j.get("reviewers", []) or j.get("tier") in ("heavy", "fable") for j in _plan_jobs(root, plan_stem))
+    # A resumed completion asks again: the span the review was given stays the one on record.
+    if final.get(f"{key}head") and patch.exists():
+        return {"ok": True, "patch": str(patch), "base": final.get(f"{key}base"), "head": final[f"{key}head"],
+                "commits": final.get(f"{key}commits", 0), "risky": risky, "reused": True}
+    if run.get("mode") == "isolated":
+        branch = run.get("integration") or f"factory/{plan_stem}"
+        tip = _commit(root, branch)
+        if not tip:
+            return {"ok": False, "reason": f"integration branch {branch} not found"}
+        start = git(root, "merge-base", tip, _main_branch(root) or run["base"]).strip()
+        if not start:
+            return {"ok": False, "reason": f"integration branch {branch} shares no history with the main branch"}
+    else:
+        tip, start = git(root, "rev-parse", "HEAD").strip(), run["base"]
+    if fix:
+        if not final.get("head"):
+            return {"ok": False, "reason": "no first final review to start the fix from"}
+        start = final["head"]
+    span = f"{start}..{tip}"
+    commits = git(root, "log", "--oneline", span).splitlines()
+    if fix and not commits:
+        return {"ok": False, "reason": "no commit since the first final review: the fix has not landed on the run's branch"}
+    numstat = git(root, "diff", "--numstat", span)
+    lines = [f"# Plan {plan_stem}, final review" + (" of the fix" if fix else ""), f"# Base {start}, head {tip}, mode {run.get('mode')}", "# Commits:"]
+    lines += [f"#   {c}" for c in commits]
+    lines.append("# Files (added, removed, path):")
+    lines += [f"#   {ln.replace(chr(9), ' ')}" for ln in numstat.splitlines()]
+    patch.write_text("\n".join(lines) + "\n\n" + git(root, "diff", span))
+    final.update({f"{key}head": tip, f"{key}base": start, f"{key}commits": len(commits)})
+    run["final"] = final
+    rp.write_text(json.dumps(run, indent=2))
+    return {"ok": True, "patch": str(patch), "base": start, "head": tip, "commits": len(commits), "risky": risky, "reused": False}
+
+
+def final_verdict(root, plan_stem: str, fix: bool, agent: dict, fix_job: str | None = None) -> dict:
+    """Read the verdict of a final review and keep it in the run state with its findings count and the agent's usage."""
+    rp = run_path(root, plan_stem)
+    f = rp.parent / f"{plan_stem}-final{'-2' if fix else ''}.md"
+    if not rp.exists() or not f.exists():
+        return {"ok": False, "reason": f"{f.name} is missing"}
+    text = f.read_text()
+    first = (text.splitlines() or [""])[0].strip()
+    verdict = first.removeprefix("VERDICT: ") if first.startswith("VERDICT: ") else ""
+    if verdict not in VERDICTS:
+        return {"ok": False, "reason": f"{f.name} has no verdict line"}
+    findings = len(FINDING.findall(_section(text, "Findings")))
+    run = json.loads(rp.read_text())
+    final = run.setdefault("final", {})
+    final["recheck" if fix else "review"] = {"verdict": verdict, "findings": findings, "agent": agent}
+    if fix_job:
+        final["fix_job"] = fix_job
+    rp.write_text(json.dumps(run, indent=2))
+    return {"ok": True, "verdict": verdict, "findings": findings}
 
 
 def land_job(root, job_id: str, stage: str, head: str) -> dict:
@@ -631,16 +775,55 @@ def execution_record(root, plan_stem: str) -> str:
         decision = ""
         if (folder / "decision.md").exists():
             decision = (folder / "decision.md").read_text().splitlines()[0].strip()
-        notes = []
+        notes = ["short path"] if j.get("lite") else []
         if n := len(list(folder.glob("rework-*.md"))):
             notes.append(f"reworked {n}x")
         if n := len(list(folder.glob("answers-*.md"))):
             notes.append(f"{n} answered question(s)")
         findings = _findings(folder, bool(j.get("reviews")))
-        models = "/".join(sorted({a.get("model", "") for a in agents.values() if a.get("model")}))
-        rows.append(f"| {j.get('task')} | {j.get('tier', '')} | {models} | {j.get('round', 1)} | {verdicts} | {decision} | {findings} | {'; '.join(notes)} | {t} | {m // 1000}s |")
+        models = "/".join(sorted({m for a in agents.values() for m in [a.get("model", ""), *a.get("models", [])] if m}))
+        tier = f"{j['escalated_from']}→{j.get('tier', '')}" if j.get("escalated_from") else j.get("tier", "")
+        rows.append(f"| {j.get('task')} | {tier} | {models} | {j.get('round', 1)} | {verdicts} | {decision} | {findings} | {'; '.join(notes)} | {t} | {m // 1000}s |")
+    final = _final_run(root, plan_stem)
+    reviews = [final[k] for k in ("review", "recheck") if k in final]
+    if reviews:
+        usage = [r.get("agent", {}) for r in reviews]
+        t, m = sum(int(a.get("tokens", 0)) for a in usage), sum(int(a.get("ms", 0)) for a in usage)
+        tokens, ms = tokens + t, ms + m
+        models = "/".join(sorted({a["model"] for a in usage if a.get("model")}))
+        rows.append(f"| final | | {models} | {len(reviews)} | {', '.join(r['verdict'] for r in reviews)} | | | | {t} | {m // 1000}s |")
     head = "| Task | Tier | Models | Rounds | Reviews | Decision | Findings | Notes | Tokens | Agent time |\n|---|---|---|---|---|---|---|---|---|---|\n"
     return f"{RECORD_TITLE}\n\n{head}" + "\n".join(rows) + f"\n\nTotal: {tokens} tokens, {ms // 1000}s of agent time.\n"
+
+
+def _final_run(root, plan_stem: str) -> dict:
+    """The final review part of the run state, empty when the run had none."""
+    try:
+        return json.loads(run_path(root, plan_stem).read_text()).get("final", {})
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def final_section(root, plan_stem: str) -> str:
+    """`### Final review` of the Delivery status: the first verdict, the fix job, and what the last review left open. Empty
+    when the run had no final review."""
+    final = _final_run(root, plan_stem)
+    if "review" not in final:
+        return ""
+    first = final["review"]
+    lines = [f"First review: {first['verdict']}, {first['findings']} finding(s)."]
+    if final.get("fix_job"):
+        lines.append(f"Fix: job {final['fix_job']}.")
+    last, name = (final["recheck"], f"{plan_stem}-final-2.md") if "recheck" in final else (first, f"{plan_stem}-final.md")
+    open_items = []
+    if last["verdict"] == "CHANGES":
+        try:
+            body = _section((run_path(root, plan_stem).parent / name).read_text(), "Findings")
+            open_items = [ln.strip() for ln in body.splitlines() if FINDING.match(ln)]
+        except OSError:
+            open_items = [f"{last['findings']} finding(s), file {name} not found"]
+    left = "\n\nLeft open:\n\n" + "\n".join(open_items) if open_items else "\n\nLeft open: none."
+    return "### Final review\n\n" + "\n".join(lines) + left + "\n"
 
 
 def _deviations(build: Path) -> list[str]:
@@ -677,8 +860,9 @@ def delivery_status(root, plan_stem: str, plan, docs: list[str]) -> str:
     documented = ", ".join(f"`{d}`" for d in docs) if docs else "none, no task names documentation"
     items = divergences(root, plan_stem, plan)
     listed = "\n".join(f"- {i}" for i in items) if items else "None recorded."
+    final = final_section(root, plan_stem)
     return (f"{DELIVERY_TITLE} ({day}): delivered by clay run\n\n**Documented in:** {documented}\n\n"
-            f"### Divergences\n\n{listed}\n\n{execution_record(root, plan_stem)}")
+            f"### Divergences\n\n{listed}\n\n" + (f"{final}\n" if final else "") + execution_record(root, plan_stem))
 
 
 def clean_jobs(root, plan_stem: str) -> dict:
@@ -690,6 +874,8 @@ def clean_jobs(root, plan_stem: str) -> dict:
     for j in jobs:
         shutil.rmtree(jobs_dir(root) / j["id"], ignore_errors=True)
     (jobs_dir(root) / "_runs" / f"{plan_stem}.md").unlink(missing_ok=True)  # the working plan of an ad hoc task; unlinking needs no write permission on the file
+    for f in (jobs_dir(root) / "_runs").glob(f"{glob_escape(plan_stem)}-final*"):
+        f.unlink(missing_ok=True)
     run_path(root, plan_stem).unlink(missing_ok=True)  # the lock is released by `lock release`, which restores the plan's permissions
     return {"ok": True, "removed": [j["id"] for j in jobs]}
 
@@ -733,13 +919,27 @@ def main(argv: list[str]) -> int:
     md.add_argument("--tier")
     md.add_argument("--agent")
     md.add_argument("--risky", action="store_true")
+    es = sub.add_parser("escalate")
+    es.add_argument("job")
+    es.add_argument("--root", default=".")
+    es.add_argument("--host", required=True)
+    fd = sub.add_parser("final-diff")
+    fd.add_argument("--root", default=".")
+    fd.add_argument("--plan", required=True)
+    fd.add_argument("--fix", action="store_true")
+    fv = sub.add_parser("final-verdict")
+    fv.add_argument("--root", default=".")
+    fv.add_argument("--plan", required=True)
+    fv.add_argument("--fix", action="store_true")
+    fv.add_argument("--fix-job")
+    fv.add_argument("--agent", required=True, help='JSON {"model","effort","tokens","ms","tools"}')
     cl = sub.add_parser("clean")
     cl.add_argument("--root", default=".")
     cl.add_argument("--plan", required=True)
-    for name in ("setup", "run", "preflight", "new-job", "begin-job", "stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks"):
+    for name in ("setup", "run", "preflight", "new-job", "begin-job", "stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks", "rework"):
         sp = sub.add_parser(name)
         sp.add_argument("--root", default=".")
-        if name in ("stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks"):
+        if name in ("stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks", "rework"):
             sp.add_argument("job")
         if name == "after-agent":
             sp.add_argument("--agents", required=True, help='JSON list of {"role","model","effort","tokens","ms","tools"}')
@@ -795,6 +995,25 @@ def main(argv: list[str]) -> int:
             print(json.dumps({"error": str(e)}))
             return 2
         return 0
+    if a.cmd in ("final-diff", "final-verdict"):
+        if a.cmd == "final-diff":
+            out = final_diff(a.root, a.plan, a.fix)
+        else:
+            try:
+                usage = json.loads(a.agent)
+            except ValueError as e:
+                print(json.dumps({"error": f"--agent is not valid JSON ({e})"}))
+                return 2
+            out = final_verdict(a.root, a.plan, a.fix, usage, a.fix_job)
+        print(json.dumps(out, indent=2))
+        return 0 if out["ok"] else 1
+    if a.cmd == "escalate":
+        try:
+            print(json.dumps(escalate(a.root, a.job, a.host), indent=2))
+        except ModelsError as e:
+            print(json.dumps({"error": str(e)}))
+            return 2
+        return 0
     if a.cmd == "tick-plan":
         print(json.dumps(tick_plan(a.root, a.plan_file, a.task), indent=2))
         return 0
@@ -825,6 +1044,8 @@ def main(argv: list[str]) -> int:
         out = new_job(a.root, a.plan_file, a.task, a.repo_name, a.mode, a.branch, a.worktree, a.base)
     elif a.cmd == "begin-job":
         out = begin_job(a.root, a.plan_file, a.task, a.repo_name, a.mode, a.branch, a.worktree, a.base)
+    elif a.cmd == "rework":
+        out = rework(a.root, a.job)
     elif a.cmd == "after-agent":
         out = record_agents(a.root, a.job, json.loads(a.agents))
     elif a.cmd == "stage":

@@ -28,6 +28,8 @@ runtime sits under `<repo>/factory/jobs/`, which git never tracks:
 | Path under `factory/jobs/` | Written by | Holds |
 |---|---|---|
 | `_runs/<plan-slug>.json` | you | the mode chosen for the run, the integration branch, the plan path, the run `pace`, the task counts `total` and `done` (set at the start, `done` raised each time a job lands), and `tasks`, the planned tasks as `{ "n", "title", "tier", "after" }` written at the start (`after` lists the task numbers it waits for); the progress mod reads them |
+| `_runs/<plan-slug>-final.patch`, `-final-2.patch` | `state.py final-diff` | the whole run's change for the final review, and the fix alone for its recheck |
+| `_runs/<plan-slug>-final.md`, `-final-2.md` | reviewer-final | the final review's verdict and findings, and the recheck of the fix |
 | `<job-id>/job.json` | you, only you | the job's state; the dashboard reads it |
 | `<job-id>/task.md` | you | the task brief, copied from the plan |
 | `<job-id>/build.md` | builder | what was built and the proof |

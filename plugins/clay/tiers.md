@@ -48,16 +48,28 @@ alone. `run` asks once before it starts such tasks (see `reference/start.md`); o
 | reviewer-security | opus | high |
 | reviewer-spec | sonnet | medium |
 | approver | sonnet or opus, see below | high |
+| reviewer-final | sonnet or opus, see below | high |
 
 The approver decides whether a change lands without anyone looking, so it uses `opus` when the job is risky and `sonnet`
 otherwise. A job is risky when the routing selected the `security` reviewer (a sensitive path was touched) or its tier is
 `heavy` or `fable`; `careful` alone does not make a job risky. In the short path (below) the approver also does the code review.
 
+`reviewer-final` reads the whole branch of a finished plan (`reference/completion.md`). It uses `opus` when any job of the run was
+risky and `sonnet` otherwise (`state.py model --agent reviewer-final [--risky]`).
+
 `reviewer-uiux` is `reviewer-ux` and `reviewer-ui` in one run. The run command spawns it instead of the two when a round needs both lenses, so the change is
 read once; it still writes one verdict file per lens.
 
+## Escalation
+
+A job whose second round still asks for changes gets one more round, built by a fresh builder one tier up: `light` becomes `medium`,
+`medium` becomes `careful`, `careful` becomes `heavy` (`state.py escalate`). `heavy` and `fable` are not escalated, since `fable`
+needs the user's confirmation; their third round resumes the builder. Risk follows the current tier, so a job escalated to `heavy`
+gets the approver on `opus`, and one escalated to `careful` leaves the short path. The execution record shows the move as `light→medium`.
+
 ## Short path
 
-A task of tier `light` whose change touches at most 3 files and 30 lines, and whose routing selects only the `code`
-reviewer, takes the short path: no separate reviewer, and the approver reviews the diff itself. It saves one agent run
-(about 12 seconds and 12 thousand tokens in the first real run). Anything else keeps its reviewers.
+A job of tier `light` or `medium` that is not risky and whose routing selects only the `code` reviewer takes the short path,
+whatever the size of its change: no separate reviewer, and the approver writes the code review itself before its gates. When that
+review asks for changes, the builder gets the job back as after any review. It saves one agent run per round. Anything else keeps its
+reviewers. A short-path job is read by one agent instead of two; the final review of the plan's branch reads it again with the others.
