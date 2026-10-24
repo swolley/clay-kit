@@ -3,7 +3,7 @@
 Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is the path your skill states. Follow `<plugin root>/STYLE.md`. `<repo>` is the root of the target repository's own checkout.
 
 The few things that differ between the hosts: starting an agent, its model and effort, resuming it, asking the user. The other
-parts say "as `hosts.md` says" and "the question tool" for them; everything else, `inline` mode included, is the same everywhere.
+parts say "as `hosts.md` says" and "the question tool" for them; everything else is the same everywhere.
 
 ## Which host
 

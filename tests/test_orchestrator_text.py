@@ -218,10 +218,13 @@ def test_unlock_command_exists_and_is_manual_only():
     assert "disable-model-invocation: true" in t and "reference/" in t and "state.py lock" in t
 
 
-def test_inline_mode_keeps_approver_and_reviewers_as_subagents():
-    t = reference()
-    assert "# Inline mode" in t and "tier `light`" in t and "stay subagents" in t
-    assert "inline" in read("skills/factory-run/SKILL.md")
+def test_inline_mode_is_gone():
+    assert not (PLUGIN / "reference/inline.md").exists()
+    assert "inline.md" not in reference() and "# Inline mode" not in reference()
+    for skill in ("factory-run", "factory-task"):
+        t = read(f"skills/{skill}/SKILL.md")
+        assert "[lean|full]" in t or "[lean]" in t, skill
+        assert "inline was replaced by lean" in t, skill
 
 
 def test_brainstorm_has_the_spec_reviewer_and_the_excuses_table():
@@ -288,8 +291,8 @@ def test_each_command_reads_only_the_parts_it_needs():
 
 def test_the_parts_a_run_needs_only_sometimes_are_read_when_needed():
     t = read("skills/factory-run/SKILL.md")
-    assert "questions.md" in t and "inline.md" in t and "completion.md" in t
-    for part in ("questions.md", "inline.md", "completion.md"):
+    assert "questions.md" in t and "completion.md" in t
+    for part in ("questions.md", "completion.md"):
         assert part not in "".join(f"reference/{x}" for x in parts_read_by("factory-run")), part
 
 
@@ -495,7 +498,7 @@ def test_completion_runs_the_final_review_first():
 
 def test_lean_reference_names_its_commands():
     t = read("reference/lean.md")
-    for word in ("lean-check", "promote", "begin-job", "--lean", "lean_reason", "long", "session's model", "inline"):
+    for word in ("lean-check", "promote", "begin-job", "--lean", "lean_reason", "long", "session's model"):
         assert word in t, word
 
 

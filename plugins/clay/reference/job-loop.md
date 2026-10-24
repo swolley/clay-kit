@@ -54,8 +54,7 @@ model, and what it cost in time and tokens. The usage of your own session is not
    next round. Any CHANGES after round 2: `state.py stage <job> build`, then `state.py escalate <job> --host <host>`. With
    `escalated: true` it has moved the task one tier up: spawn a fresh builder (not a resume) with the model and effort it printed and
    the prompt `<paths> Build round 3. Escalated from <tier>: every round's reviews are in round-*/. Read task.md, build.md and them,
-   then continue from the branch as it stands.`, and record it under `builder`. In an `inline` run this builder is a subagent too, since
-   the session cannot change its own model. With `escalated: false` (the task was `heavy` or `fable`) resume the builder as after round 1.
+   then continue from the branch as it stands.`, and record it under `builder`. With `escalated: false` (the task was `heavy` or `fable`) resume the builder as after round 1.
    Any CHANGES after round 3: you write `decision.md` yourself: first line `ESCALATE`, then a sentence naming the lenses that still ask
    for changes, and go to step 8.
 6. **Approve.** Only after the check in step 4 passed (or in the short path), and never in the same message as that check (a failed

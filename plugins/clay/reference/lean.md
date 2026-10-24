@@ -42,8 +42,3 @@ when its tier is `light` or `medium`, it declares `Files` whose routing (`routin
    Say so in one line.
 
 A lean job shows `lean` in the execution record, a promoted one `promoted: <reason>`.
-
-## Lean and inline
-
-`inline` (`inline.md`) also builds in the session, but keeps every reviewer and the approver of each task. Lean drops them for the
-eligible tasks and relies on their checks and on the final review.
