@@ -58,6 +58,7 @@ read once; it still writes one verdict file per lens.
 
 ## Short path
 
-A task of tier `light` whose change touches at most 3 files and 30 lines, and whose routing selects only the `code`
-reviewer, takes the short path: no separate reviewer, and the approver reviews the diff itself. It saves one agent run
-(about 12 seconds and 12 thousand tokens in the first real run). Anything else keeps its reviewers.
+A job of tier `light` or `medium` that is not risky and whose routing selects only the `code` reviewer takes the short path,
+whatever the size of its change: no separate reviewer, and the approver writes the code review itself before its gates. When that
+review asks for changes, the builder gets the job back as after any review. It saves one agent run per round. Anything else keeps its
+reviewers. A short-path job is read by one agent instead of two; the final review of the plan's branch reads it again with the others.

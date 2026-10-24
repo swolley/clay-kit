@@ -42,8 +42,6 @@ from route import load_rules, route
 TERMINAL = ("merged", "committed")
 VERDICTS = ("PASS", "CHANGES")
 STOPWORDS = {"the", "a", "an", "to", "of", "for", "and", "in", "on", "with"}
-LITE_MAX_FILES = 3
-LITE_MAX_LINES = 30
 STALE_MINUTES = 30
 
 
@@ -237,7 +235,7 @@ def changed(job: dict, root) -> tuple[list[str], int]:
         try:
             lines += len((Path(cwd) / extra).read_text().splitlines())
         except (OSError, UnicodeDecodeError):
-            lines += LITE_MAX_LINES + 1
+            lines += 1
     return sorted(set(names)), lines
 
 
@@ -297,15 +295,20 @@ def route_job(root, job_id: str, table: str | None = None) -> dict:
     own = jobs_dir(root).parent / "routing.md"
     rules = load_rules(Path(table) if table else own if own.exists() else default)
     reviewers = route(paths, rules)
-    lite = job["tier"] == "light" and reviewers == ["code"] and len(paths) <= LITE_MAX_FILES and lines <= LITE_MAX_LINES
+    # The short path: the approver reviews the code itself, so one agent fewer. Never for a risky job.
+    risky = "security" in reviewers or job["tier"] in ("heavy", "fable")
+    lite = not risky and job["tier"] in ("light", "medium") and reviewers == ["code"]
     folder = jobs_dir(root) / job_id
     if lite:
-        patch = folder / "diff.patch"
-        patch.write_text(build_patch(job, root, paths, job["round"], delta))
-        job.update(reviewers=[], reviews={}, rerun=[], carried={}, lite=True, fingerprints=prints)
+        job["round"] += 1
+        job.update(reviewers=["code"], reviews={"code": "pending"}, rerun=[], carried={}, lite=True, build_round=job["round"], fingerprints=prints)
         write_job(root, job)
+        rnd = folder / f"round-{job['round']}"
+        rnd.mkdir(exist_ok=True)
+        patch = rnd / "diff.patch"
+        patch.write_text(build_patch(job, root, paths, job["round"], delta))
         set_stage(root, job_id, "approve")
-        return {"reviewers": [], "rerun": [], "carried": {}, "lite": True, "paths": paths, "files": len(paths), "lines": lines, "diff": str(patch)}
+        return {"reviewers": ["code"], "rerun": [], "carried": {}, "lite": True, "paths": paths, "files": len(paths), "lines": lines, "diff": str(patch)}
     # A lens that passed keeps its verdict while nothing its rules watch has changed since that round. The code lens
     # watches every path, so it runs again whenever anything changed; a lens that asked for changes always runs again.
     touched = set(route(sorted(delta), rules)) if delta else set()
@@ -335,7 +338,8 @@ def check_verdicts(root, job_id: str) -> dict:
     verdicts: dict[str, str] = {}
     missing: list[str] = []
     invalid: list[str] = []
-    for r in job.get("rerun", job["reviewers"]):
+    # On the short path the approver writes the code review, so it is read although no reviewer was spawned.
+    for r in ["code"] if job.get("lite") else job.get("rerun", job["reviewers"]):
         f = rnd / f"review-{r}.md"
         if not f.exists():
             missing.append(r)
@@ -631,7 +635,7 @@ def execution_record(root, plan_stem: str) -> str:
         decision = ""
         if (folder / "decision.md").exists():
             decision = (folder / "decision.md").read_text().splitlines()[0].strip()
-        notes = []
+        notes = ["short path"] if j.get("lite") else []
         if n := len(list(folder.glob("rework-*.md"))):
             notes.append(f"reworked {n}x")
         if n := len(list(folder.glob("answers-*.md"))):

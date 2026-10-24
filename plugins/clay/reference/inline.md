@@ -7,7 +7,7 @@ Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is t
 is not and run normally. Do everything of the Job loop (`job-loop.md`) except step 2: make sure the job is in `build`, read
 `<plugin root>/agents/builder.md`, and do that agent's work yourself in the job's worktree, writing `build.md` as it says. Record no
 `builder` usage. Then go on at step 3: routing decides as usual, so the short path (approver only) applies when `lite` is true, and a
-task whose diff grew past it gets its reviewers after the fact. The `approver` and every reviewer stay subagents: the change must
+task whose change touches a path another lens watches gets its reviewers after the fact. The `approver` and every reviewer stay subagents: the change must
 not be judged by the session that wrote it. In `NEEDS_INPUT` and rework you still own the builder's part. Say at the end that the
 run was inline.
 

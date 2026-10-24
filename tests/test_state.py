@@ -113,29 +113,49 @@ def test_route_uses_the_changed_files_and_sets_up_the_round(repo):
     assert (repo / "factory/jobs" / j["id"] / "round-1").is_dir()
 
 
-def test_light_small_change_takes_the_short_path_without_reviewers(repo):
-    state.setup(repo, repo)
-    j = new(repo, 1)
-    (repo / "app/util.py").write_text("x = 2\n")
-    out = state.route_job(repo, j["id"])
-    assert out["lite"] is True and out["reviewers"] == []
-    job = state.read_job(repo, j["id"])
-    assert job["stage"] == "approve" and job["lite"] is True and job["reviewers"] == []
-
-
-def test_light_but_large_change_keeps_its_reviewers(repo):
+def test_a_light_change_of_any_size_takes_the_short_path(repo):
     state.setup(repo, repo)
     j = new(repo, 1)
     (repo / "app/util.py").write_text("\n".join(f"x{i} = {i}" for i in range(80)) + "\n")
     out = state.route_job(repo, j["id"])
-    assert out["lite"] is False and out["reviewers"] == ["code"]
+    assert out["lite"] is True and out["reviewers"] == ["code"] and out["rerun"] == []
+    job = state.read_job(repo, j["id"])
+    assert job["stage"] == "approve" and job["lite"] is True and job["round"] == 1 and job["reviews"] == {"code": "pending"}
 
 
-def test_a_non_light_task_never_takes_the_short_path(repo):
+def test_a_medium_change_takes_the_short_path(repo):
+    (repo / PLAN_FILE).write_text(PLAN.replace("**Tier:** light", "**Tier:** medium"))
+    git(repo, "commit", "-q", "-am", "medium")
     state.setup(repo, repo)
-    j = new(repo, 2)
+    j = new(repo, 1)
     (repo / "app/util.py").write_text("x = 2\n")
-    assert state.route_job(repo, j["id"])["lite"] is False
+    assert state.route_job(repo, j["id"])["lite"] is True
+
+
+def test_careful_and_risky_jobs_keep_their_reviewers(repo):
+    state.setup(repo, repo)
+    careful = new(repo, 2)
+    (repo / "app/util.py").write_text("x = 2\n")
+    assert state.route_job(repo, careful["id"])["lite"] is False
+    git(repo, "checkout", "--", "app/util.py")
+    light = new(repo, 1)
+    (repo / "app/auth/session.py").write_text("N = 60\n")
+    out = state.route_job(repo, light["id"])
+    assert out["lite"] is False and "security" in out["reviewers"]
+
+
+def test_verdicts_read_the_approvers_code_review_on_the_short_path(repo):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.route_job(repo, j["id"])
+    folder = repo / "factory/jobs" / j["id"]
+    (folder / "decision.md").write_text("APPROVE\n")
+    out = state.check_verdicts(repo, j["id"])
+    assert out["ok"] is False and out["missing"] == ["code"]
+    (folder / "round-1/review-code.md").write_text("VERDICT: CHANGES\n\n## Issues\n1. x\n")
+    out = state.check_verdicts(repo, j["id"])
+    assert out["all_pass"] is False and state.read_job(repo, j["id"])["reviews"] == {"code": "CHANGES"}
 
 
 def test_verdict_check_fails_loudly_when_a_file_is_missing(repo):
@@ -547,13 +567,24 @@ def test_route_writes_the_diff_with_commits_files_and_what_changed_since_the_las
     assert "# Changed since the previous round: app/util.py" in text
 
 
-def test_the_short_path_gets_its_diff_in_the_job_folder(repo):
+def test_the_short_path_gets_its_diff_in_its_round_folder(repo):
     state.setup(repo, repo)
     j = new(repo, 1)
     (repo / "app/util.py").write_text("x = 2\n")
     out = state.route_job(repo, j["id"])
-    assert out["lite"] is True and out["diff"] == str(repo / "factory/jobs" / j["id"] / "diff.patch")
+    assert out["lite"] is True and out["diff"] == str(repo / "factory/jobs" / j["id"] / "round-1" / "diff.patch")
     assert "+x = 2" in Path(out["diff"]).read_text()
+
+
+def test_execution_record_notes_the_short_path(locked_repo):
+    j = new(locked_repo, 1)
+    (locked_repo / "app/util.py").write_text("x = 2\n")
+    state.route_job(locked_repo, j["id"])
+    state.land_job(locked_repo, j["id"], "committed", head="abc")
+    state.land_job(locked_repo, new(locked_repo, 2)["id"], "committed", head="abc")
+    state.close_plan(locked_repo, PLAN_FILE)
+    row1 = next(l for l in (locked_repo / PLAN_FILE).read_text().splitlines() if l.startswith("| 1 |"))
+    assert "short path" in row1.split("|")[-4]
 
 
 def test_isolated_job_diff_lists_the_commits_and_follows_the_branch(repo):
