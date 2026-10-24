@@ -1182,3 +1182,102 @@ def test_preflight_flags_a_long_lean_plan(repo):
     (repo / PLAN_FILE).write_text(text)
     out = state.preflight(repo, PLAN_FILE, "demo")
     assert out["lean_count"] == 9 and out["long"] is True
+
+
+def lean_job(repo, verify="`true`", task=1):
+    (repo / PLAN_FILE).write_text(PLAN.replace("**Accept:** 1. Works.", f"**Accept:** 1. Works.\n**Verify:** {verify}"))
+    git(repo, "commit", "-q", "-am", "verify")
+    state.setup(repo, repo)
+    return state.begin_job(repo, PLAN_FILE, task, repo_name="demo", mode="current-branch", branch="main", worktree=str(repo), lean=True)
+
+
+def test_begin_job_lean_records_lean_and_the_verify_commands(repo):
+    j = lean_job(repo, "`pytest -q` and `ruff check`")
+    job = state.read_job(repo, j["id"])
+    assert job["lean"] is True and job["verify"] == ["pytest -q", "ruff check"] and job["stage"] == "build"
+
+
+def test_lean_check_lands_a_clean_code_change_with_a_passing_current_check(repo):
+    j = lean_job(repo)
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.run_check(repo, j["id"], "true")
+    assert state.lean_check(repo, j["id"]) == {"land": True}
+
+
+def test_lean_check_without_a_recorded_run_does_not_land(repo):
+    j = lean_job(repo)
+    (repo / "app/util.py").write_text("x = 2\n")
+    assert state.lean_check(repo, j["id"]) == {"land": False, "promote": "no recorded run: true"}
+
+
+def test_lean_check_on_a_stale_run_does_not_land(repo):
+    j = lean_job(repo)
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.run_check(repo, j["id"], "true")
+    (repo / "app/util.py").write_text("x = 3\n")
+    assert state.lean_check(repo, j["id"]) == {"land": False, "promote": "stale run: true"}
+
+
+def test_lean_check_on_a_failing_run_does_not_land(repo):
+    j = lean_job(repo, "`false`")
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.run_check(repo, j["id"], "false")
+    assert state.lean_check(repo, j["id"]) == {"land": False, "promote": "failing run: false"}
+
+
+def test_lean_check_promotes_after_two_failed_runs(repo):
+    flag = repo.parent / f"{repo.name}-ok"
+    cmd = f"test -f {flag}"
+    j = lean_job(repo, f"`{cmd}`")
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.run_check(repo, j["id"], cmd)
+    state.run_check(repo, j["id"], cmd)
+    flag.write_text("")
+    state.run_check(repo, j["id"], cmd)
+    assert state.lean_check(repo, j["id"])["promote"] == f"checks failed twice: {cmd}"
+
+
+def test_lean_check_promotes_a_change_that_routes_to_security(repo):
+    j = lean_job(repo)
+    (repo / "app/auth/session.py").write_text("N = 60\n")
+    state.run_check(repo, j["id"], "true")
+    assert state.lean_check(repo, j["id"]) == {"land": False, "promote": "routes to security"}
+
+
+def test_promote_clears_lean_and_route_then_reviews_it(repo):
+    j = lean_job(repo)
+    (repo / "app/auth/session.py").write_text("N = 60\n")
+    state.promote(repo, j["id"], "routes to security")
+    job = state.read_job(repo, j["id"])
+    assert job["lean"] is False and job["promoted"] == "routes to security"
+    out = state.route_job(repo, j["id"])
+    assert "security" in out["reviewers"] and out["lite"] is False
+
+
+def test_execution_record_shows_lean_and_promoted_jobs(repo):
+    a = lean_job(repo)
+    b = state.begin_job(repo, PLAN_FILE, 2, repo_name="demo", mode="current-branch", branch="main", worktree=str(repo), lean=True)
+    state.promote(repo, b["id"], "routes to security")
+    for j in (a, b):
+        state.land_job(repo, j["id"], "committed", head="abc")
+    record = state.execution_record(repo, STEM)
+    row1 = next(l for l in record.splitlines() if l.startswith("| 1 |")).split("|")
+    row2 = next(l for l in record.splitlines() if l.startswith("| 2 |")).split("|")
+    assert row1[5].strip() == "lean" and "lean" in row1[8]
+    assert row2[5].strip() != "lean" and "promoted: routes to security" in row2[8]
+
+
+def test_final_diff_reports_the_lean_jobs(repo):
+    j = lean_job(repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    commit(repo, "x = 2\n", "lean work")
+    state.land_job(repo, j["id"], "committed", head=head(repo))
+    assert state.final_diff(repo, STEM)["lean"] == 1
+
+
+def test_cli_lean_check_and_promote(repo, capsys):
+    j = lean_job(repo)
+    assert state.main(["lean-check", j["id"], "--root", str(repo)]) == 0
+    assert json.loads(capsys.readouterr().out)["land"] is False
+    assert state.main(["promote", j["id"], "--reason", "by hand", "--root", str(repo)]) == 0
+    assert state.read_job(repo, j["id"])["promoted"] == "by hand"

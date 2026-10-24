@@ -8,8 +8,8 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
   state.py model --root DIR --host claude|codex|cursor (--tier T | --agent A) [--risky]
   state.py run --root DIR --plan-file P --mode M --pace step|auto
   state.py preflight --root DIR [--plan-file P --repo-name R]
-  state.py new-job --root DIR --plan-file P --task N --repo-name R --mode M --branch B --worktree W
-  state.py begin-job --root DIR --plan-file P --task N --repo-name R --mode M --branch B --worktree W
+  state.py new-job --root DIR --plan-file P --task N --repo-name R --mode M --branch B --worktree W [--lean]
+  state.py begin-job --root DIR --plan-file P --task N --repo-name R --mode M --branch B --worktree W [--lean]
   state.py stage JOB STAGE --root DIR
   state.py agent JOB ROLE --model M --effort E --tokens N --ms N --tools N --root DIR
   state.py after-agent JOB --agents JSON --root DIR
@@ -22,6 +22,8 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
   state.py close-plan --plan-file P --root DIR
   state.py escalate JOB --host H --root DIR
   state.py rework JOB --root DIR
+  state.py lean-check JOB --root DIR
+  state.py promote JOB --reason TEXT --root DIR
   state.py final-diff --plan STEM [--fix] --root DIR
   state.py final-verdict --plan STEM [--fix] [--fix-job ID] --agent JSON --root DIR
 """
@@ -150,7 +152,15 @@ def render_brief(plan_file: str, task, default_repo: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def new_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, branch: str, worktree: str, base: str | None = None) -> dict:
+def _verify_commands(task) -> list[str]:
+    """The commands of a task's `Verify`: its backticked parts, else the whole field; none when the plan declares none."""
+    if "verify" in task.defaults_applied or not task.verify.strip():
+        return []
+    return re.findall(r"`([^`]+)`", task.verify) or [task.verify.strip()]
+
+
+def new_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, branch: str, worktree: str, base: str | None = None,
+            lean: bool = False) -> dict:
     root = Path(root)
     path = Path(plan_file) if Path(plan_file).is_absolute() else root / plan_file
     plan = parse_plan(path.read_text(), default_repo=repo_name)
@@ -164,6 +174,7 @@ def new_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, b
         "id": job_id, "plan": path.stem, "task": task.number, "repo": task.repo or repo_name, "mode": mode, "tier": task.tier,
         "branch": branch, "worktree": worktree, "agents": {}, "stage": "spec", "round": 0, "started": t, "updated": t,
         "reviewers": [], "reviews": {}, "head": head, "base": head, "build_round": 0, "lite": False,
+        "lean": lean, "verify": _verify_commands(task),
         "phases": [{"stage": "spec", "start": t, "end": None}],
     }
     (folder / "job.json").write_text(json.dumps(job, indent=2))
@@ -171,9 +182,10 @@ def new_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, b
     return {"id": job_id, "folder": str(folder)}
 
 
-def begin_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, branch: str, worktree: str, base: str | None = None) -> dict:
+def begin_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, branch: str, worktree: str, base: str | None = None,
+              lean: bool = False) -> dict:
     """new_job and the move to the build stage in one step."""
-    out = new_job(root, plan_file, task_number, repo_name, mode, branch, worktree, base)
+    out = new_job(root, plan_file, task_number, repo_name, mode, branch, worktree, base, lean)
     set_stage(root, out["id"], "build")
     return {**out, "stage": "build"}
 
@@ -375,6 +387,42 @@ def lean_eligibility(task, rules) -> tuple[bool, str]:
     return True, ""
 
 
+def lean_check(root, job_id: str) -> dict:
+    """The gate of a lean job, in place of review and approval: it lands when its change still needs only the code lens, it is
+    not risky, and every Verify command's latest run is current and passed, with fewer than two failed runs. Otherwise the
+    reason it goes to the full loop."""
+    job = read_job(root, job_id)
+    paths, _ = changed(job, root)
+    lenses = [lens for lens in route(paths, _rules(root)) if lens != "code"]
+    if lenses:
+        return {"land": False, "promote": "routes to " + ", ".join(lenses)}
+    if job["tier"] in ("heavy", "fable"):
+        return {"land": False, "promote": "risky"}
+    commands = job.get("verify", [])
+    if not commands:
+        return {"land": False, "promote": "no Verify"}
+    records = read_checks(root, job_id)
+    runs = {cmd: [r for r in records if r["cmd"] == cmd] for cmd in commands}
+    current = tree_state(job, root)
+    for reason, failed in (
+        ("checks failed twice", lambda rs: sum(1 for r in rs if r["exit"] != 0) >= 2),
+        ("no recorded run", lambda rs: not rs),
+        ("stale run", lambda rs: rs[-1]["state"] != current),
+        ("failing run", lambda rs: rs[-1]["exit"] != 0),
+    ):
+        if cmd := next((c for c in commands if failed(runs[c])), None):
+            return {"land": False, "promote": f"{reason}: {cmd}"}
+    return {"land": True}
+
+
+def promote(root, job_id: str, reason: str) -> dict:
+    """A lean job goes to the full loop: it is routed, reviewed and approved as any job, the session's build included."""
+    job = read_job(root, job_id)
+    job.update(lean=False, promoted=reason)
+    write_job(root, job)
+    return {"id": job_id, "promoted": reason}
+
+
 def route_job(root, job_id: str, table: str | None = None) -> dict:
     job = read_job(root, job_id)
     paths, lines = changed(job, root)
@@ -565,11 +613,13 @@ def final_diff(root, plan_stem: str, fix: bool = False) -> dict:
     final = run.get("final", {})
     key = "fix_" if fix else ""
     patch = rp.parent / f"{plan_stem}-final{'-2' if fix else ''}.patch"
-    risky = any("security" in j.get("reviewers", []) or j.get("tier") in ("heavy", "fable") for j in _plan_jobs(root, plan_stem))
+    jobs = _plan_jobs(root, plan_stem)
+    risky = any("security" in j.get("reviewers", []) or j.get("tier") in ("heavy", "fable") for j in jobs)
+    lean = sum(1 for j in jobs if j.get("lean"))
     # A resumed completion asks again: the span the review was given stays the one on record.
     if final.get(f"{key}head") and patch.exists():
         return {"ok": True, "patch": str(patch), "base": final.get(f"{key}base"), "head": final[f"{key}head"],
-                "commits": final.get(f"{key}commits", 0), "risky": risky, "reused": True}
+                "commits": final.get(f"{key}commits", 0), "risky": risky, "reused": True, "lean": lean}
     if run.get("mode") == "isolated":
         branch = run.get("integration") or f"factory/{plan_stem}"
         tip = _commit(root, branch)
@@ -597,7 +647,7 @@ def final_diff(root, plan_stem: str, fix: bool = False) -> dict:
     final.update({f"{key}head": tip, f"{key}base": start, f"{key}commits": len(commits)})
     run["final"] = final
     rp.write_text(json.dumps(run, indent=2))
-    return {"ok": True, "patch": str(patch), "base": start, "head": tip, "commits": len(commits), "risky": risky, "reused": False}
+    return {"ok": True, "patch": str(patch), "base": start, "head": tip, "commits": len(commits), "risky": risky, "reused": False, "lean": lean}
 
 
 def final_verdict(root, plan_stem: str, fix: bool, agent: dict, fix_job: str | None = None) -> dict:
@@ -813,11 +863,15 @@ def execution_record(root, plan_stem: str) -> str:
         t = sum(a.get("tokens", 0) for a in agents.values())
         m = sum(a.get("ms", 0) for a in agents.values())
         tokens, ms = tokens + t, ms + m
-        verdicts = ", ".join(f"{k} {v}" for k, v in j.get("reviews", {}).items()) or "short path"
+        verdicts = ", ".join(f"{k} {v}" for k, v in j.get("reviews", {}).items()) or ("lean" if j.get("lean") else "short path")
         decision = ""
         if (folder / "decision.md").exists():
             decision = (folder / "decision.md").read_text().splitlines()[0].strip()
         notes = ["short path"] if j.get("lite") else []
+        if j.get("lean"):
+            notes.append("lean")
+        if j.get("promoted"):
+            notes.append(f"promoted: {j['promoted']}")
         if n := len(list(folder.glob("rework-*.md"))):
             notes.append(f"reworked {n}x")
         if n := len(list(folder.glob("answers-*.md"))):
@@ -978,11 +1032,13 @@ def main(argv: list[str]) -> int:
     cl = sub.add_parser("clean")
     cl.add_argument("--root", default=".")
     cl.add_argument("--plan", required=True)
-    for name in ("setup", "run", "preflight", "new-job", "begin-job", "stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks", "rework"):
+    for name in ("setup", "run", "preflight", "new-job", "begin-job", "stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks", "rework", "lean-check", "promote"):
         sp = sub.add_parser(name)
         sp.add_argument("--root", default=".")
-        if name in ("stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks", "rework"):
+        if name in ("stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks", "rework", "lean-check", "promote"):
             sp.add_argument("job")
+        if name == "promote":
+            sp.add_argument("--reason", required=True)
         if name == "after-agent":
             sp.add_argument("--agents", required=True, help='JSON list of {"role","model","effort","tokens","ms","tools"}')
         if name == "preflight":
@@ -1005,6 +1061,7 @@ def main(argv: list[str]) -> int:
             sp.add_argument("--branch", required=True)
             sp.add_argument("--worktree", required=True)
             sp.add_argument("--base")
+            sp.add_argument("--lean", action="store_true")
         if name == "stage":
             sp.add_argument("stage_name")
         if name == "agent":
@@ -1083,9 +1140,13 @@ def main(argv: list[str]) -> int:
     elif a.cmd == "preflight":
         out = preflight(a.root, a.plan_file, a.repo_name)
     elif a.cmd == "new-job":
-        out = new_job(a.root, a.plan_file, a.task, a.repo_name, a.mode, a.branch, a.worktree, a.base)
+        out = new_job(a.root, a.plan_file, a.task, a.repo_name, a.mode, a.branch, a.worktree, a.base, a.lean)
     elif a.cmd == "begin-job":
-        out = begin_job(a.root, a.plan_file, a.task, a.repo_name, a.mode, a.branch, a.worktree, a.base)
+        out = begin_job(a.root, a.plan_file, a.task, a.repo_name, a.mode, a.branch, a.worktree, a.base, a.lean)
+    elif a.cmd == "lean-check":
+        out = lean_check(a.root, a.job)
+    elif a.cmd == "promote":
+        out = promote(a.root, a.job, a.reason)
     elif a.cmd == "rework":
         out = rework(a.root, a.job)
     elif a.cmd == "after-agent":
