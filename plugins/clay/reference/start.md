@@ -57,7 +57,7 @@ with `lean` (`lean.md`).
 builder with the task and the commits already on the branch; for a job with `lean`, go on building in the session (`lean.md`). Round partly done: keep finished
 review files, rerun only the missing reviewers. `approve` without decision.md: rerun the approver. `approve` on a short-path job (`lite` in `job.json`): run `state.py verdicts` first, since a
 decision.md may be left from an earlier round; `CHANGES` or a missing review goes back to step 5 or reruns the approver, and only `all_pass` lets decision.md count.
-A named builder does not survive its session; a resumed builder is a new agent that reads build.md,
+A named builder does not survive its session; a resumed builder, like any builder whose agent is gone, on any host, is a new agent that reads build.md,
 the rounds and the branch log. In current-branch mode show leftover changes and ask whether to
 continue from them, stash them or stop. Before continuing, say in one line per job what you found.
 

@@ -565,3 +565,8 @@ def test_completion_reviews_any_run_with_a_lean_job():
 
 def test_resume_sends_a_ready_lean_job_to_lean_check():
     assert "lean-check" in read("reference/start.md")
+
+
+def test_a_builder_whose_agent_is_gone_is_replaced_on_any_host():
+    resume = " ".join(read("reference/start.md").split("## Resume")[1].split("## Ad hoc task")[0].split())
+    assert "any builder whose agent is gone, on any host" in resume
