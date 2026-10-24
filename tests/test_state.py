@@ -1085,3 +1085,46 @@ def test_final_diff_fix_with_no_new_commit_is_not_ok(repo):
     state.final_diff(repo, STEM)
     out = state.final_diff(repo, STEM, fix=True)
     assert out["ok"] is False and "no commit" in out["reason"]
+
+
+def test_final_diff_again_reuses_the_recorded_review_span(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    commit(repo, "x = 2\n", "alpha change")
+    first = state.final_diff(repo, STEM)
+    commit(repo, "x = 3\n", "beta fix")
+    again = state.final_diff(repo, STEM)
+    assert again["reused"] is True and again["head"] == first["head"] and again["patch"] == first["patch"]
+    assert run_state(repo)["final"]["head"] == first["head"]
+    assert "beta fix" not in Path(again["patch"]).read_text()
+
+
+def test_escalate_records_the_builder_it_asks_for_and_keeps_the_earlier_model(locked_repo):
+    j = new(locked_repo, 1)
+    state.record_agent(locked_repo, j["id"], "builder", model="haiku", effort="low", tokens=10)
+    state.escalate(locked_repo, j["id"], "claude")
+    builder = state.read_job(locked_repo, j["id"])["agents"]["builder"]
+    assert (builder["model"], builder["effort"]) == ("sonnet", "medium") and builder["models"] == ["haiku", "sonnet"]
+    state.record_agent(locked_repo, j["id"], "builder", model="sonnet", effort="medium", tokens=20)
+    state.land_job(locked_repo, j["id"], "committed", head="abc")
+    state.land_job(locked_repo, new(locked_repo, 2)["id"], "committed", head="abc")
+    state.close_plan(locked_repo, PLAN_FILE)
+    row1 = next(l for l in (locked_repo / PLAN_FILE).read_text().splitlines() if l.startswith("| 1 |"))
+    assert row1.split("|")[3].strip() == "haiku/sonnet"
+
+
+def test_final_verdict_with_bad_usage_json_exits_2(repo, capsys):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    assert state.main(["final-verdict", "--root", str(repo), "--plan", STEM, "--agent", "{not json"]) == 2
+    assert "error" in json.loads(capsys.readouterr().out)
+
+
+def test_clean_removes_the_final_review_files(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    runs = repo / "factory/jobs/_runs"
+    for name in ("-final.patch", "-final.md", "-final-2.patch", "-final-2.md"):
+        (runs / f"{STEM}{name}").write_text("x")
+    assert state.clean_jobs(repo, STEM)["ok"] is True
+    assert not list(runs.glob(f"{STEM}-final*"))

@@ -36,6 +36,7 @@ import sys
 import stat
 import time
 from datetime import datetime, timezone
+from glob import escape as glob_escape
 from pathlib import Path
 
 from factory_plan import CLOSED, SECTION, TIERS, TASK_HEADING, describe_plan, parse_plan
@@ -215,8 +216,16 @@ def record_agent(root, job_id: str, role: str, model: str = "", effort: str = ""
         "model": model or a.get("model", ""), "effort": effort,
         "tokens": a.get("tokens", 0) + tokens, "ms": a.get("ms", 0) + ms, "tools": a.get("tools", 0) + tools, "runs": a.get("runs", 0) + 1,
     }
+    if seen := _models(a, model):
+        job["agents"][role]["models"] = seen
     write_job(root, job)
     return job["agents"][role]
+
+
+def _models(agent: dict, model: str) -> list[str]:
+    """Every model a role ran on, when there was more than one (an escalated builder); empty otherwise."""
+    seen = sorted(set(agent.get("models", [])) | {m for m in (agent.get("model", ""), model) if m})
+    return seen if len(seen) > 1 else []
 
 
 def record_agents(root, job_id: str, agents: list[dict]) -> dict:
@@ -244,7 +253,14 @@ def escalate(root, job_id: str, host: str) -> dict:
     if "escalated_from" not in job:
         if job["tier"] not in ESCALATION:
             return {"escalated": False, "tier": job["tier"]}
+        chosen = resolve_model(root, host, tier=ESCALATION[job["tier"]])
         job["escalated_from"], job["tier"] = job["tier"], ESCALATION[job["tier"]]
+        # The builder about to be spawned is the one the progress views should show, and the record keeps the earlier model.
+        builder = job["agents"].get("builder", {})
+        if seen := _models(builder, chosen["model"] or ""):
+            builder["models"] = seen
+        builder.update(model=chosen["model"] or builder.get("model", ""), effort=chosen["effort"] or "")
+        job["agents"]["builder"] = builder
         write_job(root, job)
     chosen = resolve_model(root, host, tier=job["tier"])
     return {"escalated": True, "tier": job["tier"], "escalated_from": job["escalated_from"], "model": chosen["model"], "effort": chosen["effort"]}
@@ -505,6 +521,13 @@ def final_diff(root, plan_stem: str, fix: bool = False) -> dict:
     if not run.get("base"):
         return {"ok": False, "reason": "the run state has no base: the run started before the final review existed"}
     final = run.get("final", {})
+    key = "fix_" if fix else ""
+    patch = rp.parent / f"{plan_stem}-final{'-2' if fix else ''}.patch"
+    risky = any("security" in j.get("reviewers", []) or j.get("tier") in ("heavy", "fable") for j in _plan_jobs(root, plan_stem))
+    # A resumed completion asks again: the span the review was given stays the one on record.
+    if final.get(f"{key}head") and patch.exists():
+        return {"ok": True, "patch": str(patch), "base": final.get(f"{key}base"), "head": final[f"{key}head"],
+                "commits": final.get(f"{key}commits", 0), "risky": risky, "reused": True}
     if run.get("mode") == "isolated":
         branch = run.get("integration") or f"factory/{plan_stem}"
         tip = _commit(root, branch)
@@ -528,13 +551,11 @@ def final_diff(root, plan_stem: str, fix: bool = False) -> dict:
     lines += [f"#   {c}" for c in commits]
     lines.append("# Files (added, removed, path):")
     lines += [f"#   {ln.replace(chr(9), ' ')}" for ln in numstat.splitlines()]
-    patch = rp.parent / f"{plan_stem}-final{'-2' if fix else ''}.patch"
     patch.write_text("\n".join(lines) + "\n\n" + git(root, "diff", span))
-    final["fix_head" if fix else "head"] = tip
+    final.update({f"{key}head": tip, f"{key}base": start, f"{key}commits": len(commits)})
     run["final"] = final
     rp.write_text(json.dumps(run, indent=2))
-    risky = any("security" in j.get("reviewers", []) or j.get("tier") in ("heavy", "fable") for j in _plan_jobs(root, plan_stem))
-    return {"ok": True, "patch": str(patch), "base": start, "head": tip, "commits": len(commits), "risky": risky}
+    return {"ok": True, "patch": str(patch), "base": start, "head": tip, "commits": len(commits), "risky": risky, "reused": False}
 
 
 def final_verdict(root, plan_stem: str, fix: bool, agent: dict, fix_job: str | None = None) -> dict:
@@ -760,7 +781,7 @@ def execution_record(root, plan_stem: str) -> str:
         if n := len(list(folder.glob("answers-*.md"))):
             notes.append(f"{n} answered question(s)")
         findings = _findings(folder, bool(j.get("reviews")))
-        models = "/".join(sorted({a.get("model", "") for a in agents.values() if a.get("model")}))
+        models = "/".join(sorted({m for a in agents.values() for m in [a.get("model", ""), *a.get("models", [])] if m}))
         tier = f"{j['escalated_from']}→{j.get('tier', '')}" if j.get("escalated_from") else j.get("tier", "")
         rows.append(f"| {j.get('task')} | {tier} | {models} | {j.get('round', 1)} | {verdicts} | {decision} | {findings} | {'; '.join(notes)} | {t} | {m // 1000}s |")
     final = _final_run(root, plan_stem)
@@ -853,6 +874,8 @@ def clean_jobs(root, plan_stem: str) -> dict:
     for j in jobs:
         shutil.rmtree(jobs_dir(root) / j["id"], ignore_errors=True)
     (jobs_dir(root) / "_runs" / f"{plan_stem}.md").unlink(missing_ok=True)  # the working plan of an ad hoc task; unlinking needs no write permission on the file
+    for f in (jobs_dir(root) / "_runs").glob(f"{glob_escape(plan_stem)}-final*"):
+        f.unlink(missing_ok=True)
     run_path(root, plan_stem).unlink(missing_ok=True)  # the lock is released by `lock release`, which restores the plan's permissions
     return {"ok": True, "removed": [j["id"] for j in jobs]}
 
@@ -976,7 +999,12 @@ def main(argv: list[str]) -> int:
         if a.cmd == "final-diff":
             out = final_diff(a.root, a.plan, a.fix)
         else:
-            out = final_verdict(a.root, a.plan, a.fix, json.loads(a.agent), a.fix_job)
+            try:
+                usage = json.loads(a.agent)
+            except ValueError as e:
+                print(json.dumps({"error": f"--agent is not valid JSON ({e})"}))
+                return 2
+            out = final_verdict(a.root, a.plan, a.fix, usage, a.fix_job)
         print(json.dumps(out, indent=2))
         return 0 if out["ok"] else 1
     if a.cmd == "escalate":
