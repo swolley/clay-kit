@@ -368,11 +368,12 @@ LONG_LEAN = 8
 
 
 def _declared_paths(files: list[str]) -> list[str]:
-    """The declared files that read as paths: the first word of each entry, with a slash."""
+    """The declared files that read as paths: the first word of each entry (the parser has dropped its backticks), when it has a
+    slash or the shape of a file name (`package.json`, `.env`); a line range such as `:12-40` is dropped."""
     out = []
     for f in files:
-        word = f.strip().strip("`").split(" ")[0].strip("`,;")
-        if "/" in word:
+        word = re.sub(r":\d+(-\d+)?$", "", f.strip().strip("`").split(" ")[0].strip("`,;"))
+        if "/" in word or re.fullmatch(r"[\w.-]*\.[\w-]+", word):
             out.append(word)
     return out
 
@@ -400,12 +401,19 @@ def lean_check(root, job_id: str) -> dict:
     not risky, and every Verify command's latest run is current and passed, with fewer than two failed runs. Otherwise the
     reason it goes to the full loop."""
     job = read_job(root, job_id)
+    if not job.get("lean"):
+        return {"land": False, "promote": "not a lean job"}
+    if job["tier"] not in LEAN_TIERS:
+        return {"land": False, "promote": f"tier {job['tier']}"}
     paths, _ = changed(job, root)
+    if not paths:
+        return {"land": False, "promote": "no change"}
     lenses = [lens for lens in route(paths, _rules(root)) if lens != "code"]
     if lenses:
         return {"land": False, "promote": "routes to " + ", ".join(lenses)}
-    if job["tier"] in ("heavy", "fable"):
-        return {"land": False, "promote": "risky"}
+    # Isolated mode lands the branch, so a check that passed on files left out of it proves nothing.
+    if job["mode"] != "current-branch" and git(job.get("worktree") or str(root), "status", "--porcelain").strip():
+        return {"land": False, "promote": "uncommitted changes"}
     commands = job.get("verify", [])
     if not commands:
         return {"land": False, "promote": "no Verify"}

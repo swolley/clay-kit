@@ -28,10 +28,14 @@ when its tier is `light` or `medium`, it declares `Files` whose routing (`routin
 1. **Create.** `state.py begin-job ... --lean`, in the run's mode: isolated mode still cuts the job's branch and worktree from the
    integration branch. `job.json` records `lean: true` and `verify`, the task's commands.
 2. **Build.** Do the builder's work yourself in the job's worktree: read `<plugin root>/agents/builder.md` and follow it, test first,
-   running each `Verify` command through `state.py verify <job> --cmd '<command>'` so the run is on record, and write `build.md`. Record
-   no builder usage. A `NEEDS_INPUT` goes to the user as `questions.md` says for the builder.
+   and write `build.md`. Record no builder usage. A `NEEDS_INPUT` goes to the user as `questions.md` says for the builder. One rule of
+   that file changes for a lean job: watch each new test fail with a narrower command (the test alone, run directly), not through
+   `state.py verify`, because `lean-check` counts every failed run of a `Verify` command and two of them promote the job. Run each
+   `Verify` command through `state.py verify <job> --cmd '<command>'` once the work is done and, in isolated mode, committed: a run
+   made before the last commit is stale. When such a run fails, fix the cause and run it again; a second failure promotes the job.
 3. **Gate.** `state.py lean-check <job>`. `land: true` goes to Landing (`orchestrator.md`), as any approved job. Otherwise it prints
-   `promote` with the reason: the change routes to another lens, the job is risky, a check failed twice, or a `Verify` command has no
+   `promote` with the reason: the job is not lean or its tier is no longer light or medium, it changed nothing, the change routes to
+   another lens, isolated mode left files uncommitted, a check failed twice, or a `Verify` command has no
    run, a stale run (the code changed after it) or a failing one.
 4. **Promote.** `state.py promote <job> --reason "<reason>"`, then continue at step 3 (Route) of the Job loop with the build as it
    stands: reviewers and approver read it as any builder's, at the task's tier, and a resume or rework spawns the `builder` agent.

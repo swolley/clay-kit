@@ -1310,3 +1310,40 @@ def test_an_ad_hoc_task_with_verify_is_eligible_without_files(repo):
     assert pre["plan"]["tasks"][0]["lean"] is True and pre["lean_count"] == 1
     plain = state.adhoc_plan(repo, "tier=light Fix the slug again")
     assert state.preflight(repo, plain["plan_file"], "demo")["plan"]["tasks"][0]["lean_reason"] == "no Verify"
+
+
+@pytest.mark.parametrize("files", ["`app/util.py`, `package.json`", "`app/util.py`, `.env`", "`app/util.py:12-40`, `composer.lock`"])
+def test_a_sensitive_root_file_is_not_eligible(tmp_path, files):
+    assert eligibility(tmp_path, files=files) == (False, "Files route to security")
+
+
+def test_lean_check_refuses_a_job_that_is_not_lean_or_not_light_or_medium(repo):
+    j = lean_job(repo, task=2)
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.run_check(repo, j["id"], "true")
+    assert state.lean_check(repo, j["id"]) == {"land": False, "promote": "tier careful"}
+    state.promote(repo, j["id"], "by hand")
+    assert state.lean_check(repo, j["id"]) == {"land": False, "promote": "not a lean job"}
+
+
+def test_lean_check_does_not_land_an_empty_change(repo):
+    j = lean_job(repo)
+    state.run_check(repo, j["id"], "true")
+    assert state.lean_check(repo, j["id"]) == {"land": False, "promote": "no change"}
+
+
+def test_lean_check_in_isolated_mode_refuses_uncommitted_files(repo):
+    (repo / PLAN_FILE).write_text(PLAN.replace("**Accept:** 1. Works.", "**Accept:** 1. Works.\n**Verify:** `true`"))
+    git(repo, "commit", "-q", "-am", "verify")
+    state.setup(repo, repo)
+    base = head(repo)
+    git(repo, "checkout", "-q", "-b", "factory/demo/001")
+    j = state.begin_job(repo, PLAN_FILE, 1, repo_name="demo", mode="isolated", branch="factory/demo/001", worktree=str(repo), base=base, lean=True)
+    commit(repo, "from app.helper import y\n", "use helper")
+    (repo / "app/helper.py").write_text("y = 1\n")
+    state.run_check(repo, j["id"], "true")
+    assert state.lean_check(repo, j["id"]) == {"land": False, "promote": "uncommitted changes"}
+    git(repo, "add", "app/helper.py")
+    git(repo, "commit", "-q", "-m", "helper")
+    state.run_check(repo, j["id"], "true")
+    assert state.lean_check(repo, j["id"]) == {"land": True}

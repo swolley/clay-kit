@@ -2,7 +2,7 @@
 
 Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is the path your skill states. Follow `<plugin root>/STYLE.md`. `<repo>` is the root of the target repository's own checkout.
 
-For an ad hoc plan (`factory/jobs/_runs/adhoc-*.md`, made by `state.py adhoc`) skip the final review, the documentation pass, `close-plan` and the plan
+For an ad hoc plan (`factory/jobs/_runs/adhoc-*.md`, made by `state.py adhoc`) skip the final review (unless its job was lean: see step 1), the documentation pass, `close-plan` and the plan
 commit, since the plan is local and there is nothing in the repo to close; release the lock and run `clean` as below, which also
 deletes the working plan.
 
