@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-24-factory-slim-design.md`
 
+> **Amended 2026-10-25:** the word cap is 4,800, not 4,400: the spec's cuts reached about 4,600, and compressing real rules further was ruled out by the user.
+
 ## Global Constraints
 
 - No emojis and no em-dashes in any file. Code and docs in English. Every skill references `STYLE.md`.

@@ -76,7 +76,7 @@ type another command.
 - An agent asked a question: handle it in place, as in `questions.md`.
 
 **Auto.** No question between tasks. A job that needs a person stops the run: list the waiting jobs, each with the
-ready command (`/factory-approve <id>`, `/factory-rework <id> <note>`, `/factory-answer <id>`), and stop.
+ready command (`/factory-approve <id>`, `/factory-rework <id> <note>`, `/factory-answer <id>`), release the lock as `lock.md` says, and stop.
 
 A prompt that is dismissed counts as stop and leaves every job as it is. Running `factory-run` again starts guided again.
 

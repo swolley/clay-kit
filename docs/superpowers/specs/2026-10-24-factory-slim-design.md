@@ -2,6 +2,8 @@
 
 Date: 2026-10-24. Status: approved in conversation, from the analysis of the reference parts.
 
+> **Amended 2026-10-25:** the word cap is 4,800, not 4,400: the spec's cuts reached about 4,600, and compressing real rules further was ruled out by the user.
+
 ## Goal
 
 Cut what `factory-run` and `factory-task` read before their first step, without losing a rule. Today `factory-run` reads its

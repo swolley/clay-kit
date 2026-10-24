@@ -14,7 +14,7 @@ runtime sits under `<repo>/factory/jobs/`, which git never tracks:
 
 | Path under `factory/jobs/` | Written by | Holds |
 |---|---|---|
-| `_runs/<plan-slug>.json` | `state.py run` and the job commands | the run state; the progress mod reads it |
+| `_runs/<plan-slug>.json` | `state.py run` and the job commands | the run state (mode, integration branch, `pace`, `base`, `final`); the progress mod reads it |
 | `_runs/<plan-slug>-final.patch`, `-final-2.patch` | `state.py final-diff` | the whole run's change for the final review, and the fix alone for its recheck |
 | `_runs/<plan-slug>-final.md`, `-final-2.md` | reviewer-final | the final review's verdict and findings, and the recheck of the fix |
 | `<job-id>/job.json` | `state.py`, only it | the job's state; the views read it |
@@ -28,8 +28,8 @@ runtime sits under `<repo>/factory/jobs/`, which git never tracks:
 | `<job-id>/round-<N>/review-<lens>.md` | reviewers | one verdict file per lens that was run in that round |
 | `<job-id>/decision.md` | approver (or you, when rounds run out) | the final call |
 
-`job.json` is written only by `state.py`: read `stage`, `round`, `tier`, `lean`, `lite`, `head` and `reviews` from it, never edit
-it. A job id looks like `003-rate-limit`: a running three-digit counter, then a short slug drawn from the task title.
+`job.json` is written only by `state.py`: read fields such as `stage`, `round`, `tier`, `lean`, `lite`, `head`, `build_round` and
+`reviews` from it, never edit it. A job id looks like `003-rate-limit`: a running three-digit counter, then a short slug drawn from the task title.
 
 ## Modes
 

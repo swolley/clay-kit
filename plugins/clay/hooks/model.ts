@@ -467,8 +467,8 @@ export function workingNow(job: Job, observed: Record<string, { model: string }>
   for (const role of roles) {
     // `ux` and `ui` share the interface reviewer; `uiux` is its role in jobs started before it existed.
     const lens = role === 'ui' || role === 'ux'
-    const asked = job.agents[role] ?? (lens ? job.agents.interface ?? job.agents.uiux : undefined)
-    const seen = (observed[role] ?? (lens ? observed.interface ?? observed.uiux : undefined))?.model
+    const asked = (lens ? job.agents.interface : undefined) ?? job.agents[role] ?? (lens ? job.agents.uiux : undefined)
+    const seen = ((lens ? observed.interface : undefined) ?? observed[role] ?? (lens ? observed.uiux : undefined))?.model
     const differs = Boolean(asked && seen && !sameModel(asked.model, seen))
     mismatch = mismatch || differs
     const model = seen ? shortModel(seen) : asked?.model

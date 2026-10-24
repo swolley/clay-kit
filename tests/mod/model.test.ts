@@ -300,6 +300,14 @@ test('workingNow finds the interface reviewer for either pending lens', () => {
   assert.equal(workingNow(j, { interface: { model: 'claude-sonnet-5-5' } }).text, 'ux, ui · sonnet-5-5 medium')
 })
 
+test('workingNow prefers the interface reviewer over a lens record of an earlier round', () => {
+  const j = job({
+    stage: 'review', round: 2, reviewers: ['code', 'ux'], reviews: { code: 'PASS', ux: 'pending' },
+    agents: { ux: { model: 'haiku', effort: 'low' }, interface: { model: 'sonnet', effort: 'medium' } },
+  })
+  assert.equal(workingNow(j).text, 'ux · sonnet medium')
+})
+
 test('workingNow still finds the combined reviewer of a job started before the interface reviewer', () => {
   const j = job({
     stage: 'review', round: 1, reviewers: ['code', 'ux', 'ui'], reviews: { code: 'PASS', ux: 'pending', ui: 'pending' },

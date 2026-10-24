@@ -11,7 +11,7 @@ Follow <plugin root>/STYLE.md. Read these parts of the shared reference together
 
 Arguments: $ARGUMENTS (the task text, which may start with `lean`, `tier=<name>` and `verify=<command>`)
 If the Arguments line still shows a placeholder that starts with $, the arguments are the text the user typed after the command name.
-The word `inline` of earlier versions: say in one line "inline was replaced by lean" and go on as with `lean`.
+The word `inline` of earlier versions: say in one line "inline was replaced by lean" and go on as with a leading `lean`, which stays out of `--text` too.
 
 Call `python3 <plugin root>/scripts/state.py adhoc --root <repo> --text "<the task text>"` (see "Ad hoc task" in `start.md`), without a leading
 `lean`, which only asks to run the task lean when it is eligible (`lean.md`; then Completion runs the final review).

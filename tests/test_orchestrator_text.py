@@ -306,11 +306,11 @@ def words(rel: str) -> int:
     return len(read(rel).split())
 
 
-def test_a_run_reads_at_most_4600_words_at_the_start():
+def test_a_run_reads_at_most_4800_words_at_the_start():
     for skill in ("factory-run", "factory-task"):
         for host in ("claude", "codex", "cursor"):
             start = words(f"skills/{skill}/SKILL.md") + sum(words(f"reference/{p}") for p in parts_read_by(skill))
-            assert start + words(f"reference/hosts-{host}.md") <= 4600, (skill, host)
+            assert start + words(f"reference/hosts-{host}.md") <= 4800, (skill, host)
 
 
 def test_parts_have_no_shared_header():
@@ -570,3 +570,32 @@ def test_resume_sends_a_ready_lean_job_to_lean_check():
 def test_a_builder_whose_agent_is_gone_is_replaced_on_any_host():
     resume = " ".join(read("reference/start.md").split("## Resume")[1].split("## Ad hoc task")[0].split())
     assert "any builder whose agent is gone, on any host" in resume
+
+
+def test_the_claude_part_has_no_rule_for_other_hosts():
+    assert "elsewhere" not in host_part("claude")
+
+
+def test_the_job_json_fields_to_read_are_examples_and_name_build_round():
+    flat = " ".join(read("reference/orchestrator.md").split())
+    assert "fields such as" in flat and "`build_round`" in flat
+
+
+def test_factory_task_keeps_inline_out_of_the_task_text():
+    assert "as with a leading `lean`, which stays out of `--text` too" in read("skills/factory-task/SKILL.md")
+
+
+def test_the_run_state_row_names_its_fields():
+    row = next(l for l in read("reference/orchestrator.md").splitlines() if l.startswith("| `_runs/<plan-slug>.json`"))
+    for field in ("mode", "integration branch", "`pace`", "`base`", "`final`"):
+        assert field in row, field
+
+
+def test_auto_pace_points_to_the_lock_release():
+    auto = read("reference/job-loop.md").split("**Auto.**")[1].split("\n\n")[0]
+    assert "`lock.md`" in auto
+
+
+def test_readme_says_one_reviewer_judges_either_interface_lens():
+    t = " ".join(read("README.md").split())
+    assert "one interface reviewer judges ui, ux or both" in t and "combined reviewer" not in t

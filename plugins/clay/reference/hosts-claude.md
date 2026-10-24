@@ -27,5 +27,5 @@ the plain-text form.
 
 ## Progress band
 
-The progress band and pane (the mod in `<plugin root>/hooks/`) exist only on Claude Code; elsewhere skip them without a word.
+The progress band and pane (the mod in `<plugin root>/hooks/`) exist only on Claude Code.
 `factory/jobs/dashboard.html` works on every host.
