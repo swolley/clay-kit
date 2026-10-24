@@ -161,9 +161,10 @@ beside `factory/routing.md`, is optional and maps tiers and agents to the host's
 | `cursor` | `fast` or `inherit` | not allowed: Cursor has no per-call effort |
 
 Tiers are `light`, `medium`, `careful`, `heavy`, `fable`. Agents are `reviewer-code`, `reviewer-ui`, `reviewer-ux`,
-`reviewer-security`, `reviewer-spec`, `approver` and `approver-risky` (the approver of a risky job); the combined `reviewer-uiux`
-uses the `reviewer-ux` entry. `approver-risky` does not inherit from `approver`: to change the approver of risky jobs, give
-`approver-risky` its own entry.
+`reviewer-security`, `reviewer-spec`, `approver`, `approver-risky` (the approver of a risky job), `reviewer-final` (the review of a
+finished plan's branch) and `reviewer-final-risky` (the same, when any job of the run was risky); the combined `reviewer-uiux`
+uses the `reviewer-ux` entry. A `-risky` entry does not inherit from its agent: to change the agent of risky work, give the
+`-risky` name its own entry.
 
 **Resolution order**, for each of `model` and `effort` separately:
 

@@ -98,6 +98,7 @@ def test_risky_approver_mapping(tmp_path):
         (None, "claude", {"tier": "light", "risky": True}, "--risky"),
         (None, "claude", {"agent": "reviewer-code", "risky": True}, "--risky"),
         (None, "codex", {"agent": "reviewer-uiux", "risky": True}, "--risky"),
+        (None, "claude", {"agent": "reviewer-spec", "risky": True}, "reviewer-final"),
     ],
 )
 def test_bad_input_raises(tmp_path, data, host, kwargs, needle):
@@ -142,8 +143,10 @@ def test_tiers_md_parity():
     assert tiers and agents
     assert tiers == TIER_DEFAULTS
     assert set(TIER_DEFAULTS) == set(factory_plan.TIERS)
-    others = {k: v for k, v in AGENT_DEFAULTS.items() if k not in ("approver", "approver-risky")}
-    assert {k: v for k, v in agents.items() if k != "approver"} == others
+    split = ("approver", "approver-risky", "reviewer-final", "reviewer-final-risky")
+    others = {k: v for k, v in AGENT_DEFAULTS.items() if k not in split}
+    assert {k: v for k, v in agents.items() if k not in split} == others
+    assert agents["reviewer-final"] == ("sonnet or opus, see below", "high")
     assert AGENT_DEFAULTS["approver"] == ("sonnet", "high")
     assert AGENT_DEFAULTS["approver-risky"] == ("opus", "high")
 
@@ -190,11 +193,21 @@ def test_agent_frontmatter_effort():
     agents = HERE.parent / "plugins/clay/agents"
     checked = []
     for name, (_model, effort) in AGENT_DEFAULTS.items():
-        if name == "approver-risky":  # a variant of approver, not an agent file
+        if name.endswith("-risky"):  # a variant of an agent, not an agent file
             continue
         fm = re.match(r"---\n(.*?)\n---\n", (agents / f"{name}.md").read_text(), re.S).group(1)
         assert re.search(rf"^effort: {effort}$", fm, re.M), name
         checked.append(name)
-    assert sorted(checked) == sorted(["reviewer-code", "reviewer-ui", "reviewer-ux", "reviewer-uiux", "reviewer-spec", "reviewer-security", "approver"])
+    assert sorted(checked) == sorted(["reviewer-code", "reviewer-ui", "reviewer-ux", "reviewer-uiux", "reviewer-spec", "reviewer-security", "approver", "reviewer-final"])
     builder = (agents / "builder.md").read_text()
     assert "effort:" not in re.match(r"---\n(.*?)\n---\n", builder, re.S).group(1)
+
+
+def test_final_reviewer_defaults(tmp_path):
+    assert resolve(tmp_path, "claude", agent="reviewer-final") == {"model": "sonnet", "effort": "high", "source": "tiers.md"}
+    assert resolve(tmp_path, "claude", agent="reviewer-final", risky=True) == {"model": "opus", "effort": "high", "source": "tiers.md"}
+
+
+def test_final_reviewer_risky_mapping(tmp_path):
+    write_models(tmp_path, {"codex": {"agents": {"reviewer-final-risky": {"model": "gpt-x"}}}})
+    assert resolve(tmp_path, "codex", agent="reviewer-final", risky=True)["model"] == "gpt-x"

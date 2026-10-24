@@ -48,10 +48,14 @@ alone. `run` asks once before it starts such tasks (see `reference/start.md`); o
 | reviewer-security | opus | high |
 | reviewer-spec | sonnet | medium |
 | approver | sonnet or opus, see below | high |
+| reviewer-final | sonnet or opus, see below | high |
 
 The approver decides whether a change lands without anyone looking, so it uses `opus` when the job is risky and `sonnet`
 otherwise. A job is risky when the routing selected the `security` reviewer (a sensitive path was touched) or its tier is
 `heavy` or `fable`; `careful` alone does not make a job risky. In the short path (below) the approver also does the code review.
+
+`reviewer-final` reads the whole branch of a finished plan (`reference/completion.md`). It uses `opus` when any job of the run was
+risky and `sonnet` otherwise (`state.py model --agent reviewer-final [--risky]`).
 
 `reviewer-uiux` is `reviewer-ux` and `reviewer-ui` in one run. The run command spawns it instead of the two when a round needs both lenses, so the change is
 read once; it still writes one verdict file per lens.

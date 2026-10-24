@@ -20,7 +20,7 @@ nothing to run. `<host>` in the commands is `claude`, `codex` or `cursor` accord
 
 ## Starting an agent
 
-`<role>` is the agent file's name: `builder`, `reviewer-<lens>`, `reviewer-uiux`, `reviewer-spec` or `approver`. The prompt is
+`<role>` is the agent file's name: `builder`, `reviewer-<lens>`, `reviewer-uiux`, `reviewer-spec`, `approver` or `reviewer-final`. The prompt is
 the one the calling part gives; `<paths>` opens with `Plugin root: <plugin root>`, which is how every agent finds its files.
 On Codex always, and on Cursor when the host does not list the plugin's agent, start a generic agent whose message is
 `Read <plugin root>/agents/<role>.md and follow it as your instructions.` followed by `<paths>` and the rest of the prompt.

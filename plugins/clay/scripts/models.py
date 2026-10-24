@@ -29,7 +29,11 @@ AGENT_DEFAULTS: dict[str, tuple[str, str]] = {
     "reviewer-spec": ("sonnet", "medium"),
     "approver": ("sonnet", "high"),
     "approver-risky": ("opus", "high"),
+    "reviewer-final": ("sonnet", "high"),
+    "reviewer-final-risky": ("opus", "high"),
 }
+# The agents whose model depends on whether the job, or the run, is risky; `<agent>-risky` holds the risky choice.
+RISKY_AGENTS = ("approver", "reviewer-final")
 
 CLAUDE_MODELS = ("haiku", "sonnet", "opus", "fable", "inherit")
 CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")
@@ -100,8 +104,8 @@ def resolve(root, host: str, tier: str | None = None, agent: str | None = None, 
         raise ModelsError(f"unknown host {host!r}, expected one of {', '.join(HOSTS)}")
     if (tier is None) == (agent is None):
         raise ModelsError("give exactly one of tier and agent")
-    if risky and (tier is not None or agent != "approver"):
-        raise ModelsError("--risky applies only to --agent approver")
+    if risky and (tier is not None or agent not in RISKY_AGENTS):
+        raise ModelsError("--risky applies only to --agent approver and --agent reviewer-final")
     if tier is not None:
         if tier not in TIERS:
             raise ModelsError(f"unknown tier {tier!r}, expected one of {', '.join(sorted(TIERS))}")
@@ -113,7 +117,7 @@ def resolve(root, host: str, tier: str | None = None, agent: str | None = None, 
             raise ModelsError(f"unknown agent {agent!r}, expected one of {', '.join(sorted(AGENT_DEFAULTS))}")
         group = "agents"
         name = "reviewer-ux" if agent == "reviewer-uiux" else agent
-        names = ["approver-risky" if name == "approver" and risky else name]
+        names = [f"{name}-risky" if risky else name]
     entries = load(root).get(host, {}).get(group, {})
     default_model, default_effort = (TIER_DEFAULTS if group == "tiers" else AGENT_DEFAULTS)[names[-1]]
     out: dict = {}
