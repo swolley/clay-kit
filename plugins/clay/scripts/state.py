@@ -21,6 +21,8 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
   state.py tick-plan --plan-file P [--task N] --root DIR
   state.py close-plan --plan-file P --root DIR
   state.py escalate JOB --host H --root DIR
+  state.py final-diff --plan STEM [--fix] --root DIR
+  state.py final-verdict --plan STEM [--fix] [--fix-job ID] --agent JSON --root DIR
 """
 import argparse
 import hashlib
@@ -449,12 +451,82 @@ def write_run(root, plan_file: str, mode: str, pace: str = "step") -> dict:
     run = json.loads(rp.read_text()) if rp.exists() else {}
     run.update(
         plan=path.stem, path=plan_file, mode=mode, pace=pace, integration=run.get("integration"), total=len(plan.tasks),
+        base=run.get("base") or git(root, "rev-parse", "HEAD").strip() or None,
         done=landed_count(root, path.stem),
         tasks=[{"n": t.number, "title": t.title, "tier": t.tier, "after": t.depends} for t in plan.tasks],
     )
     rp.parent.mkdir(parents=True, exist_ok=True)
     rp.write_text(json.dumps(run, indent=2))
     return run
+
+
+FINDING = re.compile(r"^\s*\d+[.)]\s", re.M)
+
+
+def _section(text: str, title: str) -> str:
+    """The body of a `## <title>` section, up to the next `## ` heading."""
+    return re.split(r"^## ", text.partition(f"## {title}")[2], maxsplit=1, flags=re.M)[0]
+
+
+def final_diff(root, plan_stem: str, fix: bool = False) -> dict:
+    """The change of the whole run as the final reviewer reads it, in one file. Isolated: from where the integration branch
+    left the repo to its tip; current branch: from the commit the run started on to HEAD. With `fix`, from the head the first
+    review read, so the second sees only the fix. `risky` says whether any job of the run was."""
+    root = Path(root)
+    rp = run_path(root, plan_stem)
+    if not rp.exists():
+        return {"ok": False, "reason": f"no run state for {plan_stem}"}
+    run = json.loads(rp.read_text())
+    if not run.get("base"):
+        return {"ok": False, "reason": "the run state has no base: the run started before the final review existed"}
+    final = run.get("final", {})
+    if run.get("mode") == "isolated":
+        branch = run.get("integration") or ""
+        tip = git(root, "rev-parse", "--verify", "--quiet", f"{branch}^{{commit}}", ok=(0, 1)).strip() if branch else ""
+        if not tip:
+            return {"ok": False, "reason": f"integration branch {branch or '(none recorded)'} not found"}
+        start = git(root, "merge-base", tip, run["base"]).strip()
+    else:
+        tip, start = git(root, "rev-parse", "HEAD").strip(), run["base"]
+    if fix:
+        if not final.get("head"):
+            return {"ok": False, "reason": "no first final review to start the fix from"}
+        start = final["head"]
+    span = f"{start}..{tip}"
+    commits = git(root, "log", "--oneline", span).splitlines()
+    numstat = git(root, "diff", "--numstat", span)
+    lines = [f"# Plan {plan_stem}, final review" + (" of the fix" if fix else ""), f"# Base {start}, head {tip}, mode {run.get('mode')}", "# Commits:"]
+    lines += [f"#   {c}" for c in commits]
+    lines.append("# Files (added, removed, path):")
+    lines += [f"#   {ln.replace(chr(9), ' ')}" for ln in numstat.splitlines()]
+    patch = rp.parent / f"{plan_stem}-final{'-2' if fix else ''}.patch"
+    patch.write_text("\n".join(lines) + "\n\n" + git(root, "diff", span))
+    final["fix_head" if fix else "head"] = tip
+    run["final"] = final
+    rp.write_text(json.dumps(run, indent=2))
+    risky = any("security" in j.get("reviewers", []) or j.get("tier") in ("heavy", "fable") for j in _plan_jobs(root, plan_stem))
+    return {"ok": True, "patch": str(patch), "base": start, "head": tip, "commits": len(commits), "risky": risky}
+
+
+def final_verdict(root, plan_stem: str, fix: bool, agent: dict, fix_job: str | None = None) -> dict:
+    """Read the verdict of a final review and keep it in the run state with its findings count and the agent's usage."""
+    rp = run_path(root, plan_stem)
+    f = rp.parent / f"{plan_stem}-final{'-2' if fix else ''}.md"
+    if not rp.exists() or not f.exists():
+        return {"ok": False, "reason": f"{f.name} is missing"}
+    text = f.read_text()
+    first = (text.splitlines() or [""])[0].strip()
+    verdict = first.removeprefix("VERDICT: ") if first.startswith("VERDICT: ") else ""
+    if verdict not in VERDICTS:
+        return {"ok": False, "reason": f"{f.name} has no verdict line"}
+    findings = len(FINDING.findall(_section(text, "Findings")))
+    run = json.loads(rp.read_text())
+    final = run.setdefault("final", {})
+    final["recheck" if fix else "review"] = {"verdict": verdict, "findings": findings, "agent": agent}
+    if fix_job:
+        final["fix_job"] = fix_job
+    rp.write_text(json.dumps(run, indent=2))
+    return {"ok": True, "verdict": verdict, "findings": findings}
 
 
 def land_job(root, job_id: str, stage: str, head: str) -> dict:
@@ -662,8 +734,46 @@ def execution_record(root, plan_stem: str) -> str:
         models = "/".join(sorted({a.get("model", "") for a in agents.values() if a.get("model")}))
         tier = f"{j['escalated_from']}→{j.get('tier', '')}" if j.get("escalated_from") else j.get("tier", "")
         rows.append(f"| {j.get('task')} | {tier} | {models} | {j.get('round', 1)} | {verdicts} | {decision} | {findings} | {'; '.join(notes)} | {t} | {m // 1000}s |")
+    final = _final_run(root, plan_stem)
+    reviews = [final[k] for k in ("review", "recheck") if k in final]
+    if reviews:
+        usage = [r.get("agent", {}) for r in reviews]
+        t, m = sum(int(a.get("tokens", 0)) for a in usage), sum(int(a.get("ms", 0)) for a in usage)
+        tokens, ms = tokens + t, ms + m
+        models = "/".join(sorted({a["model"] for a in usage if a.get("model")}))
+        rows.append(f"| final | | {models} | {len(reviews)} | {', '.join(r['verdict'] for r in reviews)} | | | | {t} | {m // 1000}s |")
     head = "| Task | Tier | Models | Rounds | Reviews | Decision | Findings | Notes | Tokens | Agent time |\n|---|---|---|---|---|---|---|---|---|---|\n"
     return f"{RECORD_TITLE}\n\n{head}" + "\n".join(rows) + f"\n\nTotal: {tokens} tokens, {ms // 1000}s of agent time.\n"
+
+
+def _final_run(root, plan_stem: str) -> dict:
+    """The final review part of the run state, empty when the run had none."""
+    try:
+        return json.loads(run_path(root, plan_stem).read_text()).get("final", {})
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def final_section(root, plan_stem: str) -> str:
+    """`### Final review` of the Delivery status: the first verdict, the fix job, and what the last review left open. Empty
+    when the run had no final review."""
+    final = _final_run(root, plan_stem)
+    if "review" not in final:
+        return ""
+    first = final["review"]
+    lines = [f"First review: {first['verdict']}, {first['findings']} finding(s)."]
+    if final.get("fix_job"):
+        lines.append(f"Fix: job {final['fix_job']}.")
+    last, name = (final["recheck"], f"{plan_stem}-final-2.md") if "recheck" in final else (first, f"{plan_stem}-final.md")
+    open_items = []
+    if last["verdict"] == "CHANGES":
+        try:
+            body = _section((run_path(root, plan_stem).parent / name).read_text(), "Findings")
+            open_items = [ln.strip() for ln in body.splitlines() if FINDING.match(ln)]
+        except OSError:
+            open_items = [f"{last['findings']} finding(s), file {name} not found"]
+    left = "\n\nLeft open:\n\n" + "\n".join(open_items) if open_items else "\n\nLeft open: none."
+    return "### Final review\n\n" + "\n".join(lines) + left + "\n"
 
 
 def _deviations(build: Path) -> list[str]:
@@ -700,8 +810,9 @@ def delivery_status(root, plan_stem: str, plan, docs: list[str]) -> str:
     documented = ", ".join(f"`{d}`" for d in docs) if docs else "none, no task names documentation"
     items = divergences(root, plan_stem, plan)
     listed = "\n".join(f"- {i}" for i in items) if items else "None recorded."
+    final = final_section(root, plan_stem)
     return (f"{DELIVERY_TITLE} ({day}): delivered by clay run\n\n**Documented in:** {documented}\n\n"
-            f"### Divergences\n\n{listed}\n\n{execution_record(root, plan_stem)}")
+            f"### Divergences\n\n{listed}\n\n" + (f"{final}\n" if final else "") + execution_record(root, plan_stem))
 
 
 def clean_jobs(root, plan_stem: str) -> dict:
@@ -760,6 +871,16 @@ def main(argv: list[str]) -> int:
     es.add_argument("job")
     es.add_argument("--root", default=".")
     es.add_argument("--host", required=True)
+    fd = sub.add_parser("final-diff")
+    fd.add_argument("--root", default=".")
+    fd.add_argument("--plan", required=True)
+    fd.add_argument("--fix", action="store_true")
+    fv = sub.add_parser("final-verdict")
+    fv.add_argument("--root", default=".")
+    fv.add_argument("--plan", required=True)
+    fv.add_argument("--fix", action="store_true")
+    fv.add_argument("--fix-job")
+    fv.add_argument("--agent", required=True, help='JSON {"model","effort","tokens","ms","tools"}')
     cl = sub.add_parser("clean")
     cl.add_argument("--root", default=".")
     cl.add_argument("--plan", required=True)
@@ -822,6 +943,13 @@ def main(argv: list[str]) -> int:
             print(json.dumps({"error": str(e)}))
             return 2
         return 0
+    if a.cmd in ("final-diff", "final-verdict"):
+        if a.cmd == "final-diff":
+            out = final_diff(a.root, a.plan, a.fix)
+        else:
+            out = final_verdict(a.root, a.plan, a.fix, json.loads(a.agent), a.fix_job)
+        print(json.dumps(out, indent=2))
+        return 0 if out["ok"] else 1
     if a.cmd == "escalate":
         try:
             print(json.dumps(escalate(a.root, a.job, a.host), indent=2))

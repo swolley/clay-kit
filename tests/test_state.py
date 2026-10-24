@@ -895,3 +895,144 @@ def test_cli_escalate(repo, capsys):
     j = new(repo, 1)
     assert state.main(["escalate", j["id"], "--host", "claude", "--root", str(repo)]) == 0
     assert json.loads(capsys.readouterr().out)["tier"] == "medium"
+
+
+STEM = "2026-01-01-demo"
+
+
+def head(repo):
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+
+
+def run_state(repo):
+    return json.loads(state.run_path(repo, STEM).read_text())
+
+
+def set_run(repo, **fields):
+    run = run_state(repo)
+    for k, v in fields.items():
+        if v is None:
+            run.pop(k, None)
+        else:
+            run[k] = v
+    state.run_path(repo, STEM).write_text(json.dumps(run))
+
+
+def commit(repo, text, subject):
+    (repo / "app/util.py").write_text(text)
+    git(repo, "commit", "-q", "-am", subject)
+
+
+def test_run_records_its_base_once(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    first = head(repo)
+    commit(repo, "x = 2\n", "later work")
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    assert run_state(repo)["base"] == first
+
+
+def test_final_diff_current_branch_spans_the_run(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    commit(repo, "x = 2\n", "alpha change")
+    out = state.final_diff(repo, STEM)
+    text = Path(out["patch"]).read_text()
+    assert out["ok"] is True and out["commits"] == 1 and out["risky"] is False
+    assert "# Plan 2026-01-01-demo, final review" in text and "alpha change" in text and "+x = 2" in text
+    assert out["head"] == head(repo) == run_state(repo)["final"]["head"]
+
+
+def test_final_diff_isolated_spans_the_integration_branch(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "isolated")
+    set_run(repo, integration="factory/demo")
+    git(repo, "checkout", "-q", "-b", "factory/demo")
+    commit(repo, "x = 2\n", "on integration")
+    git(repo, "checkout", "-q", "main")
+    out = state.final_diff(repo, STEM)
+    text = Path(out["patch"]).read_text()
+    assert out["ok"] is True and "on integration" in text and "+x = 2" in text
+
+
+def test_final_diff_isolated_without_the_branch_is_not_ok(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "isolated")
+    set_run(repo, integration="factory/gone")
+    out = state.final_diff(repo, STEM)
+    assert out["ok"] is False and "factory/gone" in out["reason"]
+
+
+def test_final_diff_without_base_is_not_ok(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    set_run(repo, base=None)
+    assert state.final_diff(repo, STEM)["ok"] is False
+    assert state.main(["final-diff", "--root", str(repo), "--plan", STEM]) == 1
+
+
+def test_final_diff_fix_starts_from_the_recorded_head(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    commit(repo, "x = 2\n", "alpha change")
+    state.final_diff(repo, STEM)
+    commit(repo, "x = 3\n", "beta fix")
+    out = state.final_diff(repo, STEM, fix=True)
+    text = Path(out["patch"]).read_text()
+    assert out["patch"].endswith(f"{STEM}-final-2.patch") and out["commits"] == 1
+    assert "beta fix" in text and "alpha change" not in text and "+x = 3" in text
+    assert run_state(repo)["final"]["fix_head"] == head(repo)
+
+
+def test_final_diff_is_risky_when_any_job_was(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    j = new(repo, 1)
+    job = state.read_job(repo, j["id"])
+    job["reviewers"] = ["code", "security"]
+    state.write_job(repo, job)
+    commit(repo, "x = 2\n", "alpha change")
+    assert state.final_diff(repo, STEM)["risky"] is True
+
+
+FINAL = "VERDICT: CHANGES\n\n## Findings\n1. a.py:1: first\n2. b.py:2: second\n\n## Observations\n1. not a finding\n"
+
+
+def test_final_verdict_stores_the_verdict_and_fails_without_one(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    runs = repo / "factory/jobs/_runs"
+    usage = {"model": "opus", "effort": "high", "tokens": 100, "ms": 2000}
+    (runs / f"{STEM}-final.md").write_text(FINAL)
+    assert state.final_verdict(repo, STEM, False, usage) == {"ok": True, "verdict": "CHANGES", "findings": 2}
+    assert run_state(repo)["final"]["review"] == {"verdict": "CHANGES", "findings": 2, "agent": usage}
+    (runs / f"{STEM}-final.md").write_text("Looks fine to me.\n")
+    assert state.final_verdict(repo, STEM, False, usage)["ok"] is False
+    assert state.final_verdict(repo, STEM, True, usage)["ok"] is False
+    assert state.main(["final-verdict", "--root", str(repo), "--plan", STEM, "--fix", "--agent", "{}"]) == 1
+
+
+def test_close_plan_writes_the_final_review(locked_repo):
+    state.write_run(locked_repo, PLAN_FILE, "current-branch")
+    runs = locked_repo / "factory/jobs/_runs"
+    (runs / f"{STEM}-final.md").write_text(FINAL)
+    state.final_verdict(locked_repo, STEM, False, {"model": "opus", "tokens": 100, "ms": 2000})
+    (runs / f"{STEM}-final-2.md").write_text("VERDICT: CHANGES\n\n## Findings\n2. b.py:2: second, still open\n")
+    state.final_verdict(locked_repo, STEM, True, {"model": "opus", "tokens": 50, "ms": 1000}, fix_job="004-fix")
+    for n in (1, 2):
+        state.land_job(locked_repo, new(locked_repo, n)["id"], "committed", head="abc")
+    state.close_plan(locked_repo, PLAN_FILE)
+    section = (locked_repo / PLAN_FILE).read_text().split("### Final review")[1]
+    assert "First review: CHANGES, 2 finding(s)." in section and "Fix: job 004-fix." in section
+    assert "2. b.py:2: second, still open" in section.split("Left open:")[1] and "a.py:1" not in section.split("Left open:")[1]
+    row = next(l for l in (locked_repo / PLAN_FILE).read_text().splitlines() if l.startswith("| final |"))
+    assert "opus" in row and "150" in row
+
+
+def test_close_plan_without_a_final_review_writes_no_section(locked_repo):
+    state.write_run(locked_repo, PLAN_FILE, "current-branch")
+    for n in (1, 2):
+        state.land_job(locked_repo, new(locked_repo, n)["id"], "committed", head="abc")
+    state.close_plan(locked_repo, PLAN_FILE)
+    text = (locked_repo / PLAN_FILE).read_text()
+    assert "### Execution record" in text and "### Final review" not in text and "| final |" not in text
