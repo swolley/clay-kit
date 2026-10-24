@@ -8,6 +8,9 @@ For `factory-run` without a plan, run `python3 <plugin root>/scripts/state.py pr
 `resolve.py plans` is the script behind it): one plan with open steps is the plan; none, point to `factory-brainstorm` and `factory-plan`. Several: list up to 4 plans, the most
 recent (by the date in the file name), which on Codex goes to the plain-text form (`hosts.md`), as path and open over total tasks, say how many more
 there are, and accept a fragment of a name typed by the user (match it the same way as a job token).
+Plans are found where `plan_status.py` finds them, subfolders and nested repositories included. Each one carries `root`, the
+checkout it belongs to relative to `<repo>`, and `path`, the plan relative to that checkout: when `root` is not empty, show the plan as
+`<root>/<path>` and, once it is chosen, `<repo>/<root>` is `<repo>` for the rest of the run.
 
 A plan's declared `status:` (completed, done, shipped, superseded) closes it whatever its checkboxes say (the convention of
 plan tools that keep a front matter status); a task with no steps is not runnable. Two more checks guard the lists, both part of the preflight:

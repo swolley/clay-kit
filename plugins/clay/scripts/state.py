@@ -41,7 +41,7 @@ from pathlib import Path
 
 from factory_plan import CLOSED, SECTION, TIERS, TASK_HEADING, describe_plan, parse_plan
 from models import ModelsError, resolve as resolve_model
-from resolve import PLANS_DIR, audit_plans, list_plans, list_unclassified, load_jobs
+from resolve import audit_plans, list_plans, list_unclassified, load_jobs
 from route import load_rules, route
 
 TERMINAL = ("merged", "committed")
@@ -192,7 +192,7 @@ def preflight(root, plan_file: str | None = None, repo_name: str = "") -> dict:
         {k: j.get(k) for k in ("id", "task", "stage", "round", "build_round", "head", "branch", "worktree")}
         for j in load_jobs(root) if j.get("plan") == path.stem
     ]
-    out["audit"] = [f for f in audit_plans(root) if Path(f["path"]).name == path.name]
+    out["audit"] = [f for f in audit_plans(root) if (root.resolve() / f["root"] / f["path"]) == path.resolve()]
     return out
 
 

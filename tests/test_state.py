@@ -1128,3 +1128,11 @@ def test_clean_removes_the_final_review_files(repo):
         (runs / f"{STEM}{name}").write_text("x")
     assert state.clean_jobs(repo, STEM)["ok"] is True
     assert not list(runs.glob(f"{STEM}-final*"))
+
+
+def test_preflight_audit_finds_a_plan_in_a_subfolder(repo):
+    rel = "docs/superpowers/plans/area/2026-01-02-other.md"
+    (repo / rel).parent.mkdir()
+    (repo / rel).write_text("---\nstatus: completed\n---\n# Other\n\n### Task 1: Create the thing\n\n**Files:**\n- Create: `app/never.py`\n\n- [x] **Step 1: Done**\n")
+    assert [f["path"] for f in state.preflight(repo, rel, "demo")["audit"]] == [rel]
+    assert state.preflight(repo, PLAN_FILE, "demo")["audit"] == []
