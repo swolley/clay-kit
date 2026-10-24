@@ -87,9 +87,15 @@ def setup(root, plugin_root) -> None:
 def adhoc_plan(root, text: str) -> dict:
     """Write the one-task working plan of an ad hoc task under factory/jobs/_runs, which git never sees."""
     valid = "light, medium, careful, heavy, fable"
-    tier, body = "medium", text.strip()
-    if m := re.match(r"tier=(\S*)\s*", body, re.I):
-        tier, body = m.group(1).lower(), body[m.end():]
+    tier, verify, body = "medium", "", text.strip()
+    # Leading options, in any order: `tier=<name>` and `verify=<command>` ("quoted", `backticked` or one word).
+    while m := re.match(r'(tier|verify)=("[^"]*"|`[^`]*`|\S*)\s*', body, re.I):
+        value = m.group(2)
+        if m.group(1).lower() == "tier":
+            tier = value.lower()
+        else:
+            verify = value[1:-1] if value[:1] in ('"', "`") and len(value) > 1 else value
+        body = body[m.end():]
     body = " ".join(body.split())
     if tier not in TIERS or not body:
         raise ValueError(f"an ad hoc task needs a text and a tier that is one of: {valid}")
@@ -104,10 +110,11 @@ def adhoc_plan(root, text: str) -> dict:
         stem = f"{base}-{n}"
     path = d / "_runs" / f"{stem}.md"
     path.write_text(
-        f"# Ad hoc: {title}\n\n**Spec:** none\n\n### Task 1: {title}\n\n**Tier:** {tier}\n**Accept:** 1. {body}\n\n"
+        f"# Ad hoc: {title}\n\n**Spec:** none\n\n### Task 1: {title}\n\n**Tier:** {tier}\n**Accept:** 1. {body}\n"
+        + (f"**Verify:** `{verify}`\n" if verify else "") + "\n"
         f"- [ ] **Step 1: {body}**\n"
     )
-    return {"plan_file": str(path), "plan_stem": stem, "title": title, "tier": tier}
+    return {"plan_file": str(path), "plan_stem": stem, "title": title, "tier": tier, "verify": verify}
 
 
 def slugify(title: str) -> str:

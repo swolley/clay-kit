@@ -1281,3 +1281,24 @@ def test_cli_lean_check_and_promote(repo, capsys):
     assert json.loads(capsys.readouterr().out)["land"] is False
     assert state.main(["promote", j["id"], "--reason", "by hand", "--root", str(repo)]) == 0
     assert state.read_job(repo, j["id"])["promoted"] == "by hand"
+
+
+def test_adhoc_takes_a_quoted_verify_command(tmp_path):
+    out = state.adhoc_plan(tmp_path, 'tier=light verify="pytest -q tests" Fix the slug')
+    text = Path(out["plan_file"]).read_text()
+    assert out["verify"] == "pytest -q tests" and out["title"] == "Fix the slug"
+    assert "**Verify:** `pytest -q tests`\n" in text and "**Accept:** 1. Fix the slug\n" in text
+
+
+def test_adhoc_takes_verify_before_or_after_tier(tmp_path):
+    out = state.adhoc_plan(tmp_path, "verify=`make test` tier=light Fix it")
+    assert (out["verify"], out["tier"], out["title"]) == ("make test", "light", "Fix it")
+
+
+def test_adhoc_takes_a_one_word_verify(tmp_path):
+    assert state.adhoc_plan(tmp_path, "verify=pytest Fix it")["verify"] == "pytest"
+
+
+def test_adhoc_without_verify_declares_none(tmp_path):
+    out = state.adhoc_plan(tmp_path, "Fix it")
+    assert out["verify"] == "" and "**Verify:**" not in Path(out["plan_file"]).read_text()
