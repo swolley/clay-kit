@@ -480,3 +480,11 @@ def test_round_three_escalates_to_a_fresh_builder():
     t = reference()
     assert "state.py escalate" in t and "fresh builder" in t
     assert "escalat" in read("tiers.md")
+
+
+def test_completion_runs_the_final_review_first():
+    t = read("reference/completion.md")
+    assert t.index("final-diff") < t.index("Documentation pass")
+    for word in ("reviewer-final", "final-verdict", "--fix", "Scope: fix", "one task", "ad hoc"):
+        assert word in t, word
+    assert "-final.md" in read("reference/orchestrator.md")

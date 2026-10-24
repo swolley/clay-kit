@@ -2,23 +2,39 @@
 
 Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is the path your skill states. Follow `<plugin root>/STYLE.md`. `<repo>` is the root of the target repository's own checkout.
 
-For an ad hoc plan (`factory/jobs/_runs/adhoc-*.md`, made by `state.py adhoc`) skip the documentation pass, `close-plan` and the plan
+For an ad hoc plan (`factory/jobs/_runs/adhoc-*.md`, made by `state.py adhoc`) skip the final review, the documentation pass, `close-plan` and the plan
 commit, since the plan is local and there is nothing in the repo to close; release the lock and run `clean` as below, which also
 deletes the working plan.
 
 When every task is landed, each one is already ticked (Landing, `orchestrator.md`). Then:
 
-1. **Documentation pass.** When two or more tasks named the same document under `Docs`, or a job's `## Deviations` contradicts what a
+1. **Final review.** Each task was reviewed alone; this reads the run's whole branch once, for what only shows across tasks. Skip it
+   for a plan of one task, whose only job was already reviewed, and for an ad hoc plan.
+   - Run `state.py final-diff --root <repo> --plan <plan-stem>`. It writes `_runs/<plan-stem>-final.patch` and prints `patch` and
+     `risky`. When it is not ok (a run started before this step existed, or the integration branch is gone), say so in one line with
+     its `reason` and go on with step 2.
+   - Spawn `reviewer-final` as `hosts.md` says, with the model and effort of `state.py model --host <host> --agent reviewer-final`, adding
+     `--risky` when `final-diff` printed `risky: true`, and the prompt `Plugin root: <plugin root>`, the repo root, the plan file,
+     `Diff: <patch>`. When it has finished, run `state.py final-verdict --root <repo> --plan <plan-stem> --agent '<usage JSON>'` in its own
+     step (the usage as in the Job loop's recording rule). Not ok means the file or its verdict line is missing: the agent gets one more
+     try with a reminder to write it; if it still has none, tell the user and go on with step 2.
+   - `PASS`: go on with step 2. `CHANGES`: run one ad hoc task through the Job loop, `state.py adhoc --text "tier=medium Fix the final
+     review findings in factory/jobs/_runs/<plan-stem>-final.md"`, as the documentation pass does. When it lands, run `final-diff --fix`,
+     spawn `reviewer-final` again with `Scope: fix`, the previous file `_runs/<plan-stem>-final.md` and the new `Diff:`, then
+     `final-verdict --fix --fix-job <job-id>`. The findings the recheck still lists are not fixed again: tell the user, one line per
+     finding, and go on. When the fix job goes `needs-human` instead, leave the recheck out: `close-plan` then records the first
+     review's findings as open.
+2. **Documentation pass.** When two or more tasks named the same document under `Docs`, or a job's `## Deviations` contradicts what a
    document says, run one ad hoc task for it (`state.py adhoc --text "tier=light Reconcile <files> with <what changed>"`) through the
    Job loop, so the reconciliation is reviewed like any other change. Never edit the documentation yourself. Otherwise skip this step.
-2. **Close.** `state.py close-plan --root <repo> --plan-file <plan>` (in isolated mode the plan inside the integration worktree) ticks
+3. **Close.** `state.py close-plan --root <repo> --plan-file <plan>` (in isolated mode the plan inside the integration worktree) ticks
    what is still open of a landed task and, when every checklist of the plan is resolved, writes `status: completed` and `verified_on`
    in the front matter and appends one `## Delivery status (<date>)` section: `**Documented in:**` with the `Docs` of the tasks,
-   `### Divergences` with each job's `## Deviations` and every cancelled step with its reason, and `### Execution record` (task, tier,
+   `### Divergences` with each job's `## Deviations` and every cancelled step with its reason, `### Final review` when step 1 ran, and `### Execution record` (task, tier,
    models, rounds, reviews, decision, notes, tokens, agent time). Commit it on the branch the jobs landed on, in current-branch mode in
    the repo and in isolated mode in the integration worktree, with the message "Close the plan". `closed: false` means a checklist is
    still open (a skipped task, a section outside the tasks): say which, and leave the plan open.
-3. **Check.** Run `python3 <plugin root>/scripts/plan_status.py --root <repo> --all --plan <plan-stem>`. When it reports documentation
+4. **Check.** Run `python3 <plugin root>/scripts/plan_status.py --root <repo> --all --plan <plan-stem>`. When it reports documentation
    missing for the plan, say so in one line.
 
 The plan is never deleted. It stays as the dated record of what was decided and of what was deliberately not built, and it keeps the
