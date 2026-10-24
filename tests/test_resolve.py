@@ -47,9 +47,9 @@ def test_unknown_token_matches_nothing():
 
 
 def _plan(root: Path, name: str, steps: str):
-    d = root / "docs/superpowers/plans"
-    d.mkdir(parents=True, exist_ok=True)
-    (d / name).write_text(f"# Plan {name}\n\n### Task 1: A\n\n{steps}\n")
+    f = root / "docs/superpowers/plans" / name
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(f"# Plan {name}\n\n### Task 1: A\n\n{steps}\n")
 
 
 def test_list_plans_keeps_only_plans_with_open_steps(tmp_path):
@@ -143,3 +143,26 @@ def test_audit_does_not_take_an_existing_test_file_that_is_only_extended_as_proo
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests/test_lamp.py").write_text("x")
     assert audit_plans(tmp_path) == []
+
+
+def test_plans_in_subfolders_and_nested_repositories_carry_the_checkout_they_belong_to(tmp_path):
+    _plan(tmp_path, "area/2026-01-01-root.md", "- [ ] **Step 1: do**")
+    _plan(tmp_path / "orchard", "2026-01-02-orchard.md", "- [ ] **Step 1: do**")
+    (tmp_path / "orchard/.git").mkdir()
+    _plan(tmp_path / "meadow", "2026-01-03-meadow.md", "- [ ] **Step 1: do**")
+    (tmp_path / ".git").mkdir()
+    got = sorted((p["root"], p["path"]) for p in list_plans(tmp_path))
+    assert got == [
+        ("", "docs/superpowers/plans/area/2026-01-01-root.md"),
+        ("", "meadow/docs/superpowers/plans/2026-01-03-meadow.md"),
+        ("orchard", "docs/superpowers/plans/2026-01-02-orchard.md"),
+    ]
+
+
+def test_a_job_landed_in_a_nested_checkout_closes_its_task_there(tmp_path):
+    _plan(tmp_path / "orchard", "2026-01-02-orchard.md", "- [ ] **Step 1: do**")
+    (tmp_path / "orchard/.git").mkdir()
+    job = tmp_path / "orchard/factory/jobs/001-a/job.json"
+    job.parent.mkdir(parents=True)
+    job.write_text(json.dumps({"id": "001-a", "plan": "2026-01-02-orchard", "task": 1, "stage": "merged"}))
+    assert list_plans(tmp_path) == []

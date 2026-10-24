@@ -61,6 +61,22 @@ def discover(root: Path | str) -> dict[str, str]:
     return repos
 
 
+def folders(root: Path, repos: dict[str, str], dirs: tuple[str, ...] = PLAN_DIRS):
+    """Each existing folder of plans (or of specs, given `SPEC_DIRS`) of every repository in `repos`, with the
+    repository's name, its path relative to `root` and the pattern the folder matched."""
+    for repo, relative in repos.items():
+        for pattern in dirs:
+            for d in sorted(glob.glob(os.path.join(glob.escape(str(Path(root) / relative)), pattern))):
+                if os.path.isdir(d):
+                    yield repo, relative, pattern, Path(d)
+
+
+def documents(folder: Path) -> list[Path]:
+    """The Markdown files of a plans or specs folder and of its subfolders, without index and readme files."""
+    found = (folder / name for name in sorted(glob.glob("**/*.md", root_dir=folder, recursive=True)))
+    return [f for f in found if f.name not in SKIPPED and f.is_file()]
+
+
 def _paths(files: list[str]) -> list[str]:
     """The declared files that look like paths, as the PHP tool reads them: first word, with a slash, no `::` or call."""
     out = []
@@ -199,7 +215,7 @@ def documentation(text: str, root: Path, relative: str) -> tuple[list[str], str 
 
 
 def _scan_plan(file: Path, root: Path, repo: str, relative: str, plan_dir: str, evidence: bool,
-               last_change: LastChange | None = None) -> dict:
+               last_change: LastChange | None = None, folder: Path | None = None) -> dict:
     text = file.read_text(errors="replace")
     plan = parse_plan(text)
     tasks = []
@@ -243,7 +259,7 @@ def _scan_plan(file: Path, root: Path, repo: str, relative: str, plan_dir: str, 
         "kind": "plan",
         "repo": repo,
         "source": plan_dir,
-        "file": file.name,
+        "file": file.relative_to(folder or file.parent).as_posix(),
         "date": date,
         "date_source": date_source,
         "updated": updated,
@@ -268,16 +284,9 @@ def scan_plans(root: Path | str, repos: dict[str, str], evidence: bool = True) -
     root = Path(root).resolve()
     plans = []
     last_change = LastChange()
-    for repo, relative in repos.items():
-        base = root / relative
-        for plan_dir in PLAN_DIRS:
-            for d in sorted(glob.glob(os.path.join(glob.escape(str(base)), plan_dir))):
-                if not os.path.isdir(d):
-                    continue
-                for file in (Path(d, name) for name in sorted(glob.glob("*.md", root_dir=d))):
-                    if file.name in SKIPPED or not file.is_file():
-                        continue
-                    plans.append(_scan_plan(file, root, repo, relative, plan_dir, evidence, last_change))
+    for repo, relative, plan_dir, folder in folders(root, repos):
+        for file in documents(folder):
+            plans.append(_scan_plan(file, root, repo, relative, plan_dir, evidence, last_change, folder))
     return plans
 
 
@@ -314,36 +323,32 @@ def scan_specs(root: Path | str, repos: dict[str, str], plans: list[dict]) -> li
             blob += (root / plan["path"]).read_text(errors="replace")
         except OSError:
             pass
-        plan_names[plan["file"]] = plan["path"]
+        plan_names[Path(plan["file"]).name] = plan["path"]
     specs = []
     last_change = LastChange()
-    for repo, relative in repos.items():
-        for spec_dir in SPEC_DIRS:
-            d = os.path.join(glob.escape(str(root / relative)), spec_dir)
-            for file in (Path(d, name) for name in sorted(glob.glob("*.md", root_dir=d))) if os.path.isdir(d) else []:
-                if file.name in SKIPPED or not file.is_file():
-                    continue
-                cited = file.name in blob
-                sibling = None if cited else _sibling_plan(file.name, plan_names)
-                if any(REFERENCE_PATTERN.match(line) for line in _head(file, 30)):
-                    state = "reference"
-                elif cited:
-                    state = "planned"
-                else:
-                    state = "plan_uncited" if sibling else "unplanned"
-                updated, updated_source = last_change.of(file)
-                specs.append({
-                    "kind": "spec",
-                    "repo": repo,
-                    "file": file.name,
-                    "path": file.relative_to(root).as_posix(),
-                    "title": _spec_title(file),
-                    "updated": updated,
-                    "updated_source": updated_source,
-                    "has_plan": state not in ("unplanned", "reference"),
-                    "sibling_plan": sibling,
-                    "state": state,
-                })
+    for repo, _, _, folder in folders(root, repos, SPEC_DIRS):
+        for file in documents(folder):
+            cited = file.name in blob
+            sibling = None if cited else _sibling_plan(file.name, plan_names)
+            if any(REFERENCE_PATTERN.match(line) for line in _head(file, 30)):
+                state = "reference"
+            elif cited:
+                state = "planned"
+            else:
+                state = "plan_uncited" if sibling else "unplanned"
+            updated, updated_source = last_change.of(file)
+            specs.append({
+                "kind": "spec",
+                "repo": repo,
+                "file": file.relative_to(folder).as_posix(),
+                "path": file.relative_to(root).as_posix(),
+                "title": _spec_title(file),
+                "updated": updated,
+                "updated_source": updated_source,
+                "has_plan": state not in ("unplanned", "reference"),
+                "sibling_plan": sibling,
+                "state": state,
+            })
     return sorted(specs, key=lambda s: (s["repo"], s["file"]))
 
 

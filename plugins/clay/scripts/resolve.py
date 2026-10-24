@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Resolve what a command argument means: a job from a short token, or a plan from the repo's plans folder.
+"""Resolve what a command argument means: a job from a short token, or a plan from the plans `plan_status.py` finds.
 
   resolve.py job [TOKEN] --stages needs-human,waiting-input --root DIR
   resolve.py plans [--unclassified|--audit] --root DIR
 
-Prints JSON. `job` gives {match, candidates, reason}; `plans` lists the plans that still have open steps.
+Prints JSON. `job` gives {match, candidates, reason}; `plans` lists the plans that still have open steps. Plans are
+found where `plan_status.py` finds them, subfolders and nested repositories included; each one carries `root`, the
+checkout it belongs to relative to DIR ('' for DIR itself), and `path`, the plan relative to that checkout.
 """
 import json
 import re
@@ -12,8 +14,7 @@ import sys
 from pathlib import Path
 
 from factory_plan import done_signals, git_subjects, parse_plan
-
-PLANS_DIR = "docs/superpowers/plans"
+from plan_status import discover, documents, folders
 
 
 def load_jobs(root: Path) -> list[dict]:
@@ -51,12 +52,29 @@ def resolve_job(token: str | None, jobs: list[dict], stages: tuple[str, ...]) ->
     return None, [], reason
 
 
+def checkout(folder: Path, top: Path) -> Path:
+    """The checkout a repository folder belongs to: the nearest folder holding `.git`, from it up to `top`, else the
+    folder itself. Its jobs, its git history and its files are that checkout's."""
+    for candidate in (folder, *folder.parents):
+        if (candidate / ".git").exists():
+            return candidate
+        if candidate == top:
+            break
+    return folder
+
+
 def _scan(root: Path):
-    jobs = load_jobs(root)
-    for f in sorted((root / PLANS_DIR).glob("*.md")):
-        parsed = parse_plan(f.read_text())
-        landed = {j.get("task") for j in jobs if j.get("plan") == f.stem and j.get("stage") in ("merged", "committed")}
-        yield f, parsed, landed
+    root = Path(root).resolve()
+    jobs: dict[Path, list[dict]] = {}
+    for _, relative, _, folder in folders(root, discover(root)):
+        home = checkout(root / relative, root)
+        if home not in jobs:
+            jobs[home] = load_jobs(home)
+        for f in documents(folder):
+            parsed = parse_plan(f.read_text())
+            landed = {j.get("task") for j in jobs[home] if j.get("plan") == f.stem and j.get("stage") in ("merged", "committed")}
+            where = {"root": "" if home == root else home.relative_to(root).as_posix(), "path": f.relative_to(home).as_posix()}
+            yield where, home, parsed, landed
 
 
 def list_plans(root: Path) -> list[dict]:
@@ -64,35 +82,36 @@ def list_plans(root: Path) -> list[dict]:
     checkboxes say. A task counts as done when its steps are ticked or a job of this plan landed it, since a
     landing can leave the tick uncommitted after a crash; a task with no steps is not work we can run."""
     plans = []
-    for f, parsed, landed in _scan(root):
+    for where, _, parsed, landed in _scan(root):
         if parsed.state != "open":
             continue
         open_tasks = [t for t in parsed.tasks if t.steps and not t.done and t.number not in landed]
         if open_tasks:
-            plans.append({"path": f"{PLANS_DIR}/{f.name}", "title": parsed.title, "tasks": len(parsed.tasks), "open": len(open_tasks)})
+            plans.append({**where, "title": parsed.title, "tasks": len(parsed.tasks), "open": len(open_tasks)})
     return plans
 
 
 def list_unclassified(root: Path) -> list[dict]:
     """Plans with no steps and no declared status: neither open nor closed, so a person decides."""
-    return [{"path": f"{PLANS_DIR}/{f.name}", "title": p.title} for f, p, _ in _scan(root) if p.state == "unclassified"]
+    return [{**where, "title": p.title} for where, _, p, _ in _scan(root) if p.state == "unclassified"]
 
 
 def audit_plans(root: Path) -> list[dict]:
     """Second check, from the repo: a plan declared closed whose planned commits and files are not there, or a plan
     still open whose every task already shows its signals. Only tasks that name a commit or a created file can be judged."""
-    subjects = git_subjects(root)
+    subjects: dict[Path, set[str]] = {}
     findings = []
-    for f, parsed, _ in _scan(root):
+    for where, home, parsed, _ in _scan(root):
         judged = [t for t in parsed.tasks if t.commits or t.files_create]
         if not judged:
             continue
-        shown = [bool(done_signals(t, root, subjects)) for t in judged]
-        path = f"{PLANS_DIR}/{f.name}"
+        if home not in subjects:
+            subjects[home] = git_subjects(home)
+        shown = [bool(done_signals(t, home, subjects[home])) for t in judged]
         if parsed.state == "done" and parsed.status and not any(shown):
-            findings.append({"path": path, "finding": f"declared {parsed.status} but no planned commit or created file is in the repo"})
+            findings.append({**where, "finding": f"declared {parsed.status} but no planned commit or created file is in the repo"})
         elif parsed.state == "open" and all(shown):
-            findings.append({"path": path, "finding": "has open steps but every task already shows its commit or files"})
+            findings.append({**where, "finding": "has open steps but every task already shows its commit or files"})
     return findings
 
 

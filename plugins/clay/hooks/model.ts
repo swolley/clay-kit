@@ -300,23 +300,66 @@ export function backlogText(b: Backlog): string {
   return `${plans} · ${specs}`
 }
 
-// Reads the plans and specs of the working folder (the usual superpowers locations). Unreadable files are skipped.
-export async function scanBacklog(fs: Fs): Promise<Backlog> {
-  const load = async (dir: string): Promise<Doc[]> => {
-    let entries: { name: string; kind: string }[] = []
-    try {
-      entries = await fs.list(dir)
-    } catch {
-      return []
+// The folders plan_status.py reads, in the working folder and in each folder one level below it.
+const PLAN_DIRS = ['docs/superpowers/plans', '.cursor/plans', 'Modules/*/docs/plans']
+const SPEC_DIRS = ['docs/superpowers/specs', '.cursor/specs']
+const SKIPPED_DOCS = new Set(['INDEX.md', 'README.md'])
+
+async function listed(fs: Fs, dir: string): Promise<{ name: string; kind: string }[]> {
+  try {
+    return await fs.list(dir)
+  } catch {
+    return []
+  }
+}
+
+// The folders a pattern names under `base`; a `*` segment stands for any folder that is not hidden.
+async function expand(fs: Fs, base: string, pattern: string): Promise<string[]> {
+  let found = [base]
+  for (const part of pattern.split('/')) {
+    const next: string[] = []
+    for (const dir of found) {
+      if (part !== '*') next.push(dir ? `${dir}/${part}` : part)
+      else for (const e of await listed(fs, dir || '.')) {
+        if (e.kind === 'dir' && !e.name.startsWith('.')) next.push(dir ? `${dir}/${e.name}` : e.name)
+      }
     }
-    const docs: Doc[] = []
-    for (const e of entries.filter(x => x.kind !== 'dir' && x.name.endsWith('.md'))) {
+    found = next
+  }
+  return found
+}
+
+// The Markdown files of a folder and of its subfolders, by file name, without index and readme files.
+async function documents(fs: Fs, dir: string): Promise<Doc[]> {
+  const docs: Doc[] = []
+  for (const e of await listed(fs, dir)) {
+    if (e.name.startsWith('.')) continue
+    if (e.kind === 'dir') docs.push(...(await documents(fs, `${dir}/${e.name}`)))
+    else if (e.name.endsWith('.md') && !SKIPPED_DOCS.has(e.name)) {
       const text = await fs.read(`${dir}/${e.name}`).catch(() => null)
       if (text !== null) docs.push({ name: e.name, text })
     }
+  }
+  return docs
+}
+
+// Reads the plans and specs where plan_status.py finds them: the working folder and the folders one level below it,
+// subfolders of the plans and specs folders included. Unreadable files are skipped.
+export async function scanBacklog(fs: Fs): Promise<Backlog> {
+  const bases = ['']
+  for (const e of await listed(fs, '.')) {
+    if (e.kind === 'dir' && !e.name.startsWith('.') && !SKIP_DIRS.has(e.name)) bases.push(e.name)
+  }
+  const load = async (patterns: string[]): Promise<Doc[]> => {
+    const docs: Doc[] = []
+    for (const base of bases) {
+      for (const pattern of patterns) {
+        for (const dir of await expand(fs, base, pattern)) docs.push(...(await documents(fs, dir)))
+      }
+    }
     return docs
   }
-  return backlogCounts(await load('docs/superpowers/plans'), await load('docs/superpowers/specs'))
+  return backlogCounts(await load(PLAN_DIRS), await load(SPEC_DIRS))
 }
 
 export const STAGE_STEPS = 5
