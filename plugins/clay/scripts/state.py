@@ -187,7 +187,13 @@ def preflight(root, plan_file: str | None = None, repo_name: str = "") -> dict:
         out["plans"] = list_plans(root)
         return out
     path = Path(plan_file) if Path(plan_file).is_absolute() else root / plan_file
-    out["plan"] = describe_plan(path.read_text(), repo_name, root)
+    text = path.read_text()
+    out["plan"] = describe_plan(text, repo_name, root)
+    rules = _rules(root)
+    for task, view in zip(parse_plan(text, default_repo=repo_name).tasks, out["plan"]["tasks"]):
+        view["lean"], view["lean_reason"] = lean_eligibility(task, rules)
+    out["lean_count"] = sum(1 for t in out["plan"]["tasks"] if t["lean"])
+    out["long"] = out["lean_count"] > LONG_LEAN
     out["jobs"] = [
         {k: j.get(k) for k in ("id", "task", "stage", "round", "build_round", "head", "branch", "worktree")}
         for j in load_jobs(root) if j.get("plan") == path.stem
@@ -331,15 +337,51 @@ def build_patch(job: dict, root, paths: list[str], round_no: int, delta: set[str
     return "\n".join(head) + "\n\n" + diff
 
 
+def _rules(root, table: str | None = None):
+    """The routing table: the one given, else the repo's own `factory/routing.md`, else the plugin's."""
+    default = Path(__file__).resolve().parent.parent / "routing.md"
+    own = jobs_dir(root).parent / "routing.md"
+    return load_rules(Path(table) if table else own if own.exists() else default)
+
+
+LEAN_TIERS = ("light", "medium")
+LONG_LEAN = 8
+
+
+def _declared_paths(files: list[str]) -> list[str]:
+    """The declared files that read as paths: the first word of each entry, with a slash."""
+    out = []
+    for f in files:
+        word = f.strip().strip("`").split(" ")[0].strip("`,;")
+        if "/" in word:
+            out.append(word)
+    return out
+
+
+def lean_eligibility(task, rules) -> tuple[bool, str]:
+    """Whether the session may build the task itself, proved by its own checks, and if not, why."""
+    if task.tier not in LEAN_TIERS:
+        return False, f"tier {task.tier}"
+    paths = [] if "files" in task.defaults_applied else _declared_paths(task.files)
+    if not paths:
+        return False, "no Files"
+    lenses = [lens for lens in route(paths, rules) if lens != "code"]
+    if lenses:
+        return False, "Files route to " + ", ".join(lenses)
+    if "accept" in task.defaults_applied or not task.accept:
+        return False, "no Accept"
+    if "verify" in task.defaults_applied or not task.verify.strip():
+        return False, "no Verify"
+    return True, ""
+
+
 def route_job(root, job_id: str, table: str | None = None) -> dict:
     job = read_job(root, job_id)
     paths, lines = changed(job, root)
     prints = fingerprints(job, root)
     previous = job.get("fingerprints")
     delta = None if previous is None else {p for p in set(previous) | set(prints) if previous.get(p) != prints.get(p)}
-    default = Path(__file__).resolve().parent.parent / "routing.md"
-    own = jobs_dir(root).parent / "routing.md"
-    rules = load_rules(Path(table) if table else own if own.exists() else default)
+    rules = _rules(root, table)
     reviewers = route(paths, rules)
     # The short path: the approver reviews the code itself, so one agent fewer. Never for a risky job.
     risky = "security" in reviewers or job["tier"] in ("heavy", "fable")

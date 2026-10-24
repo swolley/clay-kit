@@ -1136,3 +1136,49 @@ def test_preflight_audit_finds_a_plan_in_a_subfolder(repo):
     (repo / rel).write_text("---\nstatus: completed\n---\n# Other\n\n### Task 1: Create the thing\n\n**Files:**\n- Create: `app/never.py`\n\n- [x] **Step 1: Done**\n")
     assert [f["path"] for f in state.preflight(repo, rel, "demo")["audit"]] == [rel]
     assert state.preflight(repo, PLAN_FILE, "demo")["audit"] == []
+
+
+def one_task(tier="light", files="`app/util.py`", accept="1. Works.", verify="`pytest -q`") -> str:
+    fields = [f"**Tier:** {tier}"]
+    fields += [f"**Files:** {files}"] if files else []
+    fields += [f"**Accept:** {accept}"] if accept else []
+    fields += [f"**Verify:** {verify}"] if verify else []
+    return "# P\n\n### Task 1: Do it\n\n" + "\n".join(fields) + "\n\n- [ ] **Step 1: Do**\n"
+
+
+def eligibility(tmp_path, **fields):
+    return state.lean_eligibility(state.parse_plan(one_task(**fields)).tasks[0], state._rules(tmp_path))
+
+
+def test_a_light_task_with_files_accept_and_verify_is_eligible(tmp_path):
+    assert eligibility(tmp_path) == (True, "")
+
+
+@pytest.mark.parametrize("fields, reason", [
+    ({"tier": "careful"}, "tier careful"),
+    ({"files": ""}, "no Files"),
+    ({"files": "the helpers"}, "no Files"),
+    ({"files": "`app/util.py`, `app/auth/session.py`"}, "Files route to security"),
+    ({"accept": ""}, "no Accept"),
+    ({"verify": ""}, "no Verify"),
+])
+def test_eligibility_reasons(tmp_path, fields, reason):
+    assert eligibility(tmp_path, **fields) == (False, reason)
+
+
+def test_preflight_marks_each_task_and_counts_the_eligible(repo):
+    out = state.preflight(repo, PLAN_FILE, "demo")
+    task1 = out["plan"]["tasks"][0]
+    assert (task1["lean"], task1["lean_reason"]) == (False, "no Verify") and out["lean_count"] == 0
+    (repo / PLAN_FILE).write_text(PLAN.replace("**Accept:** 1. Works.", "**Accept:** 1. Works.\n**Verify:** `pytest -q`"))
+    out = state.preflight(repo, PLAN_FILE, "demo")
+    assert out["plan"]["tasks"][0]["lean"] is True and out["lean_count"] == 1 and out["long"] is False
+    assert out["plan"]["tasks"][1]["lean_reason"] == "tier careful"
+
+
+def test_preflight_flags_a_long_lean_plan(repo):
+    body = one_task().split("### Task 1: Do it")[1]
+    text = "# P\n" + "".join(f"\n### Task {n}: Do {n}{body}" for n in range(1, 10))
+    (repo / PLAN_FILE).write_text(text)
+    out = state.preflight(repo, PLAN_FILE, "demo")
+    assert out["lean_count"] == 9 and out["long"] is True
