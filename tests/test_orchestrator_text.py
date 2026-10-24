@@ -408,7 +408,13 @@ def test_plan_handover_names_every_fable_task():
     assert "fable" in hand and "every" in hand
 
 
-HOST_SECTIONS = ("## Which host", "## Starting an agent", "## Model and effort", "## Resuming an agent", "## Asking the user", "## Claude Code only")
+HOST_SECTIONS = ("## Which host", "## Starting an agent", "## Model and effort", "## Asking the user")
+HOST_PART_SECTIONS = ("## Starting an agent", "## Model and effort", "## Resuming an agent", "## Asking the user")
+HOSTS = ("claude", "codex", "cursor")
+
+
+def host_part(host: str) -> str:
+    return read(f"reference/hosts-{host}.md")
 
 
 def test_hosts_part_has_sections():
@@ -417,16 +423,28 @@ def test_hosts_part_has_sections():
         assert f"\n{heading}\n" in t, heading
     assert [h for h in HOST_SECTIONS] == sorted(HOST_SECTIONS, key=t.index)
     assert "Read <plugin root>/agents/<role>.md and follow it as your instructions." in t
-    for tool in ("`Agent`", "`spawn_agent`", "`Task`", "`AskUserQuestion`", "`request_user_input`", "`send_input`", "`SendMessage`"):
-        assert tool in t, tool
     flat = " ".join(t.split())
     assert "end the turn" in flat and "never apply a default" in flat.lower() and "longer than 3" in flat
     assert "state.py model --host <host>" in flat and "frontmatter" in flat
+    assert "`hosts-<host>.md`" in flat
+
+
+def test_each_host_has_its_own_part():
+    for host in HOSTS:
+        t = host_part(host)
+        for heading in HOST_PART_SECTIONS:
+            assert f"\n{heading}\n" in t, (host, heading)
+    tools = {"claude": ("`Agent`", "`AskUserQuestion`", "`SendMessage`", "`subagent_tokens`"),
+             "codex": ("`spawn_agent`", "`request_user_input`", "`send_input`", "`reasoning_effort`"),
+             "cursor": ("`Task`", "`fast`", "`inherit`")}
+    for host, names in tools.items():
+        for name in names:
+            assert name in host_part(host), (host, name)
 
 
 def test_hosts_detection_is_an_ordered_check():
     flat = " ".join(read("reference/hosts.md").split())
-    which = flat.split("## Which host")[1].split("| |")[0]
+    which = flat.split("## Which host")[1].split("##")[0]
     assert which.index("`AskUserQuestion`") < which.index("`spawn_agent`") < which.index("`Task`")
     assert "`Agent` or `AskUserQuestion` is Claude Code" in which
     assert "If none is present, say so in one line and stop" in which
@@ -434,12 +452,12 @@ def test_hosts_detection_is_an_ordered_check():
 
 
 def test_hosts_closes_codex_agents():
-    flat = " ".join(read("reference/hosts.md").split())
+    flat = " ".join(host_part("codex").split())
     assert "`close_agent`" in flat and "once its file has been read" in flat
 
 
 def test_hosts_handles_refused_spawn_on_thread_limit():
-    flat = " ".join(read("reference/hosts.md").split())
+    flat = " ".join(host_part("codex").split())
     assert "`AgentLimitReached`) is not a failed agent" in flat
     assert "start the reviewers that did not fit and retry the refused spawn" in flat
     # the builder is the last thing closed: running reviewers are waited for first
@@ -447,8 +465,16 @@ def test_hosts_handles_refused_spawn_on_thread_limit():
     assert "a later round starts a fresh builder" in flat
 
 
+def test_cursor_starts_a_fresh_builder():
+    assert "fresh builder" in host_part("cursor")
+
+
+def test_claude_part_holds_the_progress_band():
+    assert "progress band" in host_part("claude")
+
+
 def other_parts() -> dict[str, str]:
-    texts = {p.name: p.read_text() for p in (PLUGIN / "reference").glob("*.md") if p.name != "hosts.md"}
+    texts = {p.name: p.read_text() for p in (PLUGIN / "reference").glob("*.md") if not p.name.startswith("hosts")}
     texts["STYLE.md"] = read("STYLE.md")
     return texts
 

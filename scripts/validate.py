@@ -142,6 +142,11 @@ def validate(root: Path) -> list[str]:
         for ref in sorted(plugin.glob("reference/*.md")):
             if "CLAUDE_PLUGIN_ROOT" in ref.read_text():
                 problems.append(f"{rel(ref)}: must not use CLAUDE_PLUGIN_ROOT (not substituted in files read at runtime)")
+        if (plugin / "reference/hosts.md").exists():
+            for host in ("claude", "codex", "cursor"):
+                part = plugin / f"reference/hosts-{host}.md"
+                if not part.exists():
+                    problems.append(f"{rel(part)}: missing (hosts.md sends the {host} host to its own part)")
 
         for skill_dir in sorted(plugin.glob("skills/*")):
             yaml = skill_dir / "agents/openai.yaml"

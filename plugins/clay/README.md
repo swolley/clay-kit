@@ -108,7 +108,8 @@ Optional: with the `savvy-progress` mod installed on Claude Code, `/factory-run`
 ## Hosts
 
 The marketplace is `clay-kit` and the plugin `clay`. The same files serve all three hosts, with one manifest each; the host
-differences the run has to handle are written in [reference/hosts.md](reference/hosts.md), and the facts behind them, with
+differences the run has to handle are written in [reference/hosts.md](reference/hosts.md) and one part per host
+(`reference/hosts-<host>.md`), and the facts behind them, with
 their sources, in [docs/hosts.md](https://github.com/swolley/clay-kit/blob/master/docs/hosts.md).
 
 | | Claude Code | Codex | Cursor |

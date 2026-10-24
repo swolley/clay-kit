@@ -53,11 +53,19 @@ def make_scaffold(root: Path) -> None:
     write(root, "plugins/clay/agents/builder.md", agent("builder") + ROOT_SENTENCE + "\n")
     write(root, "plugins/clay/reference/orchestrator.md", "core\n")
     write(root, "plugins/clay/reference/hosts.md", "hosts\n")
+    for host in ("claude", "codex", "cursor"):
+        write(root, f"plugins/clay/reference/hosts-{host}.md", f"{host}\n")
 
 
 def test_valid_scaffold_passes(tmp_path):
     make_scaffold(tmp_path)
     assert validate(tmp_path) == []
+
+
+def test_a_missing_host_part_fails(tmp_path):
+    make_scaffold(tmp_path)
+    (tmp_path / "plugins/clay/reference/hosts-codex.md").unlink()
+    assert any("reference/hosts-codex.md" in p for p in validate(tmp_path))
 
 
 def test_bad_json_fails_and_names_file(tmp_path):

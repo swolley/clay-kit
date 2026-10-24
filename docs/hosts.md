@@ -99,7 +99,7 @@ engine's excerpt of the cited page; rows marked **(F)** were read in full on Git
 | Progress mod | yes | no | no |
 
 Consequences, as built (design: `docs/superpowers/specs/2026-10-15-codex-cursor-design.md`; the host-by-host instructions
-the orchestrator follows are in `plugins/clay/reference/hosts.md`):
+the orchestrator follows are in `plugins/clay/reference/hosts.md` and one part per host, `hosts-claude.md`, `hosts-codex.md`, `hosts-cursor.md`):
 - Every skill opens with `Plugin root: ${CLAUDE_PLUGIN_ROOT}` and a fallback line saying the root is the folder two levels
   above the folder that holds its `SKILL.md`. Claude Code substitutes the variable; Codex and Cursor use the fallback, which follows their documented
   rule of paths relative to the skill. The rest of the text says `<plugin root>`. Agents never use the variable: they read the
