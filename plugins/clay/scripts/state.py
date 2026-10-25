@@ -1000,7 +1000,8 @@ def execution_record(root, plan_stem: str) -> str:
         usage = [r.get("agent", {}) for r in reviews]
         t, m = sum(int(a.get("tokens", 0)) for a in usage), sum(int(a.get("ms", 0)) for a in usage)
         tokens, ms = tokens + t, ms + m
-        models = "/".join(sorted({a["model"] for a in usage if a.get("model")}))
+        prefix = f"{v}:" if (v := (final.get("vendor") or {}).get("vendor")) else ""
+        models = "/".join(sorted({prefix + a["model"] for a in usage if a.get("model")}))
         rows.append(f"| final | | {models} | {len(reviews)} | | {', '.join(r['verdict'] for r in reviews)} | | | | {t} | {m // 1000}s |")
     head = "| Task | Tier | Models | Rounds | First round | Reviews | Decision | Findings | Notes | Tokens | Agent time |\n|---|---|---|---|---|---|---|---|---|---|---|\n"
     return f"{RECORD_TITLE}\n\n{head}" + "\n".join(rows) + f"\n\nTotal: {tokens} tokens, {ms // 1000}s of agent time.\n"

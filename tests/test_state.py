@@ -1073,6 +1073,20 @@ def test_close_plan_writes_the_final_review(locked_repo):
     assert "opus" in row and "150" in row
 
 
+def test_execution_record_final_row_shows_its_vendor(locked_repo):
+    state.write_run(locked_repo, PLAN_FILE, "current-branch")
+    runs = locked_repo / "factory/jobs/_runs"
+    (runs / f"{STEM}-final.md").write_text("VERDICT: PASS\n\n## Findings\nNone.\n")
+    state.final_verdict(locked_repo, STEM, False, {"model": "gpt-5.5", "tokens": 10, "ms": 1000})
+    row = next(l for l in state.execution_record(locked_repo, STEM).splitlines() if l.startswith("| final |"))
+    assert row.split("|")[3].strip() == "gpt-5.5"
+    run = state.read_run(locked_repo, STEM)
+    run["final"]["vendor"] = {"vendor": "codex", "reason": "opposite"}
+    state.run_path(locked_repo, STEM).write_text(json.dumps(run))
+    row = next(l for l in state.execution_record(locked_repo, STEM).splitlines() if l.startswith("| final |"))
+    assert row.split("|")[3].strip() == "codex:gpt-5.5"
+
+
 def test_close_plan_without_a_final_review_writes_no_section(locked_repo):
     state.write_run(locked_repo, PLAN_FILE, "current-branch")
     for n in (1, 2):
