@@ -638,12 +638,54 @@ def test_rework_and_answer_sessions_find_the_peer():
         assert "peer.md" in read(f"skills/{skill}/SKILL.md"), skill
         assert "peer.md" not in parts_read_by(skill), skill
     flat = " ".join(read("reference/peer.md").split())
-    assert "outside the start" in flat.lower() and "peer: true" in flat
+    ask = "state.py vendor <job> --agent builder --host <host>"
+    assert "outside the start" in flat.lower() and "`cross_on: true`" in flat and ask in flat
     step = " ".join(read("reference/job-loop.md").split("2. **Build.**")[1].split("\n3. **")[0].split())
-    assert "outside the start" in step and "state.py vendor" in step
+    assert "outside the start" in step and ask in step and "`cross_on: true`" in step
     assert "peer.md" in read("reference/questions.md").split("4. When answers exist")[1]
 
 
 def test_review_not_crossed_is_only_for_reviews():
     sentence = next(s for s in " ".join(read("reference/peer.md").split()).split("- ") if "review not crossed" in s)
     assert "reviewer" in sentence and "approver" in sentence and "reviewer-final" in sentence
+
+
+def peer_flat() -> str:
+    return " ".join(read("reference/peer.md").split())
+
+
+def test_a_codex_builder_leaves_its_commit_to_the_orchestrator():
+    saving = " ".join(read("agents/builder.md").split("## Saving the work")[1].split("## build.md")[0].split())
+    assert "`Commit: by the orchestrator`" in saving and "do not commit" in saving and "`## Commit`" in saving
+    flat = peer_flat()
+    assert "`Commit: by the orchestrator`" in flat
+    after = flat.split("`Commit: by the orchestrator`", 1)[1]
+    assert "## Commit" in after and "worktree" in after and "commit" in after
+
+
+def test_every_vendor_down_asks_the_vendor_again():
+    fails = " ".join(read("reference/peer.md").split("## When a run fails")[1].split())
+    assert "After any `vendor-down`, ask `state.py vendor` again for that agent" in fails
+    assert "epoch" in fails  # `wait` prints Codex's resets_at as an epoch, which vendor-down takes as it is
+
+
+def test_wait_stays_under_the_shell_tool_limit():
+    flat = peer_flat()
+    assert "--timeout 100" in flat and "`running`" in flat
+
+
+def test_codex_sandbox_limits_are_documented():
+    flat, readme = peer_flat(), " ".join(read("README.md").split())
+    for t in (flat, readme):
+        assert "localhost" in t and "~/.cache" in t and "--reuse" in t
+    assert "`reviewer-interface`" in flat and "Port:" in flat
+    assert "~/.claude" in flat and "outside the session's sandbox" in flat
+
+
+def test_the_final_recheck_is_round_2():
+    assert "`Scope: fix`" in peer_flat() and "`--round 2`" in peer_flat()
+
+
+def test_a_fresh_builder_continues_from_the_tree_as_it_stands():
+    flat = peer_flat()
+    assert "uncommitted edits" in flat and "no reset" in flat.lower()

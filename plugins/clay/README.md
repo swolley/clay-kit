@@ -203,7 +203,11 @@ Cursor sessions have no peer. The optional `cross` key of `factory/models.json` 
 ```
 
 `builder_tiers` (default `[]`) lists the tiers whose builders go to the peer; `threshold` (default `80`, 1 to 100) is the Codex `used_percent` at or above
-which new agents go to the other vendor. A Codex peer runs in its `workspace-write` sandbox, which has no network.
+which new agents go to the other vendor. A Codex peer runs in its `workspace-write` sandbox: it writes only the job's worktree, its job folder
+and `/tmp`, opens no network socket (localhost included) and cannot write `~/.cache` or other caches in your home. So a Codex reviewer or
+approver relies on the checks on record (`state.py verify --reuse`) and says in its file which one it could not run again, a Codex interface
+reviewer works from the code, and a Codex builder in isolated mode leaves its commit to the orchestrator. On Codex, starting a Claude peer
+(`claude -p` needs the network and writes `~/.claude`) runs outside the session's sandbox, with your approval.
 
 ### Known limits on Codex and Cursor
 
