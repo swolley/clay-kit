@@ -6,8 +6,8 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
   state.py setup --root DIR --plugin-root DIR
   state.py adhoc --root DIR --text "[tier=NAME] TEXT"
   state.py model --root DIR --host claude|codex|cursor (--tier T | --agent A) [--risky]
-  state.py run --root DIR --plan-file P --mode M --pace step|auto
-  state.py preflight --root DIR [--plan-file P --repo-name R]
+  state.py run --root DIR --plan-file P --mode M --pace step|auto [--cross on|off --host H]
+  state.py preflight --root DIR [--plan-file P --repo-name R] [--host H]
   state.py new-job --root DIR --plan-file P --task N --repo-name R --mode M --branch B --worktree W [--lean]
   state.py begin-job --root DIR --plan-file P --task N --repo-name R --mode M --branch B --worktree W [--lean]
   state.py stage JOB STAGE --root DIR
@@ -20,6 +20,9 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
   state.py land JOB --stage committed|merged --head SHA --root DIR
   state.py tick-plan --plan-file P [--task N] --root DIR
   state.py close-plan --plan-file P --root DIR
+  state.py vendor [JOB] --agent A --host H [--plan STEM] [--risky] --root DIR
+  state.py quota --vendor claude|codex --root DIR
+  state.py vendor-down --plan STEM --vendor V --reason limit|missing|auth [--until ISO] --root DIR
   state.py escalate JOB --host H --root DIR
   state.py rework JOB --root DIR
   state.py lean-check JOB --root DIR
@@ -42,9 +45,10 @@ from glob import escape as glob_escape
 from pathlib import Path
 
 from factory_plan import CLOSED, SECTION, TIERS, TASK_HEADING, describe_plan, parse_plan
-from models import ModelsError, resolve as resolve_model
+from models import RISKY_AGENTS, ModelsError, cross_config, resolve as resolve_model
 from resolve import audit_plans, list_plans, list_unclassified, load_jobs
 from route import load_rules, route
+from vendors import END_OF_RUN, PEER, decide, parse_iso, quota as read_quota
 
 TERMINAL = ("merged", "committed")
 VERDICTS = ("PASS", "CHANGES")
@@ -197,11 +201,14 @@ def begin_job(root, plan_file: str, task_number: int, repo_name: str, mode: str,
     return {**out, "stage": "build"}
 
 
-def preflight(root, plan_file: str | None = None, repo_name: str = "") -> dict:
+def preflight(root, plan_file: str | None = None, repo_name: str = "", host: str | None = None) -> dict:
     """What a run needs to know before it starts, in one call. Without a plan: the plans with open steps and the unclassified ones.
-    With a plan: the plan as parsed (defaults, warnings, signs of work already done), the jobs it already has, and what the audit says about it."""
+    With a plan: the plan as parsed (defaults, warnings, signs of work already done), the jobs it already has, and what the audit says about it.
+    With a host that has a peer vendor (claude, codex): whether the peer's CLI is on PATH."""
     root = Path(root)
     out: dict = {"unclassified": list_unclassified(root)}
+    if host in PEER:
+        out["peer"] = {"vendor": PEER[host], "found": shutil.which(PEER[host]) is not None}
     if not plan_file:
         out["plans"] = list_plans(root)
         return out
@@ -575,7 +582,9 @@ def landed_count(root, plan_stem: str) -> int:
     return len(done)
 
 
-def write_run(root, plan_file: str, mode: str, pace: str = "step") -> dict:
+def write_run(root, plan_file: str, mode: str, pace: str = "step", cross: str | None = None, host: str | None = None) -> dict:
+    """The run state. `cross` ("on" or "off", asked at the start) records whether agents may go to the host's peer vendor, with the
+    settings of models.json; without it what an earlier start recorded stays. `vendors` (what vendor-down recorded) is never touched."""
     root = Path(root)
     path = Path(plan_file) if Path(plan_file).is_absolute() else root / plan_file
     plan = parse_plan(path.read_text())
@@ -589,6 +598,12 @@ def write_run(root, plan_file: str, mode: str, pace: str = "step") -> dict:
         done=landed_count(root, path.stem),
         tasks=[{"n": t.number, "title": t.title, "tier": t.tier, "after": t.depends} for t in plan.tasks],
     )
+    if cross is not None:
+        if cross not in ("on", "off"):
+            raise ValueError(f"cross is on or off, not {cross!r}")
+        if not host:
+            raise ValueError("--cross needs --host")
+        run["cross"] = {"on": cross == "on" and host in PEER, "peer": PEER.get(host), **cross_config(root)}
     rp.parent.mkdir(parents=True, exist_ok=True)
     rp.write_text(json.dumps(run, indent=2))
     return run
@@ -685,6 +700,70 @@ def final_verdict(root, plan_stem: str, fix: bool, agent: dict, fix_job: str | N
         final["fix_job"] = fix_job
     rp.write_text(json.dumps(run, indent=2))
     return {"ok": True, "verdict": verdict, "findings": findings}
+
+
+def read_run(root, plan_stem: str) -> dict:
+    try:
+        return json.loads(run_path(root, plan_stem).read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def vendor(root, job_id: str | None, agent: str, host: str, plan_stem: str | None = None, risky: bool = False) -> dict:
+    """Which vendor runs an agent, with the model and effort to pass it, recorded where the execution record reads it: the job
+    (`vendors[agent]`, and `crossed: false` when a review stayed on the builder's vendor) or, for reviewer-final, the run state."""
+    job = read_job(root, job_id) if job_id else None
+    stem = job["plan"] if job else plan_stem
+    if agent == "builder" and not job:
+        raise ValueError("the builder needs a job")
+    if agent == "reviewer-final" and not stem:
+        raise ValueError("reviewer-final needs --plan")
+    run = read_run(root, stem) if stem else {}
+    cross = run.get("cross") or {}
+    usage = {v: read_quota(root, v)["used_percent"] for v in (host, PEER.get(host)) if v in PEER} if cross.get("on") else {}
+    out = decide(job, run, agent, host, usage, now())
+    if out["vendor"] is None:
+        return {**out, "model": None, "effort": None}
+    chosen = resolve_model(root, out["vendor"], tier=job["tier"]) if agent == "builder" else resolve_model(
+        root, out["vendor"], agent=agent, risky=risky and agent in RISKY_AGENTS)
+    record = {"vendor": out["vendor"], "reason": out["reason"]}
+    if agent == "reviewer-final":
+        final = run.setdefault("final", {})
+        final["vendor"] = record
+        if not out["crossed"] and cross.get("on"):
+            final["crossed"] = False
+        run_path(root, stem).write_text(json.dumps(run, indent=2))
+    elif job:
+        job.setdefault("vendors", {})[agent] = record
+        if out["reason"] == "not crossed":
+            job["crossed"] = False
+        write_job(root, job)
+    return {**out, "model": chosen["model"], "effort": chosen["effort"]}
+
+
+def vendor_down(root, plan_stem: str, vendor: str, reason: str, until: str | None = None) -> dict:
+    """Record in the run state that a vendor cannot take agents: `limit` until `until` (to the end of the run without it),
+    `missing` and `auth` for the rest of the run."""
+    if reason not in ("limit", "missing", "auth"):
+        raise ValueError(f"reason is limit, missing or auth, not {reason!r}")
+    if vendor not in PEER:
+        raise ValueError(f"vendor is claude or codex, not {vendor!r}")
+    rp = run_path(root, plan_stem)
+    if not rp.exists():
+        raise ValueError(f"no run state for {plan_stem}")
+    if until is not None:
+        try:
+            until = parse_iso(until).strftime("%Y-%m-%dT%H:%M:%SZ")
+        except ValueError as e:
+            raise ValueError(f"--until {until!r} is not an ISO 8601 time") from e
+    run = json.loads(rp.read_text())
+    entry = run.setdefault("vendors", {}).setdefault(vendor, {})
+    if reason == "limit":
+        entry["exhausted_until"] = until or END_OF_RUN
+    else:
+        entry["off"] = True
+    rp.write_text(json.dumps(run, indent=2))
+    return {"vendor": vendor, **entry}
 
 
 def land_job(root, job_id: str, stage: str, head: str) -> dict:
@@ -1031,6 +1110,22 @@ def main(argv: list[str]) -> int:
     md.add_argument("--tier")
     md.add_argument("--agent")
     md.add_argument("--risky", action="store_true")
+    vd = sub.add_parser("vendor")
+    vd.add_argument("job", nargs="?")
+    vd.add_argument("--root", default=".")
+    vd.add_argument("--agent", required=True)
+    vd.add_argument("--host", required=True)
+    vd.add_argument("--plan")
+    vd.add_argument("--risky", action="store_true")
+    qt = sub.add_parser("quota")
+    qt.add_argument("--root", default=".")
+    qt.add_argument("--vendor", required=True, choices=sorted(PEER))
+    vn = sub.add_parser("vendor-down")
+    vn.add_argument("--root", default=".")
+    vn.add_argument("--plan", required=True)
+    vn.add_argument("--vendor", required=True)
+    vn.add_argument("--reason", required=True)
+    vn.add_argument("--until")
     es = sub.add_parser("escalate")
     es.add_argument("job")
     es.add_argument("--root", default=".")
@@ -1060,6 +1155,7 @@ def main(argv: list[str]) -> int:
         if name == "preflight":
             sp.add_argument("--plan-file")
             sp.add_argument("--repo-name", default="")
+            sp.add_argument("--host")
         if name == "verify":
             sp.add_argument("--cmd", dest="check_cmd", required=True)
             sp.add_argument("--reuse", action="store_true")
@@ -1071,6 +1167,8 @@ def main(argv: list[str]) -> int:
             sp.add_argument("--mode", required=True)
         if name == "run":
             sp.add_argument("--pace", default="step")
+            sp.add_argument("--cross", choices=("on", "off"))
+            sp.add_argument("--host")
         if name in ("new-job", "begin-job"):
             sp.add_argument("--task", type=int, required=True)
             sp.add_argument("--repo-name", required=True)
@@ -1122,6 +1220,19 @@ def main(argv: list[str]) -> int:
             out = final_verdict(a.root, a.plan, a.fix, usage, a.fix_job)
         print(json.dumps(out, indent=2))
         return 0 if out["ok"] else 1
+    if a.cmd in ("vendor", "vendor-down", "quota"):
+        try:
+            if a.cmd == "vendor":
+                out = vendor(a.root, a.job, a.agent, a.host, a.plan, a.risky)
+            elif a.cmd == "vendor-down":
+                out = vendor_down(a.root, a.plan, a.vendor, a.reason, a.until)
+            else:
+                out = read_quota(a.root, a.vendor)
+        except (ValueError, ModelsError) as e:
+            print(json.dumps({"error": str(e)}))
+            return 2
+        print(json.dumps(out, indent=2))
+        return 0
     if a.cmd == "escalate":
         try:
             print(json.dumps(escalate(a.root, a.job, a.host), indent=2))
@@ -1152,9 +1263,13 @@ def main(argv: list[str]) -> int:
         setup(a.root, a.plugin_root)
         out: dict = {"ok": True}
     elif a.cmd == "run":
-        out = write_run(a.root, a.plan_file, a.mode, a.pace)
+        try:
+            out = write_run(a.root, a.plan_file, a.mode, a.pace, a.cross, a.host)
+        except (ValueError, ModelsError) as e:
+            print(json.dumps({"error": str(e)}))
+            return 2
     elif a.cmd == "preflight":
-        out = preflight(a.root, a.plan_file, a.repo_name)
+        out = preflight(a.root, a.plan_file, a.repo_name, a.host)
     elif a.cmd == "new-job":
         out = new_job(a.root, a.plan_file, a.task, a.repo_name, a.mode, a.branch, a.worktree, a.base, a.lean)
     elif a.cmd == "begin-job":
