@@ -10,7 +10,7 @@ HERE = Path(__file__).resolve().parent
 SCRIPTS = HERE.parent / "plugins/clay/scripts"
 sys.path.insert(0, str(SCRIPTS))
 import factory_plan  # noqa: E402
-from models import AGENT_DEFAULTS, HOSTS, TIER_DEFAULTS, ModelsError, resolve  # noqa: E402
+from models import AGENT_DEFAULTS, HOSTS, TIER_DEFAULTS, ModelsError, cross_config, resolve  # noqa: E402
 
 
 def write_models(root: Path, data) -> None:
@@ -91,6 +91,10 @@ def test_risky_approver_mapping(tmp_path):
         ({"codex": {"agents": {"reviewer-ux": {"model": "x"}}}}, "codex", {"tier": "light"}, "reviewer-ux is now reviewer-interface"),
         ({"codex": {"agents": {"reviewer-ui": {"model": "x"}}}}, "codex", {"tier": "light"}, "reviewer-ui is now reviewer-interface"),
         ({"codex": {"agents": {"reviewer-uiux": {"model": "x"}}}}, "codex", {"tier": "light"}, "reviewer-uiux is now reviewer-interface"),
+        ({"cross": {"builder_tiers": ["hevy"]}}, "claude", {"tier": "light"}, "cross.builder_tiers"),
+        ({"cross": {"threshold": 0}}, "claude", {"tier": "light"}, "cross.threshold"),
+        ({"cross": {"threshold": 101}}, "claude", {"tier": "light"}, "cross.threshold"),
+        ({"cross": {"tiers": []}}, "claude", {"tier": "light"}, "cross.tiers"),
         (None, "claude", {"tier": "light", "agent": "approver"}, "tier"),
         (None, "claude", {}, "tier"),
         (None, "claude", {"tier": "hevy"}, "hevy"),
@@ -107,6 +111,16 @@ def test_bad_input_raises(tmp_path, data, host, kwargs, needle):
         write_models(tmp_path, data)
     with pytest.raises(ModelsError, match=re.escape(needle)):
         resolve(tmp_path, host, **kwargs)
+
+
+def test_cross_defaults(tmp_path):
+    assert cross_config(tmp_path) == {"builder_tiers": [], "threshold": 80}
+
+
+def test_cross_reads_the_block(tmp_path):
+    write_models(tmp_path, {"cross": {"builder_tiers": ["light"], "threshold": 70}})
+    assert cross_config(tmp_path) == {"builder_tiers": ["light"], "threshold": 70}
+    assert resolve(tmp_path, "claude", tier="light")["model"] == "haiku"
 
 
 def test_empty_object_is_a_no_op(tmp_path):
