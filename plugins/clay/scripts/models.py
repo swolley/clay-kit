@@ -67,7 +67,7 @@ def _validate_cross(body) -> None:
         if key not in CROSS_DEFAULTS:
             raise ModelsError(f"{where}: unknown key, expected one of {', '.join(CROSS_DEFAULTS)}")
         if key == "builder_tiers":
-            if not isinstance(value, list) or any(t not in TIERS for t in value):
+            if not isinstance(value, list) or any(not isinstance(t, str) or t not in TIERS for t in value):
                 raise ModelsError(f"{where}: {value!r} is not a list of tiers ({', '.join(sorted(TIERS))})")
         elif not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= 100:
             raise ModelsError(f"{where}: {value!r} is not an integer from 1 to 100")

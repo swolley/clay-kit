@@ -92,6 +92,7 @@ def test_risky_approver_mapping(tmp_path):
         ({"codex": {"agents": {"reviewer-ui": {"model": "x"}}}}, "codex", {"tier": "light"}, "reviewer-ui is now reviewer-interface"),
         ({"codex": {"agents": {"reviewer-uiux": {"model": "x"}}}}, "codex", {"tier": "light"}, "reviewer-uiux is now reviewer-interface"),
         ({"cross": {"builder_tiers": ["hevy"]}}, "claude", {"tier": "light"}, "cross.builder_tiers"),
+        ({"cross": {"builder_tiers": [["light"]]}}, "claude", {"tier": "light"}, "cross.builder_tiers"),
         ({"cross": {"threshold": 0}}, "claude", {"tier": "light"}, "cross.threshold"),
         ({"cross": {"threshold": 101}}, "claude", {"tier": "light"}, "cross.threshold"),
         ({"cross": {"tiers": []}}, "claude", {"tier": "light"}, "cross.tiers"),
