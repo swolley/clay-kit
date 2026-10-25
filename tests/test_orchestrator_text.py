@@ -631,3 +631,19 @@ def test_start_offers_the_peer():
 
 def test_the_peer_is_recorded_per_agent():
     assert "`vendor`" in read("reference/hosts.md") and "`vendor`" in read("reference/job-loop.md")
+
+
+def test_rework_and_answer_sessions_find_the_peer():
+    for skill in ("factory-rework", "factory-answer"):
+        assert "peer.md" in read(f"skills/{skill}/SKILL.md"), skill
+        assert "peer.md" not in parts_read_by(skill), skill
+    flat = " ".join(read("reference/peer.md").split())
+    assert "outside the start" in flat.lower() and "peer: true" in flat
+    step = " ".join(read("reference/job-loop.md").split("2. **Build.**")[1].split("\n3. **")[0].split())
+    assert "outside the start" in step and "state.py vendor" in step
+    assert "peer.md" in read("reference/questions.md").split("4. When answers exist")[1]
+
+
+def test_review_not_crossed_is_only_for_reviews():
+    sentence = next(s for s in " ".join(read("reference/peer.md").split()).split("- ") if "review not crossed" in s)
+    assert "reviewer" in sentence and "approver" in sentence and "reviewer-final" in sentence

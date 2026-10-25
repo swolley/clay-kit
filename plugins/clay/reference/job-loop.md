@@ -21,7 +21,7 @@ fields as options records one agent). The usage of your own session is not repor
    id, writes `task.md` and `job.json`, moves the job to `build` and prints the id, so a crash never leaves a job without its worktree
    (`new-job` does the same without the move). A job folder that has
    no `job.json` is an abandoned claim: start the task fresh.
-2. **Build.** A job with `lean` in `job.json` follows `lean.md` from here instead of steps 2 to 6. The job is in `build` already; on a resume or a rework set it with `state.py stage <job> build`. With the peer on, who builds is decided as `peer.md` says. Spawn the `builder` as `hosts.md` says, with the model and effort
+2. **Build.** A job with `lean` in `job.json` follows `lean.md` from here instead of steps 2 to 6. The job is in `build` already; on a resume or a rework set it with `state.py stage <job> build`. With the peer on, who builds is decided as `peer.md` says (outside the start, run `state.py vendor` first: `peer: true` means follow `peer.md`). Spawn the `builder` as `hosts.md` says, with the model and effort
    `state.py model --host <host> --tier <tier>` prints for the task's tier (after the `fable` answer in `start.md`),
    prompt `<paths> Build round 1.` plus `Port: <5100+10n>` (n = job number), and name it `builder-<job-id>` where the host allows it.
    Keep the agent id the spawn returns; it replaces the name when you resume the builder.

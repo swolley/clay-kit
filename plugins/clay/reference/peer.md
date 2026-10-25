@@ -1,7 +1,8 @@
 # Working with the peer vendor
 
 Read this only when the peer is on: the start's `preflight` printed `peer: {"vendor": "<peer>", "found": true}` and the user said yes
-(`run --cross on`). Otherwise every agent runs on your host as `hosts.md` says and none of this applies. `<peer>` is the other host
+(`run --cross on`). Outside the start (rework, answer, a resumed session) run `state.py vendor` first: it decides from the run state's
+`cross`, and `peer: true` means follow this part. Otherwise every agent runs on your host as `hosts.md` says and none of this applies. `<peer>` is the other host
 (`codex` on Claude Code, `claude` on Codex); a native agent is one that runs on your host. `peer.py` is `python3 <plugin root>/scripts/peer.py`.
 
 ## Decide
@@ -12,7 +13,7 @@ Before every agent the Job loop starts (and `reviewer-final`), ask `state.py ven
 `effort`, `reason` and `crossed`, and records the choice. Its `model` and `effort` replace those of `state.py model`.
 - A lean job is built by the session; its final review goes to the peer.
 - Round 3's escalated builder and a rework builder ask again, so they may change vendor.
-- `crossed: false`: say `review not crossed` in one line (the vendor opposite to the builder is over its threshold or exhausted).
+- `crossed: false` for a reviewer, the approver or `reviewer-final` (never the builder): say `review not crossed` in one line (the vendor opposite to the builder is over its threshold or exhausted).
 - `vendor: null`: both vendors are unusable. Stop as in `auto` pace: list the waiting jobs and release the lock (`job-loop.md`, `lock.md`).
 
 `peer: false` runs as `hosts.md` says, with the printed model and effort. `peer: true` runs as below.
