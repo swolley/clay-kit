@@ -11,7 +11,7 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
   state.py new-job --root DIR --plan-file P --task N --repo-name R --mode M --branch B --worktree W [--lean]
   state.py begin-job --root DIR --plan-file P --task N --repo-name R --mode M --branch B --worktree W [--lean]
   state.py stage JOB STAGE --root DIR
-  state.py agent JOB ROLE --model M --effort E --tokens N --ms N --tools N --root DIR
+  state.py agent JOB ROLE --model M --effort E --tokens N --ms N --tools N [--vendor V --session-id ID] --root DIR
   state.py after-agent JOB --agents JSON --root DIR
   state.py route JOB --root DIR [--table FILE]
   state.py verdicts JOB --root DIR
@@ -241,7 +241,8 @@ def set_stage(root, job_id: str, stage: str) -> dict:
     return job
 
 
-def record_agent(root, job_id: str, role: str, model: str = "", effort: str = "", tokens: int = 0, ms: int = 0, tools: int = 0) -> dict:
+def record_agent(root, job_id: str, role: str, model: str = "", effort: str = "", tokens: int = 0, ms: int = 0, tools: int = 0,
+                 vendor: str = "", session_id: str = "") -> dict:
     job = read_job(root, job_id)
     a = job["agents"].get(role, {})
     job["agents"][role] = {
@@ -250,6 +251,9 @@ def record_agent(root, job_id: str, role: str, model: str = "", effort: str = ""
     }
     if seen := _models(a, model):
         job["agents"][role]["models"] = seen
+    for key, value in (("vendor", vendor), ("session_id", session_id)):
+        if value or a.get(key):
+            job["agents"][role][key] = value or a[key]
     write_job(root, job)
     return job["agents"][role]
 
@@ -262,7 +266,8 @@ def _models(agent: dict, model: str) -> list[str]:
 
 def record_agents(root, job_id: str, agents: list[dict]) -> dict:
     """The usage of several agents that finished together, each as record_agent takes it."""
-    return {a["role"]: record_agent(root, job_id, a["role"], a.get("model", ""), a.get("effort", ""), int(a.get("tokens", 0)), int(a.get("ms", 0)), int(a.get("tools", 0))) for a in agents}
+    return {a["role"]: record_agent(root, job_id, a["role"], a.get("model", ""), a.get("effort", ""), int(a.get("tokens", 0)), int(a.get("ms", 0)),
+                                    int(a.get("tools", 0)), a.get("vendor", ""), a.get("session_id", "")) for a in agents}
 
 
 def rework(root, job_id: str) -> dict:
@@ -950,6 +955,16 @@ def _findings(folder: Path, reviewed: bool) -> str:
     return ", ".join(f"r{n} {lens} {c}" for n, lens, c in sorted(found)) or ("-" if reviewed else "short path")
 
 
+def _first_round(folder: Path) -> str:
+    """The verdicts the first round's reviews opened with, like `code CHANGES, ui PASS`; empty for a job without them."""
+    found = []
+    for f in sorted(folder.glob("round-1/review-*.md")):
+        first = (f.read_text().splitlines() or [""])[0].strip()
+        if first.startswith("VERDICT: ") and first.removeprefix("VERDICT: ") in VERDICTS:
+            found.append(f"{f.stem.removeprefix('review-')} {first.removeprefix('VERDICT: ')}")
+    return ", ".join(found)
+
+
 def execution_record(root, plan_stem: str) -> str:
     """What the run did, as a table without checkboxes so plan tools do not read it as work. Kept in the plan, which
     travels with the repo, since the job folders are local and are removed once the plan is closed."""
@@ -974,9 +989,11 @@ def execution_record(root, plan_stem: str) -> str:
         if n := len(list(folder.glob("answers-*.md"))):
             notes.append(f"{n} answered question(s)")
         findings = _findings(folder, bool(j.get("reviews")))
-        models = "/".join(sorted({m for a in agents.values() for m in [a.get("model", ""), *a.get("models", [])] if m}))
+        models = "/".join(sorted({f"{a['vendor']}:{m}" if a.get("vendor") else m for a in agents.values() for m in [a.get("model", ""), *a.get("models", [])] if m}))
+        if j.get("crossed") is False:
+            notes.append("review not crossed")
         tier = f"{j['escalated_from']}→{j.get('tier', '')}" if j.get("escalated_from") else j.get("tier", "")
-        rows.append(f"| {j.get('task')} | {tier} | {models} | {j.get('round', 1)} | {verdicts} | {decision} | {findings} | {'; '.join(notes)} | {t} | {m // 1000}s |")
+        rows.append(f"| {j.get('task')} | {tier} | {models} | {j.get('round', 1)} | {_first_round(folder)} | {verdicts} | {decision} | {findings} | {'; '.join(notes)} | {t} | {m // 1000}s |")
     final = _final_run(root, plan_stem)
     reviews = [final[k] for k in ("review", "recheck") if k in final]
     if reviews:
@@ -984,8 +1001,8 @@ def execution_record(root, plan_stem: str) -> str:
         t, m = sum(int(a.get("tokens", 0)) for a in usage), sum(int(a.get("ms", 0)) for a in usage)
         tokens, ms = tokens + t, ms + m
         models = "/".join(sorted({a["model"] for a in usage if a.get("model")}))
-        rows.append(f"| final | | {models} | {len(reviews)} | {', '.join(r['verdict'] for r in reviews)} | | | | {t} | {m // 1000}s |")
-    head = "| Task | Tier | Models | Rounds | Reviews | Decision | Findings | Notes | Tokens | Agent time |\n|---|---|---|---|---|---|---|---|---|---|\n"
+        rows.append(f"| final | | {models} | {len(reviews)} | | {', '.join(r['verdict'] for r in reviews)} | | | | {t} | {m // 1000}s |")
+    head = "| Task | Tier | Models | Rounds | First round | Reviews | Decision | Findings | Notes | Tokens | Agent time |\n|---|---|---|---|---|---|---|---|---|---|---|\n"
     return f"{RECORD_TITLE}\n\n{head}" + "\n".join(rows) + f"\n\nTotal: {tokens} tokens, {ms // 1000}s of agent time.\n"
 
 
@@ -1153,7 +1170,7 @@ def main(argv: list[str]) -> int:
         if name == "promote":
             sp.add_argument("--reason", required=True)
         if name == "after-agent":
-            sp.add_argument("--agents", required=True, help='JSON list of {"role","model","effort","tokens","ms","tools"}')
+            sp.add_argument("--agents", required=True, help='JSON list of {"role","model","effort","tokens","ms","tools","vendor","session_id"}')
         if name == "preflight":
             sp.add_argument("--plan-file")
             sp.add_argument("--repo-name", default="")
@@ -1182,7 +1199,7 @@ def main(argv: list[str]) -> int:
             sp.add_argument("stage_name")
         if name == "agent":
             sp.add_argument("role")
-            for opt in ("--model", "--effort"):
+            for opt in ("--model", "--effort", "--vendor", "--session-id"):
                 sp.add_argument(opt, default="")
             for opt in ("--tokens", "--ms", "--tools"):
                 sp.add_argument(opt, type=int, default=0)
@@ -1287,7 +1304,7 @@ def main(argv: list[str]) -> int:
     elif a.cmd == "stage":
         out = {"id": a.job, "stage": set_stage(a.root, a.job, a.stage_name)["stage"]}
     elif a.cmd == "agent":
-        out = record_agent(a.root, a.job, a.role, a.model, a.effort, a.tokens, a.ms, a.tools)
+        out = record_agent(a.root, a.job, a.role, a.model, a.effort, a.tokens, a.ms, a.tools, a.vendor, a.session_id)
     elif a.cmd == "route":
         out = route_job(a.root, a.job, a.table)
     elif a.cmd == "verdicts":

@@ -439,10 +439,50 @@ def test_execution_record_counts_findings_per_round_and_lens(locked_repo):
         state.land_job(locked_repo, j["id"], "committed", head="abc")
     state.close_plan(locked_repo, PLAN_FILE)
     text = (locked_repo / PLAN_FILE).read_text()
-    assert "| Decision | Findings | Notes |" in text
+    assert "| Rounds | First round | Reviews | Decision | Findings | Notes |" in text
     assert "r1 code 2, r1 ui 0, r2 code 0" in text
     row2 = next(l for l in text.splitlines() if l.startswith("| 2 |"))
     assert row2.split("|")[-5].strip() == "short path"
+
+
+def test_after_agent_records_the_vendor(repo, capsys):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    out = state.record_agents(repo, j["id"], [{"role": "builder", "model": "gpt-5.5", "vendor": "codex", "session_id": "T1", "tokens": 5}])
+    assert out["builder"]["vendor"] == "codex" and out["builder"]["session_id"] == "T1"
+    assert state.read_job(repo, j["id"])["agents"]["builder"]["vendor"] == "codex"
+    state.record_agent(repo, j["id"], "builder", model="gpt-5.5", tokens=1)
+    assert state.read_job(repo, j["id"])["agents"]["builder"]["session_id"] == "T1"
+    k = new(repo, 2)
+    assert state.main(["agent", k["id"], "code", "--model", "sonnet", "--vendor", "claude", "--session-id", "S9", "--root", str(repo)]) == 0
+    capsys.readouterr()
+    assert state.read_job(repo, k["id"])["agents"]["code"]["vendor"] == "claude"
+    assert state.read_job(repo, k["id"])["agents"]["code"]["session_id"] == "S9"
+    plain = state.record_agent(repo, k["id"], "builder", model="sonnet")
+    assert "vendor" not in plain and "session_id" not in plain
+
+
+def test_execution_record_shows_vendor_crossing_and_first_round(repo):
+    state.setup(repo, repo)
+    a, b = new(repo, 1), new(repo, 2)
+    state.record_agent(repo, a["id"], "builder", model="gpt-5.5", vendor="codex")
+    state.record_agent(repo, a["id"], "code", model="sonnet", vendor="claude")
+    job = state.read_job(repo, a["id"])
+    job["crossed"] = False
+    state.write_job(repo, job)
+    folder = repo / "factory/jobs" / a["id"]
+    (folder / "round-1").mkdir()
+    (folder / "round-1/review-code.md").write_text("VERDICT: CHANGES\n\n## Issues\n1. x\n")
+    (folder / "round-1/review-ui.md").write_text("VERDICT: PASS\n\n## Issues\nNone.\n")
+    state.record_agent(repo, b["id"], "builder", model="sonnet")
+    rows = state.execution_record(repo, STEM).splitlines()
+    row1 = next(l for l in rows if l.startswith("| 1 |")).split("|")
+    row2 = next(l for l in rows if l.startswith("| 2 |")).split("|")
+    assert row1[3].strip() == "claude:sonnet/codex:gpt-5.5"
+    assert row1[5].strip() == "code CHANGES, ui PASS"
+    assert "review not crossed" in row1[9]
+    assert row2[3].strip() == "sonnet" and row2[5].strip() == "" and "not crossed" not in row2[9]
+    assert "| Rounds | First round | Reviews |" in rows[2]
 
 
 def test_findings_ignore_numbered_observations_and_mark_reviewed_jobs_without_files(locked_repo):
@@ -1267,8 +1307,8 @@ def test_execution_record_shows_lean_and_promoted_jobs(repo):
     record = state.execution_record(repo, STEM)
     row1 = next(l for l in record.splitlines() if l.startswith("| 1 |")).split("|")
     row2 = next(l for l in record.splitlines() if l.startswith("| 2 |")).split("|")
-    assert row1[5].strip() == "lean" and "lean" in row1[8]
-    assert row2[5].strip() != "lean" and "promoted: routes to security" in row2[8]
+    assert row1[6].strip() == "lean" and "lean" in row1[9]
+    assert row2[6].strip() != "lean" and "promoted: routes to security" in row2[9]
 
 
 def test_final_diff_reports_the_lean_jobs(repo):
