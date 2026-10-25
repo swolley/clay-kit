@@ -15,7 +15,7 @@ When every task is landed, each one is already ticked (Landing, `orchestrator.md
    - Run `state.py final-diff --root <repo> --plan <plan-stem>`. It writes `_runs/<plan-stem>-final.patch` and prints `patch` and
      `risky`. When it is not ok (a run started before this step existed, or the integration branch is gone), say so in one line with
      its `reason` and go on with step 2.
-   - Spawn `reviewer-final` as `hosts.md` says, with the model and effort of `state.py model --host <host> --agent reviewer-final`, adding
+   - Spawn `reviewer-final` as `hosts.md` says (with the peer on, as `peer.md` says), with the model and effort of `state.py model --host <host> --agent reviewer-final`, adding
      `--risky` when `final-diff` printed `risky: true`, and the prompt `Plugin root: <plugin root>`, then `Code: <tree>` (the integration
      worktree in isolated mode, since the repo's own checkout has none of the run's code; `<repo>` in current-branch mode), `Plan: <plan>`,
      `Jobs: <repo>/factory/jobs`, `Diff: <patch>` and `Output: <repo>/factory/jobs/_runs/<plan-stem>-final.md`, all absolute paths. When it has finished, run `state.py final-verdict --root <repo> --plan <plan-stem> --agent '<usage JSON>'` in its own

@@ -599,3 +599,35 @@ def test_auto_pace_points_to_the_lock_release():
 def test_readme_says_one_reviewer_judges_either_interface_lens():
     t = " ".join(read("README.md").split())
     assert "one interface reviewer judges ui, ux or both" in t and "combined reviewer" not in t
+
+
+def test_peer_part_names_its_commands():
+    t = read("reference/peer.md")
+    for needle in ("state.py vendor", "peer.py start", "peer.py wait", "vendor-down", "--resume", "review not crossed", "vendor: null"):
+        assert needle in t, needle
+
+
+def test_run_skills_read_the_peer_part_only_when_on():
+    for skill in ("factory-run", "factory-task"):
+        assert "peer.md" in read(f"skills/{skill}/SKILL.md"), skill
+        assert "peer.md" not in parts_read_by(skill), skill
+
+
+def test_loop_asks_the_vendor_when_the_peer_is_on():
+    import re
+
+    loop = read("reference/job-loop.md")
+    for n in ("2", "4", "6"):
+        step = re.split(rf"^{n}\. \*\*", loop, flags=re.M)[1].split("\n" + str(int(n) + 1) + ". **")[0]
+        assert "peer.md" in step, n
+    done = read("reference/completion.md").split("1. **Final review.**")[1].split("2. **Documentation pass.**")[0]
+    assert "peer.md" in done
+
+
+def test_start_offers_the_peer():
+    t = read("reference/start.md")
+    assert "--cross" in t and "--host <host>" in t.split("Preconditions (run)")[1].split("2. Tell")[0]
+
+
+def test_the_peer_is_recorded_per_agent():
+    assert "`vendor`" in read("reference/hosts.md") and "`vendor`" in read("reference/job-loop.md")

@@ -30,7 +30,7 @@ user and stop. Your host part says which keys the spawn takes.
 **Recording.** `job.json` `agents` (`after-agent`, `agent`) records what was actually passed, never a value that was not applied:
 leave `model` empty when none was passed and leave `effort` empty when the host did not accept one. When the effort that applied
 came from the agent file's frontmatter, your host part says so. The usage comes from the spawn result, with the fields your host
-part names; when the result carries none, leave it out.
+part names, plus `vendor` and, for a peer agent, `session_id` with the peer on (`peer.md`); when the result carries none, leave it out.
 
 ## Asking the user
 
