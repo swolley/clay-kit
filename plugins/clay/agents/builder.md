@@ -73,6 +73,8 @@ through `verify`, and keep the real output. A statement such as "this should wor
 ## Saving the work
 
 - `isolated`: commit with short one-line messages, naming each path explicitly, and leave the working tree clean.
+  When the prompt says `Commit: by the orchestrator` (your sandbox cannot write the git folder), do not commit: list your files and
+  one commit message under `## Commit` in build.md, as in current-branch mode.
 - `current-branch`: do not commit. The orchestrator commits after approval, so list your files and one suggested
   commit message under `## Commit` in build.md.
 
@@ -99,7 +101,7 @@ Every command you ran and its result.
 What you did. On later rounds: each finding, and your answer to it.
 
 ## Commit
-(current-branch mode only)
+(current-branch mode, or with `Commit: by the orchestrator`)
 
 ## Open questions
 1. <question>. Options: <a>, <b>. Recommended: <a>, because <reason>.

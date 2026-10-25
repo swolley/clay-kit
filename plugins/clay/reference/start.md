@@ -17,8 +17,8 @@ plan, tell the user in one line and ask before running.
 
 ## Preconditions (run)
 
-1. The plan file exists. One call gathers what the start needs: `python3 <plugin root>/scripts/state.py preflight --root <repo> --plan-file <plan> --repo-name <name>`.
-   It returns `plan` (as `factory_plan.py <plan> --repo <name> --root <repo>` prints it), `jobs` (for Resume), `audit` and `unclassified`. If there are no tasks, point to the `factory-brainstorm` and `factory-plan` skills and stop.
+1. The plan file exists. One call gathers what the start needs: `python3 <plugin root>/scripts/state.py preflight --root <repo> --plan-file <plan> --repo-name <name> --host <host>`.
+   It returns `plan` (as `factory_plan.py <plan> --repo <name> --root <repo>` prints it), `jobs` (for Resume), `audit`, `unclassified` and `peer`. If there are no tasks, point to the `factory-brainstorm` and `factory-plan` skills and stop.
 2. Tell the user which defaults the parser applied (`defaults_applied`) and any `warnings`, in one line per task.
    Look for work that may already be done: a task that has no job and carries `done_signals` (its planned commit
    is already in the git history, or every file it creates exists) may already be implemented, for instance a plan that
@@ -35,7 +35,8 @@ plan, tell the user in one line and ask before running.
 3. Lean: `preflight` also gives each task `lean` and `lean_reason`, and `lean_count` and `long`; with `lean_count` above 0 the
    mode question adds the lean choice and the start message the note on the session's model (`lean.md`).
 4. The target repo is a git repo. Isolated mode needs a clean main checkout only for the final merge.
-5. Resume (below), then mode choice, then start.
+5. Resume (below), then mode choice, then start. When `peer.found`, the mode question adds "work with <peer>: yes (recommended) / no", asked again on a resumed run;
+   `state.py run` gets `--cross on|off --host <host>`, and with yes read `peer.md`.
 
 ## Resume
 

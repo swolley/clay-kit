@@ -9,7 +9,7 @@ The source of truth is a file, never the prompt. A subagent cannot ask the user;
 3. Anything that is not an answer leaves the job waiting: a dismissed prompt, a timeout or auto-continue, or an
    unrelated message from the user. Handle an unrelated message normally, never apply a default or the
    recommended answer, and do not touch the job. Keep working on the other, independent jobs.
-4. When answers exist, set `stage: "build"` and start a fresh builder (named `builder-<job-id>`, spawned as in step 2 of `job-loop.md`) that is told to
+4. When answers exist, set `stage: "build"` and start a fresh builder (named `builder-<job-id>`, spawned as in step 2 of `job-loop.md`, and as `peer.md` says when the builder ran on the peer) that is told to
    read `answers-<k>.md` and update build.md. This does not use up the review resumes.
 5. If the user says they do not know, set `needs-human` and quote the open questions.
 

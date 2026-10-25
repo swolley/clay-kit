@@ -3,6 +3,7 @@
 
 models.json: {"<host>": {"tiers": {"<tier>": {"model": M, "effort": E}}, "agents": {"<agent>": {"model": M, "effort": E}}}}
 Hosts are claude, codex and cursor; both keys of an entry are optional and the entry wins over the defaults, per key.
+The top-level key `cross` is not a host: {"cross": {"builder_tiers": [tier, ...], "threshold": 1..100}} configures running agents through the peer vendor's CLI (defaults [] and 80): the tiers whose builders go to the peer, and the used_percent at which a vendor counts as over its limit.
 Vocabulary: claude takes its model names and efforts, codex any non-empty text, cursor `fast` or `inherit` and no effort.
 """
 import json
@@ -39,6 +40,7 @@ CLAUDE_MODELS = ("haiku", "sonnet", "opus", "fable", "inherit")
 CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 CURSOR_MODELS = ("fast", "inherit")
 FILE = "factory/models.json"
+CROSS_DEFAULTS = {"builder_tiers": [], "threshold": 80}
 
 
 class ModelsError(Exception):
@@ -57,10 +59,27 @@ def _check_value(where: str, host: str, key: str, value) -> None:
         raise ModelsError(f"{where}.model: {value!r} is not one of {', '.join(CURSOR_MODELS)}")
 
 
+def _validate_cross(body) -> None:
+    if not isinstance(body, dict):
+        raise ModelsError(f"{FILE}: cross must be an object")
+    for key, value in body.items():
+        where = f"{FILE}: cross.{key}"
+        if key not in CROSS_DEFAULTS:
+            raise ModelsError(f"{where}: unknown key, expected one of {', '.join(CROSS_DEFAULTS)}")
+        if key == "builder_tiers":
+            if not isinstance(value, list) or any(not isinstance(t, str) or t not in TIERS for t in value):
+                raise ModelsError(f"{where}: {value!r} is not a list of tiers ({', '.join(sorted(TIERS))})")
+        elif not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= 100:
+            raise ModelsError(f"{where}: {value!r} is not an integer from 1 to 100")
+
+
 def _validate(data) -> None:
     if not isinstance(data, dict):
         raise ModelsError(f"{FILE}: the top level must be an object")
     for host, body in data.items():
+        if host == "cross":
+            _validate_cross(body)
+            continue
         if host not in HOSTS:
             raise ModelsError(f"{FILE}: unknown host {host!r}, expected one of {', '.join(HOSTS)}")
         if not isinstance(body, dict):
@@ -96,6 +115,12 @@ def load(root) -> dict:
         raise ModelsError(f"{FILE}: cannot read or parse it as JSON ({e})") from e
     _validate(data)
     return data
+
+
+def cross_config(root) -> dict:
+    """The cross block with its defaults: the tiers whose builders go to the peer vendor, and the used_percent at which a vendor is over its limit."""
+    block = {**CROSS_DEFAULTS, **load(root).get("cross", {})}
+    return {**block, "builder_tiers": list(block["builder_tiers"])}
 
 
 def resolve(root, host: str, tier: str | None = None, agent: str | None = None, risky: bool = False) -> dict:

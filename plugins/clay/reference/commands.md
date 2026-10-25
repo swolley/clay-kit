@@ -14,7 +14,7 @@ nothing (the only eligible job), the full id, `002`, a task number, or a fragmen
   Land. Current branch: Land (commit). See Landing in `orchestrator.md`.
 - **rework `<job-id>` `<note>`**: only valid on a job in `needs-human`. Write the note verbatim to `rework-<k>.md`
   (next unused k), run `state.py rework <job>` (it records `rework_from`, the round the new attempt counts from, and sets `stage: "build"`), spawn a fresh `builder-<job-id>`
-  with the model and effort of the job's current tier (`tier` in `job.json`, which an escalation may have raised) as in step 2 of `job-loop.md`, told to read that file and update
+  with the model and effort of the job's current tier (`tier` in `job.json`, which an escalation may have raised) as in step 2 of `job-loop.md` (and `peer.md` for a peer builder), told to read that file and update
   build.md; the rework is a new attempt with its own three rounds (step 5 of `job-loop.md`). Continue from the check of build.md in step 2 of the Job loop (`job-loop.md`).
 - **answer `<job-id>` `[text]`**: only valid on a job in `waiting-input`. Without text, ask the pending questions again
   from the file. With text, treat it as the answers, check it covers every question (ask again for what is missing), save

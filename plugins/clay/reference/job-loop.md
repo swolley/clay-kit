@@ -10,18 +10,18 @@ and read checks with them (`verify`, `checks`). A reviewer and the approver also
 
 When an agent finishes, record its model, effort and usage at once, with all the agents that finished together in one call:
 `state.py after-agent <job-id> --agents '[{"role":"code","model":"sonnet","effort":"medium","tokens":9000,"ms":20000,"tools":5}]'` (roles `builder`, `code`,
-`security`, `interface`, `approver`; the fields follow the recording rule in `hosts.md`; `state.py agent <job-id> <role>` with the same
+`security`, `interface`, `approver`; the fields follow the recording rule in `hosts.md`, plus `vendor` and `session_id` with the peer on; `state.py agent <job-id> <role>` with the same
 fields as options records one agent). The usage of your own session is not reported to you.
 
 0. **Once per run.** Take the run lock (see `lock.md`), then `state.py setup --plugin-root <plugin root>` (creates `factory/jobs/`, ignored by git, and copies the
-   dashboard) and `state.py run --plan-file <plan> --mode <mode> --pace <pace>` (writes the run state: total, tasks, and `done`
+   dashboard) and `state.py run --plan-file <plan> --mode <mode> --pace <pace> [--cross on|off --host <host>]` (writes the run state: total, tasks, and `done`
    counted from the landed jobs).
 1. **Create** the job. In isolated mode create the branch and worktree first, and only then write `job.json`:
    `state.py begin-job --plan-file <plan> --task <n> --repo-name <name> --mode <mode> --branch <b> --worktree <w>` claims the next job
    id, writes `task.md` and `job.json`, moves the job to `build` and prints the id, so a crash never leaves a job without its worktree
    (`new-job` does the same without the move). A job folder that has
    no `job.json` is an abandoned claim: start the task fresh.
-2. **Build.** A job with `lean` in `job.json` follows `lean.md` from here instead of steps 2 to 6. The job is in `build` already; on a resume or a rework set it with `state.py stage <job> build`. Spawn the `builder` as `hosts.md` says, with the model and effort
+2. **Build.** A job with `lean` in `job.json` follows `lean.md` from here instead of steps 2 to 6. The job is in `build` already; on a resume or a rework set it with `state.py stage <job> build`. With the peer on, who builds is decided as `peer.md` says (outside the start, run `state.py vendor <job> --agent builder --host <host>` first: `cross_on: true` means follow `peer.md`). Spawn the `builder` as `hosts.md` says, with the model and effort
    `state.py model --host <host> --tier <tier>` prints for the task's tier (after the `fable` answer in `start.md`),
    prompt `<paths> Build round 1.` plus `Port: <5100+10n>` (n = job number), and name it `builder-<job-id>` where the host allows it.
    Keep the agent id the spawn returns; it replaces the name when you resume the builder.
@@ -35,7 +35,7 @@ fields as options records one agent). The usage of your own session is not repor
    **Short path.** When it prints `lite: true` (tier `light` or `medium`, not risky, only the `code` lens, any size) no reviewer is spawned
    and the job goes straight to approve: the approver writes the code review itself, so tell it `Lite: yes` in its prompt. The round is set
    up as any other (`round-N/` with its `diff.patch`), with `code` as its only lens.
-4. **Review round N.** Spawn the reviewers in `rerun` in one message, as `hosts.md` says, each with the model and effort of
+4. **Review round N.** Spawn the reviewers in `rerun` in one message, as `hosts.md` says (with the peer on, `peer.md` decides each one's vendor), each with the model and effort of
    `state.py model --host <host> --agent reviewer-<lens>`, prompt `<paths> Review round N.` The `ux` and `ui` lenses have one
    reviewer: when `rerun` holds either or both, spawn one `reviewer-interface` (`--agent reviewer-interface`) with `Lenses:` and those
    lenses and `Port: 5101+10n`; it writes `review-<lens>.md` for each, and its usage is recorded under the role `interface`. When they have finished, check the round in its own step: `state.py verdicts <job>`
@@ -52,7 +52,7 @@ fields as options records one agent). The usage of your own session is not repor
    Any CHANGES after round 3: you write `decision.md` yourself: first line `ESCALATE`, then a sentence naming the lenses that still ask
    for changes, and go to step 8.
 6. **Approve.** Only after the check in step 4 passed (or in the short path), and never in the same message as that check (a failed
-   check must not still start the approver), `state.py stage <job> approve` and spawn the `approver` as `hosts.md` says with `<paths> Final round: N.`, its model and effort
+   check must not still start the approver), `state.py stage <job> approve` and spawn the `approver` as `hosts.md` says (with the peer on, as `peer.md` says) with `<paths> Final round: N.`, its model and effort
    from `state.py model --host <host> --agent approver`, adding `--risky` when the job is risky (the rule is in `tiers.md`). In the short path, when
    the approver has finished, run `state.py verdicts <job>` in its own step, as in step 4: `CHANGES` goes to step 5 like any review, and
    `all_pass` goes on to decision.md. Line one of decision.md routes it: `APPROVE` goes to step 7, `ESCALATE` to step 8.

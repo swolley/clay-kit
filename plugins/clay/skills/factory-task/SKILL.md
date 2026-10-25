@@ -7,7 +7,7 @@ argument-hint: "[lean] [tier=light|medium|careful|heavy|fable] [verify=<command>
 
 Plugin root: ${CLAUDE_PLUGIN_ROOT}
 If the line above does not show an absolute path, the plugin root is the folder two levels above the folder that holds this SKILL.md (the folder that contains skills/).
-Follow <plugin root>/STYLE.md. Read these parts of the shared reference together, in one message: <plugin root>/reference/orchestrator.md, <plugin root>/reference/lock.md, <plugin root>/reference/start.md, <plugin root>/reference/job-loop.md, <plugin root>/reference/hosts.md. Read `questions.md` only when an agent asks something, `lean.md` only with the word `lean`, and `completion.md` once the task has landed (all in the same folder). Use the plugin root above wherever they say `<plugin root>`.
+Follow <plugin root>/STYLE.md. Read these parts of the shared reference together, in one message: <plugin root>/reference/orchestrator.md, <plugin root>/reference/lock.md, <plugin root>/reference/start.md, <plugin root>/reference/job-loop.md, <plugin root>/reference/hosts.md. Read `questions.md` only when an agent asks something, `peer.md` only when the user chose to work with the peer, `lean.md` only with the word `lean`, and `completion.md` once the task has landed (all in the same folder). Use the plugin root above wherever they say `<plugin root>`.
 
 Arguments: $ARGUMENTS (the task text, which may start with `lean`, `tier=<name>` and `verify=<command>`)
 If the Arguments line still shows a placeholder that starts with $, the arguments are the text the user typed after the command name.

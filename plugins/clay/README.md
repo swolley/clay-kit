@@ -190,6 +190,25 @@ Add `--root <repo>` when you do not run it from the repository. It prints the `m
 tier or agent, a value the host cannot take) stops the run with a message that names the key. On Codex and Cursor `source` is
 `session` when the model is the session's, even when the Codex effort comes from `tiers.md`.
 
+### Working with the other vendor (Claude Code and Codex)
+
+With both the `claude` and the `codex` CLI on `PATH`, a run on either host asks at the start "work with <the other one>: yes (recommended) / no". On yes, the
+session stays the orchestrator and some agents run through the other vendor's CLI (`scripts/peer.py`, detached, so a long build never hits a command timeout):
+the builder stays on your host, and each job's reviewers and approver, and the final review, come from the vendor that did not write the code, or the record says
+`review not crossed`. A vendor that hits its limit hands its agents to the other instead of stopping the run, and the execution record keeps each agent's vendor.
+Cursor sessions have no peer. The optional `cross` key of `factory/models.json` sets which builders go to the peer and when a vendor counts as over its limit:
+
+```json
+{ "cross": { "builder_tiers": ["light"], "threshold": 80 } }
+```
+
+`builder_tiers` (default `[]`) lists the tiers whose builders go to the peer; `threshold` (default `80`, 1 to 100) is the Codex `used_percent` at or above
+which new agents go to the other vendor. A Codex peer runs in its `workspace-write` sandbox: it writes only the job's worktree, its job folder
+and `/tmp`, opens no network socket (localhost included) and cannot write `~/.cache` or other caches in your home. So a Codex reviewer or
+approver relies on the checks on record (`state.py verify --reuse`) and says in its file which one it could not run again, a Codex interface
+reviewer works from the code, and a Codex builder in isolated mode leaves its commit to the orchestrator. On Codex, starting a Claude peer
+(`claude -p` needs the network and writes `~/.claude`) runs outside the session's sandbox, with your approval.
+
 ### Known limits on Codex and Cursor
 
 - The progress band and pane exist only on Claude Code. `factory/jobs/dashboard.html` works everywhere.

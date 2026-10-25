@@ -1,12 +1,15 @@
 import json
 import re
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugins/clay/scripts"))
+import models  # noqa: E402
 import resolve  # noqa: E402
 import state  # noqa: E402
 
@@ -436,10 +439,50 @@ def test_execution_record_counts_findings_per_round_and_lens(locked_repo):
         state.land_job(locked_repo, j["id"], "committed", head="abc")
     state.close_plan(locked_repo, PLAN_FILE)
     text = (locked_repo / PLAN_FILE).read_text()
-    assert "| Decision | Findings | Notes |" in text
+    assert "| Rounds | First round | Reviews | Decision | Findings | Notes |" in text
     assert "r1 code 2, r1 ui 0, r2 code 0" in text
     row2 = next(l for l in text.splitlines() if l.startswith("| 2 |"))
     assert row2.split("|")[-5].strip() == "short path"
+
+
+def test_after_agent_records_the_vendor(repo, capsys):
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    out = state.record_agents(repo, j["id"], [{"role": "builder", "model": "gpt-5.5", "vendor": "codex", "session_id": "T1", "tokens": 5}])
+    assert out["builder"]["vendor"] == "codex" and out["builder"]["session_id"] == "T1"
+    assert state.read_job(repo, j["id"])["agents"]["builder"]["vendor"] == "codex"
+    state.record_agent(repo, j["id"], "builder", model="gpt-5.5", tokens=1)
+    assert state.read_job(repo, j["id"])["agents"]["builder"]["session_id"] == "T1"
+    k = new(repo, 2)
+    assert state.main(["agent", k["id"], "code", "--model", "sonnet", "--vendor", "claude", "--session-id", "S9", "--root", str(repo)]) == 0
+    capsys.readouterr()
+    assert state.read_job(repo, k["id"])["agents"]["code"]["vendor"] == "claude"
+    assert state.read_job(repo, k["id"])["agents"]["code"]["session_id"] == "S9"
+    plain = state.record_agent(repo, k["id"], "builder", model="sonnet")
+    assert "vendor" not in plain and "session_id" not in plain
+
+
+def test_execution_record_shows_vendor_crossing_and_first_round(repo):
+    state.setup(repo, repo)
+    a, b = new(repo, 1), new(repo, 2)
+    state.record_agent(repo, a["id"], "builder", model="gpt-5.5", vendor="codex")
+    state.record_agent(repo, a["id"], "code", model="sonnet", vendor="claude")
+    job = state.read_job(repo, a["id"])
+    job["crossed"] = False
+    state.write_job(repo, job)
+    folder = repo / "factory/jobs" / a["id"]
+    (folder / "round-1").mkdir()
+    (folder / "round-1/review-code.md").write_text("VERDICT: CHANGES\n\n## Issues\n1. x\n")
+    (folder / "round-1/review-ui.md").write_text("VERDICT: PASS\n\n## Issues\nNone.\n")
+    state.record_agent(repo, b["id"], "builder", model="sonnet")
+    rows = state.execution_record(repo, STEM).splitlines()
+    row1 = next(l for l in rows if l.startswith("| 1 |")).split("|")
+    row2 = next(l for l in rows if l.startswith("| 2 |")).split("|")
+    assert row1[3].strip() == "claude:sonnet/codex:gpt-5.5"
+    assert row1[5].strip() == "code CHANGES, ui PASS"
+    assert "review not crossed" in row1[9]
+    assert row2[3].strip() == "sonnet" and row2[5].strip() == "" and "not crossed" not in row2[9]
+    assert "| Rounds | First round | Reviews |" in rows[2]
 
 
 def test_findings_ignore_numbered_observations_and_mark_reviewed_jobs_without_files(locked_repo):
@@ -1030,6 +1073,20 @@ def test_close_plan_writes_the_final_review(locked_repo):
     assert "opus" in row and "150" in row
 
 
+def test_execution_record_final_row_shows_its_vendor(locked_repo):
+    state.write_run(locked_repo, PLAN_FILE, "current-branch")
+    runs = locked_repo / "factory/jobs/_runs"
+    (runs / f"{STEM}-final.md").write_text("VERDICT: PASS\n\n## Findings\nNone.\n")
+    state.final_verdict(locked_repo, STEM, False, {"model": "gpt-5.5", "tokens": 10, "ms": 1000})
+    row = next(l for l in state.execution_record(locked_repo, STEM).splitlines() if l.startswith("| final |"))
+    assert row.split("|")[3].strip() == "gpt-5.5"
+    run = state.read_run(locked_repo, STEM)
+    run["final"]["vendor"] = {"vendor": "codex", "reason": "opposite"}
+    state.run_path(locked_repo, STEM).write_text(json.dumps(run))
+    row = next(l for l in state.execution_record(locked_repo, STEM).splitlines() if l.startswith("| final |"))
+    assert row.split("|")[3].strip() == "codex:gpt-5.5"
+
+
 def test_close_plan_without_a_final_review_writes_no_section(locked_repo):
     state.write_run(locked_repo, PLAN_FILE, "current-branch")
     for n in (1, 2):
@@ -1264,8 +1321,8 @@ def test_execution_record_shows_lean_and_promoted_jobs(repo):
     record = state.execution_record(repo, STEM)
     row1 = next(l for l in record.splitlines() if l.startswith("| 1 |")).split("|")
     row2 = next(l for l in record.splitlines() if l.startswith("| 2 |")).split("|")
-    assert row1[5].strip() == "lean" and "lean" in row1[8]
-    assert row2[5].strip() != "lean" and "promoted: routes to security" in row2[8]
+    assert row1[6].strip() == "lean" and "lean" in row1[9]
+    assert row2[6].strip() != "lean" and "promoted: routes to security" in row2[9]
 
 
 def test_final_diff_reports_the_lean_jobs(repo):
@@ -1348,3 +1405,221 @@ def test_lean_check_in_isolated_mode_refuses_uncommitted_files(repo):
     git(repo, "commit", "-q", "-m", "helper")
     state.run_check(repo, j["id"], "true")
     assert state.lean_check(repo, j["id"]) == {"land": True}
+
+
+def start_cross(repo, monkeypatch, tmp_path, tiers=None, host="claude"):
+    """A run with the peer on, and a Codex home with no rollout files, so no usage is read from the real one."""
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex-home"))
+    if tiers is not None:
+        (repo / "factory").mkdir(exist_ok=True)
+        (repo / "factory/models.json").write_text(json.dumps({"cross": {"builder_tiers": tiers}}))
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch", cross="on", host=host)
+
+
+def vendor_cli(repo, capsys, *args):
+    assert state.main(["vendor", *args, "--root", str(repo)]) == 0
+    return json.loads(capsys.readouterr().out)
+
+
+def test_vendor_records_the_choice_in_the_job(repo, capsys, monkeypatch, tmp_path):
+    start_cross(repo, monkeypatch, tmp_path, tiers=["light"])
+    j = new(repo)
+    out = vendor_cli(repo, capsys, j["id"], "--agent", "builder", "--host", "claude")
+    want = models.resolve(repo, "codex", tier="light")
+    assert (out["vendor"], out["peer"], out["reason"], out["crossed"]) == ("codex", True, "builder_tiers", False)
+    assert (out["model"], out["effort"]) == (want["model"], want["effort"])
+    job = state.read_job(repo, j["id"])
+    assert job["vendors"]["builder"] == {"vendor": "codex", "reason": "builder_tiers"}
+    assert "crossed" not in job
+
+
+def test_vendor_review_crosses_and_records_when_it_does_not(repo, capsys, monkeypatch, tmp_path):
+    start_cross(repo, monkeypatch, tmp_path, tiers=["light"])
+    j = new(repo)
+    vendor_cli(repo, capsys, j["id"], "--agent", "builder", "--host", "claude")
+    out = vendor_cli(repo, capsys, j["id"], "--agent", "reviewer-code", "--host", "claude")
+    assert (out["vendor"], out["reason"], out["crossed"]) == ("claude", "opposite", True)
+    assert out["model"] == models.resolve(repo, "claude", agent="reviewer-code")["model"]
+    state.vendor_down(repo, STEM, "claude", "limit", "2999-01-01T00:00:00Z")
+    out = vendor_cli(repo, capsys, j["id"], "--agent", "approver", "--host", "claude", "--risky")
+    assert (out["vendor"], out["reason"], out["crossed"]) == ("codex", "not crossed", False)
+    job = state.read_job(repo, j["id"])
+    assert job["crossed"] is False
+    assert job["vendors"]["approver"] == {"vendor": "codex", "reason": "not crossed"}
+
+
+def test_vendor_reads_the_usage_of_the_codex_plan(repo, capsys, monkeypatch, tmp_path):
+    start_cross(repo, monkeypatch, tmp_path, tiers=["light"])
+    folder = tmp_path / "codex-home/sessions/2026/10/25"
+    folder.mkdir(parents=True)
+    event = {"payload": {"rate_limits": {"primary": {"used_percent": 91.0, "resets_at": time.time() + 3600}}}}
+    (folder / "rollout-x.jsonl").write_text(json.dumps(event) + "\n")
+    j = new(repo)
+    out = vendor_cli(repo, capsys, j["id"], "--agent", "builder", "--host", "claude")
+    assert (out["vendor"], out["reason"]) == ("claude", "threshold")
+
+
+def test_vendor_for_the_final_review_is_kept_in_the_run_state(repo, capsys, monkeypatch, tmp_path):
+    start_cross(repo, monkeypatch, tmp_path)
+    out = vendor_cli(repo, capsys, "--agent", "reviewer-final", "--host", "claude", "--plan", STEM, "--risky")
+    assert (out["vendor"], out["reason"]) == ("codex", "opposite")
+    assert out["model"] == models.resolve(repo, "codex", agent="reviewer-final", risky=True)["model"]
+    assert run_state(repo)["final"]["vendor"] == {"vendor": "codex", "reason": "opposite"}
+
+
+def test_vendor_with_the_peer_off_is_the_session(repo, capsys):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    j = new(repo)
+    out = vendor_cli(repo, capsys, j["id"], "--agent", "builder", "--host", "claude")
+    assert (out["vendor"], out["peer"], out["reason"]) == ("claude", False, "session")
+    assert out["model"] == models.resolve(repo, "claude", tier="light")["model"]
+
+
+def test_vendor_down_marks_the_run(repo, capsys):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch", cross="on", host="claude")
+    until = "2026-10-25T18:00:00Z"
+    assert state.main(["vendor-down", "--plan", STEM, "--vendor", "codex", "--reason", "limit", "--until", until, "--root", str(repo)]) == 0
+    assert run_state(repo)["vendors"]["codex"] == {"exhausted_until": until}
+    assert state.main(["vendor-down", "--plan", STEM, "--vendor", "codex", "--reason", "missing", "--root", str(repo)]) == 0
+    assert run_state(repo)["vendors"]["codex"] == {"exhausted_until": until, "off": True}
+    assert state.main(["vendor-down", "--plan", STEM, "--vendor", "claude", "--reason", "auth", "--root", str(repo)]) == 0
+    assert run_state(repo)["vendors"]["claude"] == {"off": True}
+    capsys.readouterr()
+
+
+def test_vendor_down_limit_without_until_lasts_the_run(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch", cross="on", host="claude")
+    state.vendor_down(repo, STEM, "codex", "limit")
+    assert run_state(repo)["vendors"]["codex"]["exhausted_until"] > "2999"
+
+
+def test_vendor_down_refuses_a_bad_reason_a_bad_time_and_a_missing_run(repo, capsys):
+    state.setup(repo, repo)
+    with pytest.raises(ValueError):
+        state.vendor_down(repo, STEM, "codex", "limit")
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    with pytest.raises(ValueError):
+        state.vendor_down(repo, STEM, "codex", "tired")
+    with pytest.raises(ValueError):
+        state.vendor_down(repo, STEM, "codex", "limit", "tomorrow")
+    assert state.main(["vendor-down", "--plan", STEM, "--vendor", "codex", "--reason", "tired", "--root", str(repo)]) == 2
+    assert "error" in json.loads(capsys.readouterr().out)
+
+
+def test_run_records_cross(repo):
+    state.setup(repo, repo)
+    run = state.write_run(repo, PLAN_FILE, "current-branch", cross="on", host="claude")
+    assert run["cross"] == {"on": True, "peer": "codex", "threshold": 80, "builder_tiers": []}
+    assert run_state(repo)["cross"] == run["cross"]
+    state.vendor_down(repo, STEM, "codex", "missing")
+    run = state.write_run(repo, PLAN_FILE, "current-branch", cross="off", host="codex")
+    assert run["cross"] == {"on": False, "peer": "claude", "threshold": 80, "builder_tiers": []}
+    assert run["vendors"] == {}  # asking again clears the run-long marks
+    assert state.write_run(repo, PLAN_FILE, "current-branch")["cross"]["on"] is False  # not asked: what was recorded stays
+
+
+def test_a_new_run_keeps_only_the_dated_vendor_marks_still_ahead(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch", cross="on", host="claude")
+    state.vendor_down(repo, STEM, "claude", "limit")  # to the end of the run
+    state.vendor_down(repo, STEM, "codex", "missing")
+    state.vendor_down(repo, STEM, "codex", "limit", "2999-01-01T00:00:00Z")
+    assert state.write_run(repo, PLAN_FILE, "current-branch")["vendors"]["claude"] == {"exhausted_until": "9999-12-31T23:59:59Z"}  # no cross: kept
+    state.vendor_down(repo, STEM, "claude", "limit", "2000-01-01T00:00:00Z")  # a past mark
+    run = state.write_run(repo, PLAN_FILE, "current-branch", cross="on", host="claude")
+    assert run["vendors"] == {"codex": {"exhausted_until": "2999-01-01T00:00:00Z"}}
+    assert run_state(repo)["vendors"] == run["vendors"]
+
+
+def test_run_cross_takes_the_models_json_block(repo):
+    (repo / "factory").mkdir()
+    (repo / "factory/models.json").write_text(json.dumps({"cross": {"builder_tiers": ["light"], "threshold": 70}}))
+    state.setup(repo, repo)
+    assert state.main(["run", "--plan-file", PLAN_FILE, "--mode", "current-branch", "--cross", "on", "--host", "claude", "--root", str(repo)]) == 0
+    assert run_state(repo)["cross"] == {"on": True, "peer": "codex", "threshold": 70, "builder_tiers": ["light"]}
+
+
+def test_run_cross_on_a_host_without_a_peer_is_off(repo):
+    state.setup(repo, repo)
+    assert state.write_run(repo, PLAN_FILE, "current-branch", cross="on", host="cursor")["cross"]["on"] is False
+
+
+def test_preflight_reports_the_peer(repo, tmp_path, monkeypatch):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake = bin_dir / "codex"
+    fake.write_text("#!/bin/sh\n")
+    fake.chmod(0o755)
+    (bin_dir / "git").symlink_to(shutil.which("git"))  # a PATH that holds only git and the fake codex
+    monkeypatch.setenv("PATH", str(bin_dir))
+    assert state.preflight(repo, PLAN_FILE, "demo", host="claude")["peer"] == {"vendor": "codex", "found": True}
+    assert state.preflight(repo, host="claude")["peer"] == {"vendor": "codex", "found": True}
+    assert state.preflight(repo, PLAN_FILE, "demo", host="codex")["peer"] == {"vendor": "claude", "found": False}
+    assert "peer" not in state.preflight(repo, PLAN_FILE, "demo", host="cursor")
+    assert "peer" not in state.preflight(repo, PLAN_FILE, "demo")
+
+
+def test_a_lock_the_agent_cannot_write_does_not_stop_its_checks(locked_repo):
+    """A Codex peer writes only its worktree and job folder: the run lock's heartbeat is best effort."""
+    state.lock_acquire(locked_repo, PLAN_FILE, run_id="run-a")
+    j = new(locked_repo)
+    lock = state.lock_path(locked_repo, STEM)
+    lock.chmod(0o444)
+    try:
+        assert state.run_check(locked_repo, j["id"], "true")["exit"] == 0
+        state.write_job(locked_repo, state.read_job(locked_repo, j["id"]))
+    finally:
+        lock.chmod(0o644)
+
+
+def test_vendor_prints_whether_the_run_works_with_the_peer(repo, capsys, monkeypatch, tmp_path):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    j = new(repo)
+    assert vendor_cli(repo, capsys, j["id"], "--agent", "builder", "--host", "claude")["cross_on"] is False
+    start_cross(repo, monkeypatch, tmp_path)
+    out = vendor_cli(repo, capsys, j["id"], "--agent", "builder", "--host", "claude")
+    assert (out["vendor"], out["peer"], out["cross_on"]) == ("claude", False, True)
+
+
+def test_vendor_with_an_unknown_job_is_an_error(repo, capsys):
+    state.setup(repo, repo)
+    assert state.main(["vendor", "999-nope", "--agent", "builder", "--host", "claude", "--root", str(repo)]) == 2
+    assert "error" in json.loads(capsys.readouterr().out)
+
+
+def test_after_the_peer_goes_down_the_builder_is_asked_again_and_its_review_is_not_crossed(repo, capsys, monkeypatch, tmp_path):
+    start_cross(repo, monkeypatch, tmp_path, tiers=["light"])
+    j = new(repo)
+    assert vendor_cli(repo, capsys, j["id"], "--agent", "builder", "--host", "claude")["vendor"] == "codex"
+    state.vendor_down(repo, STEM, "codex", "missing")
+    out = vendor_cli(repo, capsys, j["id"], "--agent", "builder", "--host", "claude")
+    assert (out["vendor"], out["peer"]) == ("claude", False)
+    assert state.read_job(repo, j["id"])["vendors"]["builder"]["vendor"] == "claude"
+    out = vendor_cli(repo, capsys, j["id"], "--agent", "reviewer-code", "--host", "claude")
+    assert (out["vendor"], out["reason"], out["crossed"]) == ("claude", "not crossed", False)
+
+
+def test_vendor_down_takes_an_epoch_until(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch", cross="on", host="claude")
+    assert state.vendor_down(repo, STEM, "codex", "limit", "1900000000")["exhausted_until"] == "2030-03-17T17:46:40Z"
+    assert state.vendor_down(repo, STEM, "codex", "limit", "1900000000.5")["exhausted_until"] == "2030-03-17T17:46:40Z"
+
+
+def test_execution_record_final_row_says_when_its_review_was_not_crossed(locked_repo):
+    state.write_run(locked_repo, PLAN_FILE, "current-branch")
+    runs = locked_repo / "factory/jobs/_runs"
+    (runs / f"{STEM}-final.md").write_text("VERDICT: PASS\n\n## Findings\nNone.\n")
+    state.final_verdict(locked_repo, STEM, False, {"model": "opus", "tokens": 10, "ms": 1000})
+    row = next(l for l in state.execution_record(locked_repo, STEM).splitlines() if l.startswith("| final |"))
+    assert "not crossed" not in row
+    run = state.read_run(locked_repo, STEM)
+    run["final"]["crossed"] = False
+    state.run_path(locked_repo, STEM).write_text(json.dumps(run))
+    row = next(l for l in state.execution_record(locked_repo, STEM).splitlines() if l.startswith("| final |"))
+    assert row.split("|")[9].strip() == "review not crossed"
