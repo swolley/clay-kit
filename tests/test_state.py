@@ -1464,8 +1464,21 @@ def test_run_records_cross(repo):
     state.vendor_down(repo, STEM, "codex", "missing")
     run = state.write_run(repo, PLAN_FILE, "current-branch", cross="off", host="codex")
     assert run["cross"] == {"on": False, "peer": "claude", "threshold": 80, "builder_tiers": []}
-    assert run["vendors"] == {"codex": {"off": True}}
+    assert run["vendors"] == {}  # asking again clears the run-long marks
     assert state.write_run(repo, PLAN_FILE, "current-branch")["cross"]["on"] is False  # not asked: what was recorded stays
+
+
+def test_a_new_run_keeps_only_the_dated_vendor_marks_still_ahead(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch", cross="on", host="claude")
+    state.vendor_down(repo, STEM, "claude", "limit")  # to the end of the run
+    state.vendor_down(repo, STEM, "codex", "missing")
+    state.vendor_down(repo, STEM, "codex", "limit", "2999-01-01T00:00:00Z")
+    assert state.write_run(repo, PLAN_FILE, "current-branch")["vendors"]["claude"] == {"exhausted_until": "9999-12-31T23:59:59Z"}  # no cross: kept
+    state.vendor_down(repo, STEM, "claude", "limit", "2000-01-01T00:00:00Z")  # a past mark
+    run = state.write_run(repo, PLAN_FILE, "current-branch", cross="on", host="claude")
+    assert run["vendors"] == {"codex": {"exhausted_until": "2999-01-01T00:00:00Z"}}
+    assert run_state(repo)["vendors"] == run["vendors"]
 
 
 def test_run_cross_takes_the_models_json_block(repo):

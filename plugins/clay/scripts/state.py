@@ -48,7 +48,7 @@ from factory_plan import CLOSED, SECTION, TIERS, TASK_HEADING, describe_plan, pa
 from models import RISKY_AGENTS, ModelsError, cross_config, resolve as resolve_model
 from resolve import audit_plans, list_plans, list_unclassified, load_jobs
 from route import load_rules, route
-from vendors import END_OF_RUN, PEER, decide, parse_iso, quota as read_quota
+from vendors import END_OF_RUN, PEER, carried_marks, decide, parse_iso, quota as read_quota
 
 TERMINAL = ("merged", "committed")
 VERDICTS = ("PASS", "CHANGES")
@@ -584,7 +584,8 @@ def landed_count(root, plan_stem: str) -> int:
 
 def write_run(root, plan_file: str, mode: str, pace: str = "step", cross: str | None = None, host: str | None = None) -> dict:
     """The run state. `cross` ("on" or "off", asked at the start) records whether agents may go to the host's peer vendor, with the
-    settings of models.json; without it what an earlier start recorded stays. `vendors` (what vendor-down recorded) is never touched."""
+    settings of models.json, and drops the vendor-down marks that lasted the run (`off`, exhausted to the end of the run) or have
+    passed; without it what an earlier start recorded stays, `vendors` included."""
     root = Path(root)
     path = Path(plan_file) if Path(plan_file).is_absolute() else root / plan_file
     plan = parse_plan(path.read_text())
@@ -604,6 +605,7 @@ def write_run(root, plan_file: str, mode: str, pace: str = "step", cross: str | 
         if not host:
             raise ValueError("--cross needs --host")
         run["cross"] = {"on": cross == "on" and host in PEER, "peer": PEER.get(host), **cross_config(root)}
+        run["vendors"] = carried_marks(run.get("vendors") or {}, now())
     rp.parent.mkdir(parents=True, exist_ok=True)
     rp.write_text(json.dumps(run, indent=2))
     return run

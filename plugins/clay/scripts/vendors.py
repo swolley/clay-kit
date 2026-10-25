@@ -141,6 +141,17 @@ def _unusable(run: dict, vendor: str, now: datetime) -> str | None:
     return None
 
 
+def carried_marks(vendors: dict, now: str) -> dict:
+    """The vendor-down marks a new run keeps: only a dated exhaustion still ahead. `off` and the end-of-run exhaustion belong to
+    the run that recorded them."""
+    kept = {}
+    for name, entry in vendors.items():
+        until = entry.get("exhausted_until")
+        if until and until != END_OF_RUN and _unusable({"vendors": {name: {"exhausted_until": until}}}, name, parse_iso(now)):
+            kept[name] = {"exhausted_until": until}
+    return kept
+
+
 def decide(job: dict | None, run: dict, agent: str, host: str, usage: dict, now: str) -> dict:
     """The vendor for an agent: {vendor, peer, reason, crossed}. `agent` is builder, an agent of models.AGENT_DEFAULTS without
     -risky (then `job` holds the builder's vendor) or reviewer-final (then `job` is None). `usage` maps vendor to used_percent or
@@ -158,6 +169,8 @@ def decide(job: dict | None, run: dict, agent: str, host: str, usage: dict, now:
         return {"vendor": vendor, "peer": vendor not in (None, host), "reason": reason, "crossed": crossed}
 
     if agent == "builder":
+        if (job or {}).get("lean"):  # lean jobs are built by the session, whatever the tier or the margin
+            return out(host, "session")
         wanted = peer if (job or {}).get("tier") in cross.get("builder_tiers", []) else host
         other = PEER[wanted]
         if down[wanted]:

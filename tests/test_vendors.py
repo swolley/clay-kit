@@ -82,6 +82,16 @@ def test_builder_on_an_exhausted_host_goes_to_the_peer():
     assert (out["vendor"], out["reason"], out["peer"]) == ("codex", "exhausted", True)
 
 
+def test_a_lean_builder_is_the_session_whatever_the_tier_or_the_margin():
+    lean = {"tier": "light", "lean": True}
+    out = d(lean, on(builder_tiers=["light"]), "builder")
+    assert out == {"vendor": "claude", "peer": False, "reason": "session", "crossed": False}
+    out = d(lean, on(), "builder", usage={"claude": 95.0, "codex": 10.0})
+    assert (out["vendor"], out["reason"]) == ("claude", "session")
+    out = d(lean, on(), "builder", host="codex", usage={"codex": 95.0, "claude": 10.0})
+    assert (out["vendor"], out["reason"]) == ("codex", "session")
+
+
 @pytest.mark.parametrize("agent", AGENTS[1:])
 def test_reviewer_is_opposite_to_the_builder(agent):
     out = d(built_by("codex"), on(), agent)
