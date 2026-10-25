@@ -3,13 +3,15 @@
 host's command timeout.
 
 Each command prints JSON. `start` returns at once; `wait` returns when the run ends, or at its timeout with state "running".
+Either prints {"error": ...} and exits 2 for a run it cannot act on: `start` for one still running, `wait` for one never started.
 
   peer.py start --root DIR --job ID --role R --round N --vendor claude|codex --cwd DIR --write DIR --prompt-file F
                 [--model M] [--effort E] [--resume SESSION] [--limit-seconds S]
   peer.py wait --root DIR --job ID --run R-rN [--timeout S]
 
 A run's files are `<root>/factory/jobs/<job>/peer/<role>-r<N>.{log,status.json}`. `_run` is the runner `start` spawns: it runs
-the CLI in its own process group with the prompt on stdin, kills the whole group at the limit, and writes the final status.
+the CLI in its own process group with the prompt on stdin, records that group in the running status, kills the whole group at
+the limit, and writes the final status. `wait` kills the group of a runner that died without one (`lost`).
 """
 import argparse
 import json
@@ -27,10 +29,16 @@ VENDORS = ("claude", "codex")
 LIMIT_PATTERNS = ("usage limit", "rate limit", "limit reached", "quota")
 AUTH_PATTERNS = ("not logged in", "please log in", "unauthorized", "authentication")
 TIMEOUTS = {"builder": 3600}
+CLAUDE_TOKENS = ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
 DEFAULT_TIMEOUT = 1200
 POLL_SECONDS = 1
 GRACE_SECONDS = 2  # between SIGTERM and SIGKILL to the CLI's process group
 NAME_RE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")
+SESSION_MODEL = "inherit"  # the session's model: a CLI started on its own has no session to take it from, so it gets no model
+
+
+class RunActive(ValueError):
+    """A run name whose runner is still alive."""
 
 
 def agent_tools(role: str) -> list[str]:
@@ -50,6 +58,7 @@ def agent_tools(role: str) -> list[str]:
 def build_command(vendor: str, cwd: str, write: str, model: str | None, effort: str | None, resume: str | None, tools: list[str],
                   last_message: str) -> list[str]:
     """The CLI's argument list; the prompt goes on stdin. Never a flag that bypasses the sandbox or the permission checks."""
+    model = None if model == SESSION_MODEL else model
     if vendor == "codex":
         # `exec resume` takes no -C, -s or --add-dir of its own: the options go before the subcommand, the same for both.
         cmd = ["codex", "exec", "-C", cwd, "--add-dir", write, "-s", "workspace-write"]
@@ -105,15 +114,16 @@ def _flat(limits: dict) -> dict | None:
     return best
 
 
-def _usage_tokens(usage) -> int:
+def _usage_tokens(usage, keys=("input_tokens", "output_tokens")) -> int:
     if not isinstance(usage, dict):
         return 0
-    values = (usage.get(k) for k in ("input_tokens", "output_tokens"))
+    values = (usage.get(k) for k in keys)
     return sum(int(v) for v in values if isinstance(v, (int, float)) and not isinstance(v, bool))
 
 
 def parse_output(vendor: str, output: str) -> dict:
-    """{session_id, tokens, rate_limits} from the CLI's output. tokens is input plus output as reported, 0 when nothing is."""
+    """{session_id, tokens, rate_limits} from the CLI's output. tokens is input plus output as reported (Claude's cache reads and
+    writes added, which it counts apart from its input; Codex's cached input is part of its input), 0 when nothing is."""
     session_id, tokens, rate_limits = None, 0, None
     for event in _events(output):
         if vendor == "codex":
@@ -124,7 +134,7 @@ def parse_output(vendor: str, output: str) -> dict:
             limits = _find_limits(event)
             rate_limits = (limits and _flat(limits)) or rate_limits
         elif "session_id" in event or "usage" in event:  # claude prints one object; the last one wins
-            session_id, tokens = event.get("session_id"), _usage_tokens(event.get("usage"))
+            session_id, tokens = event.get("session_id"), _usage_tokens(event.get("usage"), CLAUDE_TOKENS)
     return {"session_id": session_id, "tokens": tokens, "rate_limits": rate_limits}
 
 
@@ -207,6 +217,9 @@ def start(root, job: str, role: str, round_no: int, vendor: str, cwd: str, write
         raise ValueError(f"no prompt file at {prompt_file}")
     run = f"{role}-r{int(round_no)}"
     paths = _paths(root, job, run)
+    status = _read_status(paths["status"])
+    if status and status.get("state") == "running" and _alive(status.get("pid")):
+        raise RunActive(f"{run} is still running (runner pid {status['pid']}): wait for it")
     paths["dir"].mkdir(parents=True, exist_ok=True)
     limit = limit_seconds or TIMEOUTS.get(role, DEFAULT_TIMEOUT)
     args = [sys.executable, str(Path(__file__).resolve()), "_run", "--root", str(root), "--job", job, "--role", role, "--run", run,
@@ -269,6 +282,7 @@ def _run(a) -> int:
         return finish("missing", nothing)
     except OSError:
         return finish("exit", nothing)
+    _write_status(paths["status"], {"state": "running", "pid": os.getpid(), "pgid": proc.pid})
     timed_out = False
     try:
         proc.communicate(prompt, timeout=a.limit_seconds)
@@ -281,9 +295,20 @@ def _run(a) -> int:
     return finish("timeout" if timed_out else classify(a.vendor, proc.returncode, output, parsed["rate_limits"]), parsed)
 
 
+def _kill_group(pgid) -> None:
+    if isinstance(pgid, int) and not isinstance(pgid, bool) and pgid > 0:
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+
 def wait(root, job: str, run: str, timeout: int = 300) -> dict:
-    """The final status once the run ends, {state: running} at the timeout. A runner gone without a final status is `lost`."""
+    """The final status once the run ends, {state: running} at the timeout. A runner gone without a final status is `lost`, and
+    the CLI's group it leaves behind is killed first. A run that was never started is a ValueError."""
     path = _paths(root, job, run)["status"]
+    if not path.exists():
+        raise ValueError(f"no run {run} for job {job}: start it first")
     deadline = time.monotonic() + timeout
     keys = ("state", "error", "session_id", "tokens", "ms", "rate_limits")
     while True:
@@ -294,6 +319,7 @@ def wait(root, job: str, run: str, timeout: int = 300) -> dict:
             status = _read_status(path)  # the runner may have written its status just before it ended
             if status and status.get("state") in ("done", "failed"):
                 return {k: status.get(k) for k in keys}
+            _kill_group((status or {}).get("pgid"))
             return {"state": "failed", "error": "lost", "session_id": None, "tokens": 0, "ms": 0, "rate_limits": None}
         left = deadline - time.monotonic()
         if left <= 0:
@@ -323,14 +349,14 @@ def main(argv: list[str]) -> int:
     a = ap.parse_args(argv)
     if a.cmd == "_run":
         return _run(a)
-    if a.cmd == "wait":
-        print(json.dumps(wait(a.root, a.job, a.run, a.timeout), indent=2))
-        return 0
     try:
-        out = start(a.root, a.job, a.role, a.round, a.vendor, a.cwd, a.write, a.prompt_file, a.model, a.effort, a.resume, a.limit_seconds)
+        if a.cmd == "wait":
+            out = wait(a.root, a.job, a.run, a.timeout)
+        else:
+            out = start(a.root, a.job, a.role, a.round, a.vendor, a.cwd, a.write, a.prompt_file, a.model, a.effort, a.resume, a.limit_seconds)
     except (ValueError, OSError) as e:
         print(json.dumps({"ok": False, "error": str(e)}))
-        return 1
+        return 2 if a.cmd == "wait" or isinstance(e, RunActive) else 1
     print(json.dumps(out, indent=2))
     return 0
 

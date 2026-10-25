@@ -1561,3 +1561,65 @@ def test_preflight_reports_the_peer(repo, tmp_path, monkeypatch):
     assert state.preflight(repo, PLAN_FILE, "demo", host="codex")["peer"] == {"vendor": "claude", "found": False}
     assert "peer" not in state.preflight(repo, PLAN_FILE, "demo", host="cursor")
     assert "peer" not in state.preflight(repo, PLAN_FILE, "demo")
+
+
+def test_a_lock_the_agent_cannot_write_does_not_stop_its_checks(locked_repo):
+    """A Codex peer writes only its worktree and job folder: the run lock's heartbeat is best effort."""
+    state.lock_acquire(locked_repo, PLAN_FILE, run_id="run-a")
+    j = new(locked_repo)
+    lock = state.lock_path(locked_repo, STEM)
+    lock.chmod(0o444)
+    try:
+        assert state.run_check(locked_repo, j["id"], "true")["exit"] == 0
+        state.write_job(locked_repo, state.read_job(locked_repo, j["id"]))
+    finally:
+        lock.chmod(0o644)
+
+
+def test_vendor_prints_whether_the_run_works_with_the_peer(repo, capsys, monkeypatch, tmp_path):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch")
+    j = new(repo)
+    assert vendor_cli(repo, capsys, j["id"], "--agent", "builder", "--host", "claude")["cross_on"] is False
+    start_cross(repo, monkeypatch, tmp_path)
+    out = vendor_cli(repo, capsys, j["id"], "--agent", "builder", "--host", "claude")
+    assert (out["vendor"], out["peer"], out["cross_on"]) == ("claude", False, True)
+
+
+def test_vendor_with_an_unknown_job_is_an_error(repo, capsys):
+    state.setup(repo, repo)
+    assert state.main(["vendor", "999-nope", "--agent", "builder", "--host", "claude", "--root", str(repo)]) == 2
+    assert "error" in json.loads(capsys.readouterr().out)
+
+
+def test_after_the_peer_goes_down_the_builder_is_asked_again_and_its_review_is_not_crossed(repo, capsys, monkeypatch, tmp_path):
+    start_cross(repo, monkeypatch, tmp_path, tiers=["light"])
+    j = new(repo)
+    assert vendor_cli(repo, capsys, j["id"], "--agent", "builder", "--host", "claude")["vendor"] == "codex"
+    state.vendor_down(repo, STEM, "codex", "missing")
+    out = vendor_cli(repo, capsys, j["id"], "--agent", "builder", "--host", "claude")
+    assert (out["vendor"], out["peer"]) == ("claude", False)
+    assert state.read_job(repo, j["id"])["vendors"]["builder"]["vendor"] == "claude"
+    out = vendor_cli(repo, capsys, j["id"], "--agent", "reviewer-code", "--host", "claude")
+    assert (out["vendor"], out["reason"], out["crossed"]) == ("claude", "not crossed", False)
+
+
+def test_vendor_down_takes_an_epoch_until(repo):
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "current-branch", cross="on", host="claude")
+    assert state.vendor_down(repo, STEM, "codex", "limit", "1900000000")["exhausted_until"] == "2030-03-17T17:46:40Z"
+    assert state.vendor_down(repo, STEM, "codex", "limit", "1900000000.5")["exhausted_until"] == "2030-03-17T17:46:40Z"
+
+
+def test_execution_record_final_row_says_when_its_review_was_not_crossed(locked_repo):
+    state.write_run(locked_repo, PLAN_FILE, "current-branch")
+    runs = locked_repo / "factory/jobs/_runs"
+    (runs / f"{STEM}-final.md").write_text("VERDICT: PASS\n\n## Findings\nNone.\n")
+    state.final_verdict(locked_repo, STEM, False, {"model": "opus", "tokens": 10, "ms": 1000})
+    row = next(l for l in state.execution_record(locked_repo, STEM).splitlines() if l.startswith("| final |"))
+    assert "not crossed" not in row
+    run = state.read_run(locked_repo, STEM)
+    run["final"]["crossed"] = False
+    state.run_path(locked_repo, STEM).write_text(json.dumps(run))
+    row = next(l for l in state.execution_record(locked_repo, STEM).splitlines() if l.startswith("| final |"))
+    assert row.split("|")[9].strip() == "review not crossed"

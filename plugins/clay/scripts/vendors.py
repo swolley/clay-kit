@@ -153,20 +153,20 @@ def carried_marks(vendors: dict, now: str) -> dict:
 
 
 def decide(job: dict | None, run: dict, agent: str, host: str, usage: dict, now: str) -> dict:
-    """The vendor for an agent: {vendor, peer, reason, crossed}. `agent` is builder, an agent of models.AGENT_DEFAULTS without
+    """The vendor for an agent: {vendor, peer, reason, crossed, cross_on}, `cross_on` being the run state's `cross.on`. `agent` is builder, an agent of models.AGENT_DEFAULTS without
     -risky (then `job` holds the builder's vendor) or reviewer-final (then `job` is None). `usage` maps vendor to used_percent or
     None. vendor is None when neither vendor can take the agent."""
     if agent != "builder" and (agent not in AGENT_DEFAULTS or agent.endswith("-risky")):
         raise ValueError(f"unknown agent {agent!r}")
     cross = run.get("cross") or {}
     if not cross.get("on") or host not in PEER:
-        return {"vendor": host, "peer": False, "reason": "session", "crossed": False}
+        return {"vendor": host, "peer": False, "reason": "session", "crossed": False, "cross_on": bool(cross.get("on"))}
     peer, threshold, at = PEER[host], cross.get("threshold", DEFAULT_THRESHOLD), parse_iso(now)
     down = {v: _unusable(run, v, at) for v in (host, peer)}
     over = {v: usage.get(v) is not None and usage[v] >= threshold for v in (host, peer)}
 
     def out(vendor, reason, crossed=False):
-        return {"vendor": vendor, "peer": vendor not in (None, host), "reason": reason, "crossed": crossed}
+        return {"vendor": vendor, "peer": vendor not in (None, host), "reason": reason, "crossed": crossed, "cross_on": True}
 
     if agent == "builder":
         if (job or {}).get("lean"):  # lean jobs are built by the session, whatever the tier or the margin

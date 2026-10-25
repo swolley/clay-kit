@@ -1,5 +1,6 @@
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -29,7 +30,7 @@ if mode == "ok" and name == "codex":
     print(json.dumps({{"type": "event_msg", "payload": {{"type": "token_count", "rate_limits": {{"primary": {{"used_percent": 42.0, "resets_at": 1900000000}}}}}}}}))
     print(json.dumps({{"type": "turn.completed", "usage": {{"input_tokens": 100, "cached_input_tokens": 30, "output_tokens": 20}}}}))
 elif mode == "ok":
-    print(json.dumps({{"session_id": "S1", "is_error": False, "result": "fine", "usage": {{"input_tokens": 50, "output_tokens": 5}}, "duration_ms": 9}}))
+    print(json.dumps({{"session_id": "S1", "is_error": False, "result": "fine", "usage": {{"input_tokens": 50, "output_tokens": 5, "cache_read_input_tokens": 400, "cache_creation_input_tokens": 30}}, "duration_ms": 9}}))
 elif mode == "full":
     print(json.dumps({{"type": "thread.started", "thread_id": "T2"}}))
     print(json.dumps({{"type": "token_count", "rate_limits": {{"primary": {{"used_percent": 100.0, "resets_at": 1900000000}}}}}}))
@@ -62,7 +63,21 @@ def env(tmp_path, monkeypatch):
         d.mkdir(parents=True)
     prompt = tmp_path / "prompt.md"
     prompt.write_text(f"Read the agent file.\nWRITE {write}/build.md\n")
-    return {"root": root, "cwd": cwd, "write": write, "prompt": prompt, "tmp": tmp_path}
+    yield {"root": root, "cwd": cwd, "write": write, "prompt": prompt, "tmp": tmp_path}
+    # No runner or CLI outlives its test: each status names the runner and, once the CLI runs, its process group.
+    for path in (write / "peer").glob("*.status.json"):
+        status = json.loads(path.read_text())
+        for pgid in (status.get("pgid"), status.get("pid")):
+            if isinstance(pgid, int) and pgid > 0:
+                try:
+                    os.killpg(pgid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    pass
+        if isinstance(status.get("pid"), int):
+            try:
+                os.waitpid(status["pid"], 0)
+            except ChildProcessError:
+                pass
 
 
 def run(env, vendor="codex", role="builder", wait_s=10, **kw):
@@ -101,7 +116,7 @@ def test_claude_run_is_done_with_usage(env):
     out = run(env, "claude", role="reviewer-code", resume="S0")
     assert out["state"] == "done" and out["error"] is None
     assert out["session_id"] == "S1"
-    assert out["tokens"] == 55
+    assert out["tokens"] == 485  # input, output and both cache counts
     assert out["rate_limits"] is None
     call = calls(env)[0]
     assert call["cwd"] == str(env["cwd"])
@@ -163,6 +178,46 @@ def test_wait_returns_running_at_its_timeout(env, monkeypatch):
     status = json.loads((env["write"] / "peer/builder-r1.status.json").read_text())
     assert status["state"] == "running" and status["pid"] > 0
     assert wait(env["root"], "J1", out["run"], timeout=1)["state"] == "running"
+    status = json.loads((env["write"] / "peer/builder-r1.status.json").read_text())
+    assert status["pid"] > 0 and status["pgid"] > 0 and alive(status["pgid"])  # the runner records the CLI's group
+
+
+def test_lost_runner_takes_its_cli_with_it(env):
+    dead = subprocess.Popen(["true"])
+    dead.wait()
+    orphan = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    peer_dir = env["write"] / "peer"
+    peer_dir.mkdir()
+    (peer_dir / "builder-r1.status.json").write_text(json.dumps({"state": "running", "pid": dead.pid, "pgid": orphan.pid}))
+    out = wait(env["root"], "J1", "builder-r1", timeout=5)
+    assert (out["state"], out["error"]) == ("failed", "lost")
+    assert orphan.wait(timeout=3) == -signal.SIGKILL
+
+
+def test_start_refuses_a_run_that_is_still_running(env):
+    live = subprocess.Popen(["sleep", "60"])
+    try:
+        peer_dir = env["write"] / "peer"
+        peer_dir.mkdir()
+        (peer_dir / "builder-r1.status.json").write_text(json.dumps({"state": "running", "pid": live.pid}))
+        with pytest.raises(peer.RunActive):
+            start(env["root"], "J1", "builder", 1, "codex", str(env["cwd"]), str(env["write"]), str(env["prompt"]))
+        args = ["start", "--root", str(env["root"]), "--job", "J1", "--role", "builder", "--round", "1", "--vendor", "codex",
+                "--cwd", str(env["cwd"]), "--write", str(env["write"]), "--prompt-file", str(env["prompt"])]
+        done = subprocess.run([sys.executable, peer.__file__, *args], capture_output=True, text=True)
+        assert done.returncode == 2 and "error" in json.loads(done.stdout)
+    finally:
+        live.kill()
+        live.wait()
+    assert run(env, "codex")["state"] == "done"  # a dead runner's status is no obstacle
+
+
+def test_wait_on_an_unknown_run_is_an_error(env):
+    with pytest.raises(ValueError):
+        wait(env["root"], "J1", "builder-r9", timeout=1)
+    done = subprocess.run([sys.executable, peer.__file__, "wait", "--root", str(env["root"]), "--job", "J1", "--run", "builder-r9",
+                           "--timeout", "1"], capture_output=True, text=True)
+    assert done.returncode == 2 and "error" in json.loads(done.stdout)
 
 
 def test_cli_start_and_wait(env, monkeypatch):
@@ -190,6 +245,9 @@ def test_commands():
         assert part in claude
     assert "--resume" not in claude
     assert "--allowedTools" not in build_command("claude", "/wt", "/job", None, None, "S1", [], "/x")
+    for vendor in ("claude", "codex"):  # `inherit` is the session's model, which a CLI started on its own does not have
+        cmd = build_command(vendor, "/wt", "/job", "inherit", None, None, [], "/x")
+        assert "inherit" not in cmd and "--model" not in cmd and "-m" not in cmd
     for cmd in (codex, resumed, claude, build_command("claude", "/wt", "/job", None, None, "S1", ["Read"], "/x")):
         assert not any("dangerously" in part for part in cmd)
 

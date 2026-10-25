@@ -22,7 +22,7 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
   state.py close-plan --plan-file P --root DIR
   state.py vendor [JOB] --agent A --host H [--plan STEM] [--risky] --root DIR
   state.py quota --vendor claude|codex --root DIR
-  state.py vendor-down --plan STEM --vendor V --reason limit|missing|auth [--until ISO] --root DIR
+  state.py vendor-down --plan STEM --vendor V --reason limit|missing|auth [--until ISO|EPOCH] --root DIR
   state.py escalate JOB --host H --root DIR
   state.py rework JOB --root DIR
   state.py lean-check JOB --root DIR
@@ -48,7 +48,7 @@ from factory_plan import CLOSED, SECTION, TIERS, TASK_HEADING, describe_plan, pa
 from models import RISKY_AGENTS, ModelsError, cross_config, resolve as resolve_model
 from resolve import audit_plans, list_plans, list_unclassified, load_jobs
 from route import load_rules, route
-from vendors import END_OF_RUN, PEER, carried_marks, decide, parse_iso, quota as read_quota
+from vendors import END_OF_RUN, PEER, carried_marks, decide, iso, parse_iso, quota as read_quota
 
 TERMINAL = ("merged", "committed")
 VERDICTS = ("PASS", "CHANGES")
@@ -719,7 +719,10 @@ def read_run(root, plan_stem: str) -> dict:
 def vendor(root, job_id: str | None, agent: str, host: str, plan_stem: str | None = None, risky: bool = False) -> dict:
     """Which vendor runs an agent, with the model and effort to pass it, recorded where the execution record reads it: the job
     (`vendors[agent]`, and `crossed: false` when a review stayed on the builder's vendor) or, for reviewer-final, the run state."""
-    job = read_job(root, job_id) if job_id else None
+    try:
+        job = read_job(root, job_id) if job_id else None
+    except (OSError, ValueError) as e:
+        raise ValueError(f"no readable job {job_id}") from e
     stem = job["plan"] if job else plan_stem
     if agent == "builder" and not job:
         raise ValueError("the builder needs a job")
@@ -749,8 +752,8 @@ def vendor(root, job_id: str | None, agent: str, host: str, plan_stem: str | Non
 
 
 def vendor_down(root, plan_stem: str, vendor: str, reason: str, until: str | None = None) -> dict:
-    """Record in the run state that a vendor cannot take agents: `limit` until `until` (to the end of the run without it),
-    `missing` and `auth` for the rest of the run."""
+    """Record in the run state that a vendor cannot take agents: `limit` until `until` (ISO, or epoch seconds as Codex's
+    `resets_at`; to the end of the run without it), `missing` and `auth` for the rest of the run."""
     if reason not in ("limit", "missing", "auth"):
         raise ValueError(f"reason is limit, missing or auth, not {reason!r}")
     if vendor not in PEER:
@@ -760,9 +763,9 @@ def vendor_down(root, plan_stem: str, vendor: str, reason: str, until: str | Non
         raise ValueError(f"no run state for {plan_stem}")
     if until is not None:
         try:
-            until = parse_iso(until).strftime("%Y-%m-%dT%H:%M:%SZ")
-        except ValueError as e:
-            raise ValueError(f"--until {until!r} is not an ISO 8601 time") from e
+            until = iso(float(until)) if re.fullmatch(r"\d+(\.\d+)?", str(until)) else parse_iso(until).strftime("%Y-%m-%dT%H:%M:%SZ")
+        except (ValueError, OverflowError, OSError) as e:
+            raise ValueError(f"--until {until!r} is not an ISO 8601 time or an epoch") from e
     run = json.loads(rp.read_text())
     entry = run.setdefault("vendors", {}).setdefault(vendor, {})
     if reason == "limit":
@@ -806,10 +809,14 @@ def age_minutes(iso: str) -> float:
 
 
 def touch_lock(root, plan_stem: str) -> None:
+    """Best effort: an agent that may not write `_runs` (a Codex peer in its sandbox) still records its checks and its job."""
     lock = read_lock(root, plan_stem) if plan_stem else None
     if lock:
         lock["heartbeat"] = now()
-        lock_path(root, plan_stem).write_text(json.dumps(lock, indent=2))
+        try:
+            lock_path(root, plan_stem).write_text(json.dumps(lock, indent=2))
+        except OSError:
+            pass
 
 
 def lock_view(lock: dict, stale_minutes: int = STALE_MINUTES) -> dict:
@@ -1002,7 +1009,8 @@ def execution_record(root, plan_stem: str) -> str:
         tokens, ms = tokens + t, ms + m
         prefix = f"{v}:" if (v := (final.get("vendor") or {}).get("vendor")) else ""
         models = "/".join(sorted({prefix + a["model"] for a in usage if a.get("model")}))
-        rows.append(f"| final | | {models} | {len(reviews)} | | {', '.join(r['verdict'] for r in reviews)} | | | | {t} | {m // 1000}s |")
+        notes = "review not crossed" if final.get("crossed") is False else ""
+        rows.append(f"| final | | {models} | {len(reviews)} | | {', '.join(r['verdict'] for r in reviews)} | | | {notes} | {t} | {m // 1000}s |")
     head = "| Task | Tier | Models | Rounds | First round | Reviews | Decision | Findings | Notes | Tokens | Agent time |\n|---|---|---|---|---|---|---|---|---|---|---|\n"
     return f"{RECORD_TITLE}\n\n{head}" + "\n".join(rows) + f"\n\nTotal: {tokens} tokens, {ms // 1000}s of agent time.\n"
 

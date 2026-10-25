@@ -37,7 +37,7 @@ AGENTS = ["builder", "reviewer-code", "reviewer-interface", "reviewer-security",
 @pytest.mark.parametrize("agent", AGENTS)
 def test_peer_off_keeps_every_agent_on_the_host(agent):
     for run in ({}, {"cross": {"on": False, "peer": "codex"}}):
-        assert d({"tier": "light"}, run, agent) == {"vendor": "claude", "peer": False, "reason": "session", "crossed": False}
+        assert d({"tier": "light"}, run, agent) == {"vendor": "claude", "peer": False, "reason": "session", "crossed": False, "cross_on": False}
 
 
 def test_a_host_without_a_peer_stays_on_itself_even_when_on():
@@ -46,9 +46,9 @@ def test_a_host_without_a_peer_stays_on_itself_even_when_on():
 
 def test_builder_on_a_listed_tier_goes_to_the_peer():
     out = d({"tier": "light"}, on(builder_tiers=["light"]), "builder")
-    assert out == {"vendor": "codex", "peer": True, "reason": "builder_tiers", "crossed": False}
+    assert out == {"vendor": "codex", "peer": True, "reason": "builder_tiers", "crossed": False, "cross_on": True}
     assert d({"tier": "light"}, on(builder_tiers=["light"]), "builder", host="codex")["vendor"] == "claude"
-    assert d({"tier": "heavy"}, on(builder_tiers=["light"]), "builder") == {"vendor": "claude", "peer": False, "reason": "session", "crossed": False}
+    assert d({"tier": "heavy"}, on(builder_tiers=["light"]), "builder") == {"vendor": "claude", "peer": False, "reason": "session", "crossed": False, "cross_on": True}
 
 
 def test_builder_moves_off_a_vendor_over_the_threshold():
@@ -85,7 +85,7 @@ def test_builder_on_an_exhausted_host_goes_to_the_peer():
 def test_a_lean_builder_is_the_session_whatever_the_tier_or_the_margin():
     lean = {"tier": "light", "lean": True}
     out = d(lean, on(builder_tiers=["light"]), "builder")
-    assert out == {"vendor": "claude", "peer": False, "reason": "session", "crossed": False}
+    assert out == {"vendor": "claude", "peer": False, "reason": "session", "crossed": False, "cross_on": True}
     out = d(lean, on(), "builder", usage={"claude": 95.0, "codex": 10.0})
     assert (out["vendor"], out["reason"]) == ("claude", "session")
     out = d(lean, on(), "builder", host="codex", usage={"codex": 95.0, "claude": 10.0})
@@ -95,15 +95,15 @@ def test_a_lean_builder_is_the_session_whatever_the_tier_or_the_margin():
 @pytest.mark.parametrize("agent", AGENTS[1:])
 def test_reviewer_is_opposite_to_the_builder(agent):
     out = d(built_by("codex"), on(), agent)
-    assert out == {"vendor": "claude", "peer": False, "reason": "opposite", "crossed": True}
+    assert out == {"vendor": "claude", "peer": False, "reason": "opposite", "crossed": True, "cross_on": True}
     out = d(built_by("claude"), on(), agent)
-    assert out == {"vendor": "codex", "peer": True, "reason": "opposite", "crossed": True}
+    assert out == {"vendor": "codex", "peer": True, "reason": "opposite", "crossed": True, "cross_on": True}
 
 
 def test_review_stays_on_the_builder_when_the_opposite_is_exhausted():
     run = run_with({"claude": {"exhausted_until": FUTURE}})
     out = d(built_by("codex"), run, "reviewer-code")
-    assert out == {"vendor": "codex", "peer": True, "reason": "not crossed", "crossed": False}
+    assert out == {"vendor": "codex", "peer": True, "reason": "not crossed", "crossed": False, "cross_on": True}
 
 
 def test_review_stays_on_the_builder_when_the_opposite_is_over_the_threshold():
@@ -119,7 +119,7 @@ def test_a_lean_job_counts_the_host_as_its_builder():
 
 def test_final_review_is_opposite_to_the_host():
     out = d(None, on(), "reviewer-final")
-    assert out == {"vendor": "codex", "peer": True, "reason": "opposite", "crossed": True}
+    assert out == {"vendor": "codex", "peer": True, "reason": "opposite", "crossed": True, "cross_on": True}
     assert d(None, on(), "reviewer-final", host="codex")["vendor"] == "claude"
     out = d(None, run_with({"codex": {"exhausted_until": FUTURE}}), "reviewer-final")
     assert (out["vendor"], out["reason"], out["crossed"]) == ("claude", "not crossed", False)
@@ -226,3 +226,10 @@ def test_quota_ignores_a_status_file_without_limits(tmp_path):
     (peer / "builder-r1.status.json").write_text(json.dumps({"state": "running", "pid": 1, "rate_limits": None}))
     rollout(tmp_path / "codex", used=10.0)
     assert quota(tmp_path / "root", "codex", codex_home=tmp_path / "codex")["source"] == "sessions"
+
+
+def test_decide_says_whether_the_run_works_with_the_peer():
+    assert d({"tier": "light"}, {}, "builder")["cross_on"] is False
+    assert d({"tier": "light"}, {"cross": {"on": False, "peer": "codex"}}, "approver")["cross_on"] is False
+    assert d({"tier": "light"}, on(), "builder")["cross_on"] is True
+    assert d(built_by("claude"), run_with({"codex": {"off": True}, "claude": {"off": True}}), "reviewer-code")["cross_on"] is True
