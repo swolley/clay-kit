@@ -1,11 +1,8 @@
 # Job loop and pace
 
-Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is the path your skill states. Follow `<plugin root>/STYLE.md`. `<repo>` is the root of the target repository's own checkout.
-
 ## Job loop
 
-Do the bookkeeping with `python3 <plugin root>/scripts/state.py` instead of editing files by hand: it writes `job.json`, keeps the
-phase log and the times, and does the checks. Every command takes `--root <repo>` and prints JSON.
+`state.py` is `python3 <plugin root>/scripts/state.py`; every command takes `--root <repo>` and prints JSON.
 
 Start every agent as `hosts.md` says, with a prompt that opens with the job's coordinates (`<paths>` below): first
 `Plugin root: <plugin root>`, then its folder `<repo>/factory/jobs/<job-id>/`, the worktree path, the branch, the mode and the base, then `State: python3 <plugin root>/scripts/state.py`, the job id and the repo root `<repo>`: the agents run
@@ -13,9 +10,8 @@ and read checks with them (`verify`, `checks`). A reviewer and the approver also
 
 When an agent finishes, record its model, effort and usage at once, with all the agents that finished together in one call:
 `state.py after-agent <job-id> --agents '[{"role":"code","model":"sonnet","effort":"medium","tokens":9000,"ms":20000,"tools":5}]'` (roles `builder`, `code`,
-`security`, `ux`, `ui`, `uiux`, `approver`; what each field holds is the recording rule in `hosts.md`, "Model and effort"; `state.py agent <job-id> <role> --model <m> --effort <e> --tokens <n>
---ms <n> --tools <n>` records one agent). The progress views show who has the job, on which
-model, and what it cost in time and tokens. The usage of your own session is not included: it is not reported to you.
+`security`, `interface`, `approver`; the fields follow the recording rule in `hosts.md`; `state.py agent <job-id> <role>` with the same
+fields as options records one agent). The usage of your own session is not reported to you.
 
 0. **Once per run.** Take the run lock (see `lock.md`), then `state.py setup --plugin-root <plugin root>` (creates `factory/jobs/`, ignored by git, and copies the
    dashboard) and `state.py run --plan-file <plan> --mode <mode> --pace <pace>` (writes the run state: total, tasks, and `done`
@@ -31,10 +27,8 @@ model, and what it cost in time and tokens. The usage of your own session is not
    Keep the agent id the spawn returns; it replaces the name when you resume the builder.
    The first line of build.md decides what happens next: `STATUS: READY` moves on, `STATUS: NEEDS_INPUT` goes to
    `questions.md`, `STATUS: BLOCKED` sends the job to step 8.
-3. **Route.** `state.py route <job>` takes the changed paths (`git diff --name-only <base>...<branch>`; in current-branch mode
-   `git diff --name-only HEAD` plus `git ls-files --others --exclude-standard`), applies the routing table (the repo's `factory/routing.md`
-   if that file exists) and sets up the round: it writes `reviewers`, creates `round-N/` with `diff.patch` (commits, file list, what changed since the
-   previous round, diff: no agent runs those git commands again) and sets the stage. It prints `reviewers`, `rerun`, `carried`, `lite` and `diff`.
+3. **Route.** `state.py route <job>` routes the change through the routing table (the repo's `factory/routing.md` if that file
+   exists) and sets up the round with its `round-N/diff.patch`, which every agent reads instead of running git. It prints `reviewers`, `rerun`, `carried`, `lite` and `diff`.
    **Carried lenses.** After round 1 a lens that passed keeps its verdict and is not run again while nothing its rules watch has changed since
    that round: `carried` names the round it was given in. The `code` lens watches every path, so it runs again whenever anything changed, and a
    lens that asked for changes always runs again. `rerun` is the list to spawn; it may be empty when nothing changed.
@@ -42,10 +36,9 @@ model, and what it cost in time and tokens. The usage of your own session is not
    and the job goes straight to approve: the approver writes the code review itself, so tell it `Lite: yes` in its prompt. The round is set
    up as any other (`round-N/` with its `diff.patch`), with `code` as its only lens.
 4. **Review round N.** Spawn the reviewers in `rerun` in one message, as `hosts.md` says, each with the model and effort of
-   `state.py model --host <host> --agent reviewer-<lens>`, prompt `<paths> Review round N.`
-   plus `Port: 5101+10n` for ux and `5102+10n` for ui. When `rerun` holds both `ux` and `ui`, spawn one `reviewer-uiux` (`--agent reviewer-uiux`) for the two instead, with `Port: 5101+10n`:
-   it reads the change once and writes both `review-ux.md` and `review-ui.md`, and its usage is recorded under the role `uiux`. With only one of them, spawn that
-   lens's own reviewer. When they have finished, check the round in its own step: `state.py verdicts <job>`
+   `state.py model --host <host> --agent reviewer-<lens>`, prompt `<paths> Review round N.` The `ux` and `ui` lenses have one
+   reviewer: when `rerun` holds either or both, spawn one `reviewer-interface` (`--agent reviewer-interface`) with `Lenses:` and those
+   lenses and `Port: 5101+10n`; it writes `review-<lens>.md` for each, and its usage is recorded under the role `interface`. When they have finished, check the round in its own step: `state.py verdicts <job>`
    reads line one of every file of `rerun`, stores the verdicts in `job.json`, and exits 1 if a file or a verdict line
    is missing; `all_pass` counts the carried verdicts too. A reviewer's chat reply is a claim, not a verdict: only its file counts. A reviewer that wrote no file gets one more time, with a reminder to write it; if it still has no verdict line, stop and tell the user. The builder stays untouched until the whole round is in.
 5. **Decide.** `all_pass`: approve. An attempt has at most three rounds, counted from the start of the job or, after a rework, from the
@@ -55,8 +48,7 @@ model, and what it cost in time and tokens. The usage of your own session is not
    next round. Any CHANGES after round 2: `state.py stage <job> build`, then `state.py escalate <job> --host <host>`. With
    `escalated: true` it has moved the task one tier up: spawn a fresh builder (not a resume) with the model and effort it printed and
    the prompt `<paths> Build round 3. Escalated from <tier>: every round's reviews are in round-*/. Read task.md, build.md and them,
-   then continue from the branch as it stands.`, and record it under `builder`. In an `inline` run this builder is a subagent too, since
-   the session cannot change its own model. With `escalated: false` (the task was `heavy` or `fable`) resume the builder as after round 1.
+   then continue from the branch as it stands.`, and record it under `builder`. With `escalated: false` (the task was `heavy` or `fable`) resume the builder as after round 1.
    Any CHANGES after round 3: you write `decision.md` yourself: first line `ESCALATE`, then a sentence naming the lenses that still ask
    for changes, and go to step 8.
 6. **Approve.** Only after the check in step 4 passed (or in the short path), and never in the same message as that check (a failed
@@ -84,7 +76,7 @@ type another command.
 - An agent asked a question: handle it in place, as in `questions.md`.
 
 **Auto.** No question between tasks. A job that needs a person stops the run: list the waiting jobs, each with the
-ready command (`/factory-approve <id>`, `/factory-rework <id> <note>`, `/factory-answer <id>`), and stop.
+ready command (`/factory-approve <id>`, `/factory-rework <id> <note>`, `/factory-answer <id>`), release the lock as `lock.md` says, and stop.
 
 A prompt that is dismissed counts as stop and leaves every job as it is. Running `factory-run` again starts guided again.
 

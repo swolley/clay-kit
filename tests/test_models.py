@@ -42,13 +42,12 @@ def test_fable_off_claude_is_heavy(tmp_path):
     assert resolve(tmp_path, "claude", tier="fable") == {"model": "fable", "effort": "high", "source": "tiers.md"}
 
 
-def test_uiux_is_ux(tmp_path):
+def test_interface_reviewer_resolves_on_every_host(tmp_path):
+    assert resolve(tmp_path, "claude", agent="reviewer-interface") == {"model": "sonnet", "effort": "medium", "source": "tiers.md"}
     for host in HOSTS:
-        assert resolve(tmp_path, host, agent="reviewer-uiux") == resolve(tmp_path, host, agent="reviewer-ux")
-    write_models(tmp_path, {"claude": {"agents": {"reviewer-ux": {"model": "opus"}}}, "codex": {"agents": {"reviewer-ux": {"model": "m"}}}})
-    for host in HOSTS:
-        assert resolve(tmp_path, host, agent="reviewer-uiux") == resolve(tmp_path, host, agent="reviewer-ux")
-    assert resolve(tmp_path, "codex", agent="reviewer-uiux")["model"] == "m"
+        assert set(resolve(tmp_path, host, agent="reviewer-interface")) == {"model", "effort", "source"}
+    write_models(tmp_path, {"codex": {"agents": {"reviewer-interface": {"model": "m"}}}})
+    assert resolve(tmp_path, "codex", agent="reviewer-interface")["model"] == "m"
 
 
 def test_partial_fable_entry_takes_effort_from_heavy(tmp_path):
@@ -89,7 +88,9 @@ def test_risky_approver_mapping(tmp_path):
         ({"claude": {"tiers": {"light": {"model": 3}}}}, "claude", {"tier": "light"}, "claude.tiers.light.model"),
         ({"codex": {"tiers": {"light": {"effort": 3}}}}, "codex", {"tier": "light"}, "codex.tiers.light.effort"),
         ({"codex": {"tiers": {"light": {"modle": "x"}}}}, "codex", {"tier": "light"}, "modle"),
-        ({"codex": {"agents": {"reviewer-uiux": {"model": "x"}}}}, "codex", {"agent": "reviewer-ux"}, "reviewer-uiux is configured as reviewer-ux"),
+        ({"codex": {"agents": {"reviewer-ux": {"model": "x"}}}}, "codex", {"tier": "light"}, "reviewer-ux is now reviewer-interface"),
+        ({"codex": {"agents": {"reviewer-ui": {"model": "x"}}}}, "codex", {"tier": "light"}, "reviewer-ui is now reviewer-interface"),
+        ({"codex": {"agents": {"reviewer-uiux": {"model": "x"}}}}, "codex", {"tier": "light"}, "reviewer-uiux is now reviewer-interface"),
         (None, "claude", {"tier": "light", "agent": "approver"}, "tier"),
         (None, "claude", {}, "tier"),
         (None, "claude", {"tier": "hevy"}, "hevy"),
@@ -97,7 +98,7 @@ def test_risky_approver_mapping(tmp_path):
         (None, "gemini", {"tier": "light"}, "gemini"),
         (None, "claude", {"tier": "light", "risky": True}, "--risky"),
         (None, "claude", {"agent": "reviewer-code", "risky": True}, "--risky"),
-        (None, "codex", {"agent": "reviewer-uiux", "risky": True}, "--risky"),
+        (None, "codex", {"agent": "reviewer-interface", "risky": True}, "--risky"),
         (None, "claude", {"agent": "reviewer-spec", "risky": True}, "reviewer-final"),
     ],
 )
@@ -198,7 +199,7 @@ def test_agent_frontmatter_effort():
         fm = re.match(r"---\n(.*?)\n---\n", (agents / f"{name}.md").read_text(), re.S).group(1)
         assert re.search(rf"^effort: {effort}$", fm, re.M), name
         checked.append(name)
-    assert sorted(checked) == sorted(["reviewer-code", "reviewer-ui", "reviewer-ux", "reviewer-uiux", "reviewer-spec", "reviewer-security", "approver", "reviewer-final"])
+    assert sorted(checked) == sorted(["reviewer-code", "reviewer-interface", "reviewer-spec", "reviewer-security", "approver", "reviewer-final"])
     builder = (agents / "builder.md").read_text()
     assert "effort:" not in re.match(r"---\n(.*?)\n---\n", builder, re.S).group(1)
 

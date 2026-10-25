@@ -13,17 +13,20 @@ def reference() -> str:
 
 
 def test_current_branch_routing_uses_diff_not_porcelain():
-    t = reference()
-    assert "git status --porcelain | " not in t and "git ls-files --others --exclude-standard" in t
+    t = (PLUGIN / "scripts/state.py").read_text()
+    assert "git status --porcelain | " not in reference() and "ls-files" in t and "--exclude-standard" in t
+
+
+def step_zero() -> str:
+    return " ".join(read("reference/job-loop.md").split("0. **Once per run.**")[1].split("\n1. ")[0].split())
 
 
 def test_jobs_folder_ignores_itself():
-    assert "factory/jobs/.gitignore" in reference()
+    assert "`state.py setup" in step_zero() and "ignored by git" in step_zero()
 
 
 def test_dashboard_is_copied_next_to_jobs():
-    t = reference()
-    assert "copy" in t.lower() and "factory/jobs/dashboard.html" in t
+    assert "copies the dashboard" in step_zero()
 
 
 def test_parallel_only_when_declared():
@@ -71,8 +74,8 @@ def test_dashboard_marks_waiting_input():
 
 
 def test_run_state_carries_task_counts_for_the_progress_band():
-    t = reference()
-    assert "`total`" in t and "`done`" in t and "each time a job lands" in t
+    assert "total" in step_zero() and "`done`" in step_zero()
+    assert "refreshes `done` in the run state" in read("reference/orchestrator.md").split("## Landing")[1]
 
 
 def test_progress_mod_is_wired_into_the_plugin():
@@ -86,15 +89,9 @@ def test_progress_mod_is_wired_into_the_plugin():
     assert (PLUGIN / "types/index.d.ts").exists()
 
 
-def test_job_state_carries_times_and_run_state_carries_the_task_list():
-    t = reference()
-    assert "`started`" in t and "`updated`" in t and "ISO 8601" in t
-    assert "`tasks`" in t and "`after`" in t
-
-
 def test_orchestrator_records_the_model_and_effort_of_each_agent():
-    t = reference()
-    assert "`agents` records" in t and "effort` you passed" in t
+    flat = " ".join(read("reference/hosts.md").split())
+    assert "`job.json` `agents` (`after-agent`, `agent`) records what was actually passed" in flat
 
 
 def test_run_warns_about_tasks_that_may_already_be_implemented():
@@ -218,10 +215,13 @@ def test_unlock_command_exists_and_is_manual_only():
     assert "disable-model-invocation: true" in t and "reference/" in t and "state.py lock" in t
 
 
-def test_inline_mode_keeps_approver_and_reviewers_as_subagents():
-    t = reference()
-    assert "# Inline mode" in t and "tier `light`" in t and "stay subagents" in t
-    assert "inline" in read("skills/factory-run/SKILL.md")
+def test_inline_mode_is_gone():
+    assert not (PLUGIN / "reference/inline.md").exists()
+    assert "inline.md" not in reference() and "# Inline mode" not in reference()
+    for skill in ("factory-run", "factory-task"):
+        t = read(f"skills/{skill}/SKILL.md")
+        assert "[lean|full]" in t or "[lean]" in t, skill
+        assert "inline was replaced by lean" in t, skill
 
 
 def test_brainstorm_has_the_spec_reviewer_and_the_excuses_table():
@@ -271,8 +271,8 @@ def parts_read_by(skill: str) -> set[str]:
 def test_every_part_of_the_reference_is_listed_in_the_core_and_exists():
     import re
 
-    listed = set(re.findall(r"^\| `([\w-]+\.md)` \|", read("reference/orchestrator.md"), re.M))
-    present = {p.name for p in (PLUGIN / "reference").glob("*.md")}
+    listed = set(re.findall(r"^\| `([\w-]+\.md)` \|", read("reference/README.md"), re.M))
+    present = {p.name for p in (PLUGIN / "reference").glob("*.md") if p.name != "README.md"}
     assert listed == present and len(present) > 1
 
 
@@ -288,21 +288,46 @@ def test_each_command_reads_only_the_parts_it_needs():
 
 def test_the_parts_a_run_needs_only_sometimes_are_read_when_needed():
     t = read("skills/factory-run/SKILL.md")
-    assert "questions.md" in t and "inline.md" in t and "completion.md" in t
-    for part in ("questions.md", "inline.md", "completion.md"):
+    assert "questions.md" in t and "completion.md" in t
+    for part in ("questions.md", "completion.md"):
         assert part not in "".join(f"reference/{x}" for x in parts_read_by("factory-run")), part
 
 
-# hosts.md is left out of the per-command shares: unlock reads it only to ask a question, and every command that spawns
-# or asks needs it. So that it cannot grow unnoticed, the last assert caps hosts.md itself at 18% of the whole reference
-# (about 13.8% when first set; raised from 16% to 18% when the Codex thread-limit rule was added, 16.4% then, about 10% headroom).
+# The host parts are left out of the per-command shares: every command that spawns or asks reads them, and the word budget
+# below caps what a run reads at the start, hosts.md and the host part included.
 def test_the_small_commands_read_a_fraction_of_the_reference():
-    size = {p.name: len(p.read_text()) for p in (PLUGIN / "reference").glob("*.md") if p.name != "hosts.md"}
+    size = {p.name: len(p.read_text()) for p in (PLUGIN / "reference").glob("*.md") if not p.name.startswith("hosts") and p.name != "README.md"}
     total = sum(size.values())
     for skill, limit in (("factory-unlock", 0.1), ("factory-status", 0.4), ("factory-approve", 0.6)):
         assert sum(size[n] for n in parts_read_by(skill) - {"hosts.md"}) < limit * total, skill
-    hosts = len(read("reference/hosts.md"))
-    assert hosts < 0.18 * (total + hosts), "hosts.md grew past its cap"
+
+
+def words(rel: str) -> int:
+    return len(read(rel).split())
+
+
+def test_a_run_reads_at_most_4800_words_at_the_start():
+    for skill in ("factory-run", "factory-task"):
+        for host in ("claude", "codex", "cursor"):
+            start = words(f"skills/{skill}/SKILL.md") + sum(words(f"reference/{p}") for p in parts_read_by(skill))
+            assert start + words(f"reference/hosts-{host}.md") <= 4800, (skill, host)
+
+
+def test_parts_have_no_shared_header():
+    for p in (PLUGIN / "reference").glob("*.md"):
+        assert "Part of the orchestrator reference" not in p.read_text(), p.name
+    assert "`<repo>` means" in read("reference/orchestrator.md")
+    for skill in ("factory-unlock", "factory-brainstorm", "factory-plan"):
+        assert "`<repo>`" in read(f"skills/{skill}/SKILL.md"), skill
+
+
+def test_job_json_is_written_only_by_the_script():
+    t = read("reference/orchestrator.md")
+    assert "written only by `state.py`" in t and '"id": "003-rate-limit"' not in t
+
+
+def test_savvy_progress_is_gone():
+    assert "savvy-progress" not in reference() and "savvy-progress" not in read("README.md")
 
 
 def test_a_job_loop_spawns_only_the_lenses_to_rerun_and_hands_out_the_ready_made_diff():
@@ -312,7 +337,7 @@ def test_a_job_loop_spawns_only_the_lenses_to_rerun_and_hands_out_the_ready_made
 
 
 def test_agents_read_the_diff_file_and_the_recorded_checks():
-    for agent in ("reviewer-code", "reviewer-security", "reviewer-ui", "reviewer-ux", "approver"):
+    for agent in ("reviewer-code", "reviewer-security", "reviewer-interface", "approver"):
         assert "`Diff:`" in read(f"agents/{agent}.md"), agent
     for agent in ("builder", "reviewer-code", "approver"):
         assert "<State command>" in read(f"agents/{agent}.md"), agent
@@ -328,12 +353,15 @@ def test_the_composite_commands_replace_the_step_by_step_calls_in_the_loop():
     assert "state.py new-job" not in start and "factory_plan.py <plan> --repo <name> --root <repo>` prints it" in start
 
 
-def test_a_round_that_needs_both_interface_lenses_spawns_one_combined_reviewer():
+def test_interface_lenses_get_one_reviewer():
     loop = read("reference/job-loop.md")
-    assert "`reviewer-uiux`" in loop and "`review-ux.md` and `review-ui.md`" in loop and "role `uiux`" in loop
-    agent = read("agents/reviewer-uiux.md")
-    assert "review-ux.md" in agent and "review-ui.md" in agent and "reviewer-ux.md" in agent and "reviewer-ui.md" in agent
-    assert "reviewer-uiux" in read("tiers.md")
+    assert "`reviewer-interface`" in loop and "Lenses:" in loop and "role `interface`" in loop and "reviewer-uiux" not in loop
+    agent = read("agents/reviewer-interface.md")
+    assert "Lenses:" in agent and "review-<lens>.md" in agent and "\n## ux\n" in agent and "\n## ui\n" in agent
+    tiers = read("tiers.md")
+    assert "reviewer-interface" in tiers and "reviewer-uiux" not in tiers
+    for old in ("reviewer-ux", "reviewer-ui", "reviewer-uiux"):
+        assert not (PLUGIN / f"agents/{old}.md").exists(), old
 
 
 def test_tier_guidance_and_approver_rule():
@@ -363,7 +391,8 @@ def test_adhoc_task_makes_its_working_plan_with_state_adhoc():
     for rel in ("reference/start.md", "reference/completion.md"):
         t = read(rel)
         assert "state.py adhoc" in t and "factory/jobs/_runs" in t, rel
-    assert "close-plan" in read("reference/start.md").split("## Ad hoc task")[1]
+    assert "`completion.md`" in read("reference/start.md").split("## Ad hoc task")[1]
+    assert "close-plan" in read("reference/completion.md").split("For an ad hoc plan")[1].split("\n\n")[0]
 
 
 def test_readme_shows_the_tier_option_of_factory_task():
@@ -387,7 +416,6 @@ def test_run_asks_once_before_starting_fable_tasks():
     assert "`fable` as the plan says runs them as tier `fable`" in flat
     assert "lower to `careful` runs them as tier `careful` (the approver follows the normal risk rule)" in flat
     assert "`state.py model --host <host> --tier <tier>`" in flat
-    assert "On Claude Code, with no `factory/models.json`, that reads `opus` with `xhigh`, `fable` with `high`" in flat and "`opus` with `high`" in flat
     assert "recorded in `agents` are the ones actually passed" in flat
     assert "plan file is never edited" in flat
 
@@ -402,7 +430,13 @@ def test_plan_handover_names_every_fable_task():
     assert "fable" in hand and "every" in hand
 
 
-HOST_SECTIONS = ("## Which host", "## Starting an agent", "## Model and effort", "## Resuming an agent", "## Asking the user", "## Claude Code only")
+HOST_SECTIONS = ("## Which host", "## Starting an agent", "## Model and effort", "## Asking the user")
+HOST_PART_SECTIONS = ("## Starting an agent", "## Model and effort", "## Resuming an agent", "## Asking the user")
+HOSTS = ("claude", "codex", "cursor")
+
+
+def host_part(host: str) -> str:
+    return read(f"reference/hosts-{host}.md")
 
 
 def test_hosts_part_has_sections():
@@ -411,16 +445,28 @@ def test_hosts_part_has_sections():
         assert f"\n{heading}\n" in t, heading
     assert [h for h in HOST_SECTIONS] == sorted(HOST_SECTIONS, key=t.index)
     assert "Read <plugin root>/agents/<role>.md and follow it as your instructions." in t
-    for tool in ("`Agent`", "`spawn_agent`", "`Task`", "`AskUserQuestion`", "`request_user_input`", "`send_input`", "`SendMessage`"):
-        assert tool in t, tool
     flat = " ".join(t.split())
     assert "end the turn" in flat and "never apply a default" in flat.lower() and "longer than 3" in flat
     assert "state.py model --host <host>" in flat and "frontmatter" in flat
+    assert "`hosts-<host>.md`" in flat
+
+
+def test_each_host_has_its_own_part():
+    for host in HOSTS:
+        t = host_part(host)
+        for heading in HOST_PART_SECTIONS:
+            assert f"\n{heading}\n" in t, (host, heading)
+    tools = {"claude": ("`Agent`", "`AskUserQuestion`", "`SendMessage`", "`subagent_tokens`"),
+             "codex": ("`spawn_agent`", "`request_user_input`", "`send_input`", "`reasoning_effort`"),
+             "cursor": ("`Task`", "`fast`", "`inherit`")}
+    for host, names in tools.items():
+        for name in names:
+            assert name in host_part(host), (host, name)
 
 
 def test_hosts_detection_is_an_ordered_check():
     flat = " ".join(read("reference/hosts.md").split())
-    which = flat.split("## Which host")[1].split("| |")[0]
+    which = flat.split("## Which host")[1].split("##")[0]
     assert which.index("`AskUserQuestion`") < which.index("`spawn_agent`") < which.index("`Task`")
     assert "`Agent` or `AskUserQuestion` is Claude Code" in which
     assert "If none is present, say so in one line and stop" in which
@@ -428,12 +474,12 @@ def test_hosts_detection_is_an_ordered_check():
 
 
 def test_hosts_closes_codex_agents():
-    flat = " ".join(read("reference/hosts.md").split())
+    flat = " ".join(host_part("codex").split())
     assert "`close_agent`" in flat and "once its file has been read" in flat
 
 
 def test_hosts_handles_refused_spawn_on_thread_limit():
-    flat = " ".join(read("reference/hosts.md").split())
+    flat = " ".join(host_part("codex").split())
     assert "`AgentLimitReached`) is not a failed agent" in flat
     assert "start the reviewers that did not fit and retry the refused spawn" in flat
     # the builder is the last thing closed: running reviewers are waited for first
@@ -441,8 +487,16 @@ def test_hosts_handles_refused_spawn_on_thread_limit():
     assert "a later round starts a fresh builder" in flat
 
 
+def test_cursor_starts_a_fresh_builder():
+    assert "fresh builder" in host_part("cursor")
+
+
+def test_claude_part_holds_the_progress_band():
+    assert "progress band" in host_part("claude")
+
+
 def other_parts() -> dict[str, str]:
-    texts = {p.name: p.read_text() for p in (PLUGIN / "reference").glob("*.md") if p.name != "hosts.md"}
+    texts = {p.name: p.read_text() for p in (PLUGIN / "reference").glob("*.md") if not p.name.startswith("hosts")}
     texts["STYLE.md"] = read("STYLE.md")
     return texts
 
@@ -492,7 +546,7 @@ def test_completion_runs_the_final_review_first():
 
 def test_lean_reference_names_its_commands():
     t = read("reference/lean.md")
-    for word in ("lean-check", "promote", "begin-job", "--lean", "lean_reason", "long", "session's model", "inline"):
+    for word in ("lean-check", "promote", "begin-job", "--lean", "lean_reason", "long", "session's model"):
         assert word in t, word
 
 
@@ -511,3 +565,37 @@ def test_completion_reviews_any_run_with_a_lean_job():
 
 def test_resume_sends_a_ready_lean_job_to_lean_check():
     assert "lean-check" in read("reference/start.md")
+
+
+def test_a_builder_whose_agent_is_gone_is_replaced_on_any_host():
+    resume = " ".join(read("reference/start.md").split("## Resume")[1].split("## Ad hoc task")[0].split())
+    assert "any builder whose agent is gone, on any host" in resume
+
+
+def test_the_claude_part_has_no_rule_for_other_hosts():
+    assert "elsewhere" not in host_part("claude")
+
+
+def test_the_job_json_fields_to_read_are_examples_and_name_build_round():
+    flat = " ".join(read("reference/orchestrator.md").split())
+    assert "fields such as" in flat and "`build_round`" in flat
+
+
+def test_factory_task_keeps_inline_out_of_the_task_text():
+    assert "as with a leading `lean`, which stays out of `--text` too" in read("skills/factory-task/SKILL.md")
+
+
+def test_the_run_state_row_names_its_fields():
+    row = next(l for l in read("reference/orchestrator.md").splitlines() if l.startswith("| `_runs/<plan-slug>.json`"))
+    for field in ("mode", "integration branch", "`pace`", "`base`", "`final`"):
+        assert field in row, field
+
+
+def test_auto_pace_points_to_the_lock_release():
+    auto = read("reference/job-loop.md").split("**Auto.**")[1].split("\n\n")[0]
+    assert "`lock.md`" in auto
+
+
+def test_readme_says_one_reviewer_judges_either_interface_lens():
+    t = " ".join(read("README.md").split())
+    assert "one interface reviewer judges ui, ux or both" in t and "combined reviewer" not in t

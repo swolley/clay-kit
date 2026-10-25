@@ -22,9 +22,7 @@ TIER_DEFAULTS: dict[str, tuple[str, str]] = {
 }
 AGENT_DEFAULTS: dict[str, tuple[str, str]] = {
     "reviewer-code": ("sonnet", "medium"),
-    "reviewer-ui": ("sonnet", "medium"),
-    "reviewer-ux": ("sonnet", "medium"),
-    "reviewer-uiux": ("sonnet", "medium"),
+    "reviewer-interface": ("sonnet", "medium"),
     "reviewer-security": ("opus", "high"),
     "reviewer-spec": ("sonnet", "medium"),
     "approver": ("sonnet", "high"),
@@ -32,6 +30,8 @@ AGENT_DEFAULTS: dict[str, tuple[str, str]] = {
     "reviewer-final": ("sonnet", "high"),
     "reviewer-final-risky": ("opus", "high"),
 }
+# Agent names of earlier versions, now judged by reviewer-interface; a models.json that still names one is refused.
+RENAMED = ("reviewer-ux", "reviewer-ui", "reviewer-uiux")
 # The agents whose model depends on whether the job, or the run, is risky; `<agent>-risky` holds the risky choice.
 RISKY_AGENTS = ("approver", "reviewer-final")
 
@@ -66,7 +66,7 @@ def _validate(data) -> None:
         if not isinstance(body, dict):
             raise ModelsError(f"{FILE}: {host} must be an object")
         for group, entries in body.items():
-            names = {"tiers": TIERS, "agents": set(AGENT_DEFAULTS) - {"reviewer-uiux"}}.get(group)
+            names = {"tiers": TIERS, "agents": set(AGENT_DEFAULTS)}.get(group)
             if names is None:
                 raise ModelsError(f"{FILE}: {host}.{group}: unknown key, expected tiers or agents")
             if not isinstance(entries, dict):
@@ -74,7 +74,7 @@ def _validate(data) -> None:
             for name, entry in entries.items():
                 where = f"{FILE}: {host}.{group}.{name}"
                 if name not in names:
-                    hint = " (reviewer-uiux is configured as reviewer-ux)" if name == "reviewer-uiux" else ""
+                    hint = f" ({name} is now reviewer-interface)" if name in RENAMED else ""
                     raise ModelsError(f"{where}: unknown {group[:-1]} name{hint}, expected one of {', '.join(sorted(names))}")
                 if not isinstance(entry, dict):
                     raise ModelsError(f"{where} must be an object")
@@ -116,8 +116,7 @@ def resolve(root, host: str, tier: str | None = None, agent: str | None = None, 
         if agent not in AGENT_DEFAULTS:
             raise ModelsError(f"unknown agent {agent!r}, expected one of {', '.join(sorted(AGENT_DEFAULTS))}")
         group = "agents"
-        name = "reviewer-ux" if agent == "reviewer-uiux" else agent
-        names = [f"{name}-risky" if risky else name]
+        names = [f"{agent}-risky" if risky else agent]
     entries = load(root).get(host, {}).get(group, {})
     default_model, default_effort = (TIER_DEFAULTS if group == "tiers" else AGENT_DEFAULTS)[names[-1]]
     out: dict = {}

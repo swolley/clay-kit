@@ -1,7 +1,5 @@
 # Lean tasks
 
-Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is the path your skill states. Follow `<plugin root>/STYLE.md`. `<repo>` is the root of the target repository's own checkout.
-
 A lean task is built by this session and proved by its own checks, with no builder agent, reviewer or approver of its own; the
 final review of the branch (`completion.md`) is its independent reading. Every other task of the same run keeps the full Job loop.
 
@@ -42,8 +40,3 @@ when its tier is `light` or `medium`, it declares `Files` whose routing (`routin
    Say so in one line.
 
 A lean job shows `lean` in the execution record, a promoted one `promoted: <reason>`.
-
-## Lean and inline
-
-`inline` (`inline.md`) also builds in the session, but keeps every reviewer and the approver of each task. Lean drops them for the
-eligible tasks and relies on their checks and on the final review.

@@ -10,7 +10,8 @@ If the line above does not show an absolute path, the plugin root is the folder 
 # Brainstorm
 
 Turn an idea into a design the user has approved, before any code is written.
-Follow `<plugin root>/STYLE.md` for questions, explanations and length.
+Follow `<plugin root>/STYLE.md` for questions, explanations and length. `<repo>` in the parts of `reference/` is the root of the
+target repository's own checkout.
 
 Derived from the superpowers `brainstorming` skill (MIT); see NOTICE.md.
 

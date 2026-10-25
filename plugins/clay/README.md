@@ -29,9 +29,9 @@ Every command is a skill named `factory-<verb>`, so on Claude Code it is typed `
 1. `/factory-brainstorm`: questions, approaches, design. You approve it.
 2. `/factory-plan`: a plan with tasks, tiers and acceptance criteria. You review it.
 3. `/factory-run`: for each task a builder works at the task's tier, up to four reviewers check the real diff
-   (code always; ui, ux and security only when the changed paths call for them, see `routing.md`); when a round needs both ui and ux they run as one combined reviewer that still writes a verdict per lens, then an
+   (code always; ui, ux and security only when the changed paths call for them, see `routing.md`); one interface reviewer judges ui, ux or both and writes a verdict per lens, then an
    approver lands it or escalates it. Reviewer findings are checked, not applied blindly; a job has
-   at most three rounds. A `light` or `medium` task that only the code reviewer would read takes a short path: the approver writes the code review itself. When a second round still asks for changes, the third is built by a fresh builder one tier up. After a rework round only the reviewers that asked for changes, or whose paths changed, run again; a lens that passed keeps its verdict. Reviewers and the approver read one ready-made `diff.patch` per round, and the builder's checks are recorded by `state.py verify` once per state of the code, so the suite is not run again by every agent. Each task's steps are ticked in the commit that lands it. A builder keeps the documentation the task names under `Docs` true in the same change and records under `## Deviations` what it did differently from the plan; the code reviewer blocks a stale document. When every task has landed a final reviewer reads the plan's whole branch for what only shows across tasks; its findings get one fix task and a recheck of that fix, and what is still open is reported to you. When a plan is finished its header says `status: completed` and one `## Delivery status` section names the documentation that describes the work now (`Documented in`), lists the divergences and keeps the run's history in an execution record; the plan is never deleted, and the local job folders are then removed. `/factory-run <plan> inline` builds light tasks in your session instead of in a subagent; the approver and the reviewers stay independent.
+   at most three rounds. A `light` or `medium` task that only the code reviewer would read takes a short path: the approver writes the code review itself. When a second round still asks for changes, the third is built by a fresh builder one tier up. After a rework round only the reviewers that asked for changes, or whose paths changed, run again; a lens that passed keeps its verdict. Reviewers and the approver read one ready-made `diff.patch` per round, and the builder's checks are recorded by `state.py verify` once per state of the code, so the suite is not run again by every agent. Each task's steps are ticked in the commit that lands it. A builder keeps the documentation the task names under `Docs` true in the same change and records under `## Deviations` what it did differently from the plan; the code reviewer blocks a stale document. When every task has landed a final reviewer reads the plan's whole branch for what only shows across tasks; its findings get one fix task and a recheck of that fix, and what is still open is reported to you. When a plan is finished its header says `status: completed` and one `## Delivery status` section names the documentation that describes the work now (`Documented in`), lists the divergences and keeps the run's history in an execution record; the plan is never deleted, and the local job folders are then removed.
    `/factory-run <plan> lean` goes further for simple tasks (light or medium, files that only the code reviewer would read, declared
    `Accept` and `Verify`): the session builds them and their own checks gate them, with no reviewer or approver per task, and the
    final review of the branch reads them all; a task whose diff or checks say otherwise goes back to the full loop. Without the word the
@@ -103,12 +103,12 @@ that does not name existing documentation on a `**Documented in:**` line is repo
 
 A host that runs plugins: Claude Code, Codex or Cursor (see [Hosts](#hosts)), plus `git` and `python3` (standard library only) for the plan parser, the reviewer routing and the run bookkeeping (`scripts/state.py`).
 The target repo's own `AGENTS.md` or `CLAUDE.md` must say how to set up a checkout and run its tests, and should say where its documentation lives; `/factory-plan` asks once when it does not.
-Optional: with the `savvy-progress` mod installed on Claude Code, `/factory-run` also reports progress to its bar; nothing depends on it.
 
 ## Hosts
 
 The marketplace is `clay-kit` and the plugin `clay`. The same files serve all three hosts, with one manifest each; the host
-differences the run has to handle are written in [reference/hosts.md](reference/hosts.md), and the facts behind them, with
+differences the run has to handle are written in [reference/hosts.md](reference/hosts.md) and one part per host
+(`reference/hosts-<host>.md`), and the facts behind them, with
 their sources, in [docs/hosts.md](https://github.com/swolley/clay-kit/blob/master/docs/hosts.md).
 
 | | Claude Code | Codex | Cursor |
@@ -166,10 +166,10 @@ beside `factory/routing.md`, is optional and maps tiers and agents to the host's
 | `codex` | any non-empty text, the id Codex knows | any non-empty text, as Codex accepts for that model |
 | `cursor` | `fast` or `inherit` | not allowed: Cursor has no per-call effort |
 
-Tiers are `light`, `medium`, `careful`, `heavy`, `fable`. Agents are `reviewer-code`, `reviewer-ui`, `reviewer-ux`,
+Tiers are `light`, `medium`, `careful`, `heavy`, `fable`. Agents are `reviewer-code`, `reviewer-interface`,
 `reviewer-security`, `reviewer-spec`, `approver`, `approver-risky` (the approver of a risky job), `reviewer-final` (the review of a
-finished plan's branch) and `reviewer-final-risky` (the same, when any job of the run was risky); the combined `reviewer-uiux`
-uses the `reviewer-ux` entry. A `-risky` entry does not inherit from its agent: to change the agent of risky work, give the
+finished plan's branch) and `reviewer-final-risky` (the same, when any job of the run was risky). The names
+`reviewer-ux`, `reviewer-ui` and `reviewer-uiux` of earlier versions are refused: use `reviewer-interface`. A `-risky` entry does not inherit from its agent: to change the agent of risky work, give the
 `-risky` name its own entry.
 
 **Resolution order**, for each of `model` and `effort` separately:

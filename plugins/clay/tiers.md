@@ -42,9 +42,7 @@ alone. `run` asks once before it starts such tasks (see `reference/start.md`); o
 | Agent | model | effort |
 |-------|-------|--------|
 | reviewer-code | sonnet | medium |
-| reviewer-ui | sonnet | medium |
-| reviewer-ux | sonnet | medium |
-| reviewer-uiux | sonnet | medium |
+| reviewer-interface | sonnet | medium |
 | reviewer-security | opus | high |
 | reviewer-spec | sonnet | medium |
 | approver | sonnet or opus, see below | high |
@@ -57,8 +55,8 @@ otherwise. A job is risky when the routing selected the `security` reviewer (a s
 `reviewer-final` reads the whole branch of a finished plan (`reference/completion.md`). It uses `opus` when any job of the run was
 risky and `sonnet` otherwise (`state.py model --agent reviewer-final [--risky]`).
 
-`reviewer-uiux` is `reviewer-ux` and `reviewer-ui` in one run. The run command spawns it instead of the two when a round needs both lenses, so the change is
-read once; it still writes one verdict file per lens.
+`reviewer-interface` judges the `ux` and `ui` lenses, the ones its prompt names on the `Lenses:` line, so a round that needs both reads
+the change once; it still writes one verdict file per lens.
 
 ## Escalation
 

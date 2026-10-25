@@ -1,7 +1,5 @@
 # Questions from agents
 
-Part of the orchestrator reference (see `orchestrator.md`). `<plugin root>` is the path your skill states. Follow `<plugin root>/STYLE.md`. `<repo>` is the root of the target repository's own checkout.
-
 The source of truth is a file, never the prompt. A subagent cannot ask the user; it ends with
 `STATUS: NEEDS_INPUT` and numbered questions in build.md.
 
