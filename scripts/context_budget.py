@@ -19,7 +19,7 @@ def inventory(plugin: Path) -> dict:
     for skill in sorted((plugin / "skills").glob("*/SKILL.md")):
         body = skill.read_text(encoding="utf-8")
         # The SKILL references conditional parts as well; count them separately.
-        names = sorted(set(REFERENCE_RE.findall(body)))
+        names = sorted(set(REFERENCE_RE.findall(body)) | {n for n in QUOTED_MD_RE.findall(body) if (plugin / "reference" / n).is_file()})
         always = sorted(set(re.findall(r"<plugin root>/reference/([\w-]+\.md)", body.split("Read `questions.md` only")[0].split("Read these parts")[1].split("Read `")[0]))) if "Read these parts" in body else []
         # Simpler, conservative default for other skills: all mentioned parts.
         if not always:
