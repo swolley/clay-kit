@@ -308,7 +308,7 @@ def words(rel: str) -> int:
 
 def test_a_run_reads_at_most_4800_words_at_the_start():
     for skill in ("factory-run", "factory-task"):
-        for host in ("claude", "codex", "cursor"):
+        for host in ("claude", "codex"):
             start = words(f"skills/{skill}/SKILL.md") + sum(words(f"reference/{p}") for p in parts_read_by(skill))
             assert start + words(f"reference/hosts-{host}.md") <= 4800, (skill, host)
 
@@ -432,7 +432,7 @@ def test_plan_handover_names_every_fable_task():
 
 HOST_SECTIONS = ("## Which host", "## Starting an agent", "## Model and effort", "## Asking the user")
 HOST_PART_SECTIONS = ("## Starting an agent", "## Model and effort", "## Resuming an agent", "## Asking the user")
-HOSTS = ("claude", "codex", "cursor")
+HOSTS = ("claude", "codex")
 
 
 def host_part(host: str) -> str:
@@ -457,8 +457,7 @@ def test_each_host_has_its_own_part():
         for heading in HOST_PART_SECTIONS:
             assert f"\n{heading}\n" in t, (host, heading)
     tools = {"claude": ("`Agent`", "`AskUserQuestion`", "`SendMessage`", "`subagent_tokens`"),
-             "codex": ("`spawn_agent`", "`request_user_input`", "`send_input`", "`reasoning_effort`"),
-             "cursor": ("`Task`", "`fast`", "`inherit`")}
+             "codex": ("`spawn_agent`", "`request_user_input`", "`send_input`", "`reasoning_effort`")}
     for host, names in tools.items():
         for name in names:
             assert name in host_part(host), (host, name)
@@ -467,9 +466,9 @@ def test_each_host_has_its_own_part():
 def test_hosts_detection_is_an_ordered_check():
     flat = " ".join(read("reference/hosts.md").split())
     which = flat.split("## Which host")[1].split("##")[0]
-    assert which.index("`AskUserQuestion`") < which.index("`spawn_agent`") < which.index("`Task`")
+    assert which.index("`AskUserQuestion`") < which.index("`spawn_agent`")
     assert "`Agent` or `AskUserQuestion` is Claude Code" in which
-    assert "If none is present, say so in one line and stop" in which
+    assert "If neither is present, say so in one line and stop" in which
     assert "SendMessage" not in which
 
 
@@ -486,9 +485,6 @@ def test_hosts_handles_refused_spawn_on_thread_limit():
     assert flat.index("`wait_agent` for the reviewers still running") < flat.index("only if no slot is free yet, close the builder")
     assert "a later round starts a fresh builder" in flat
 
-
-def test_cursor_starts_a_fresh_builder():
-    assert "fresh builder" in host_part("cursor")
 
 
 def test_claude_part_holds_the_progress_band():
