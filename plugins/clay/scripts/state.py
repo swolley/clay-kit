@@ -297,10 +297,24 @@ def resolve_concern(root, job_id: str) -> dict:
     m = re.search(r"(?ms)^## " + section + r"\s*\n(.*?)(?=^## |\Z)", decision)
     if not m or not m.group(1).strip():
         return {"ok": False, "reason": "the approver must answer the concern in ## " + section}
-    record.update(status="resolved", verdict=verdict)
+    record.update(status="resolved", verdict=verdict, round=job.get("round", 0))
     job["concern"] = record
     write_job(root, job)
     return {"ok": True, "file": str(path), "status": "resolved", "verdict": verdict}
+
+
+def _landing_concern_problem(root, job: dict) -> str | None:
+    """A concern must be settled, and upheld CHANGES must get a fresh approved round."""
+    record = job.get("concern", {})
+    if record.get("status") == "pending" or (job.get("concerns") and record.get("status") != "resolved"):
+        return "pending concern must be resolved before landing"
+    if record.get("verdict") == "CHANGES":
+        if job.get("round", 0) <= record.get("round", job.get("round", 0)):
+            return "upheld concern requires a new review round before landing"
+        decision = jobs_dir(root) / job["id"] / "decision.md"
+        if not decision.is_file() or not decision.read_text(encoding="utf-8").startswith("APPROVE\n"):
+            return "upheld concern requires a fresh APPROVE after rework"
+    return None
 
 
 def merge_job(root, job_id: str) -> dict:
@@ -309,8 +323,8 @@ def merge_job(root, job_id: str) -> dict:
     merged (`-d` checks against the HEAD it runs in) and record the job as merged. A conflict aborts the merge and lands nothing."""
     root = Path(root)
     job = read_job(root, job_id)
-    if job.get("concerns") and job.get("concern", {}).get("status") != "resolved":
-        return {"ok": False, "reason": "pending concern must be resolved before landing"}
+    if reason := _landing_concern_problem(root, job):
+        return {"ok": False, "reason": reason}
     run = read_run(root, job["plan"])
     iwt = Path(run.get("integration_worktree") or factory_dir(root) / f"_integration-{job['plan']}")
     merge = _git_run(iwt, "merge", "--no-ff", "--no-commit", job["branch"])
@@ -927,8 +941,8 @@ def vendor_down(root, plan_stem: str, vendor: str, reason: str, until: str | Non
 
 def land_job(root, job_id: str, stage: str, head: str) -> dict:
     before = read_job(root, job_id)
-    if before.get("concerns") and before.get("concern", {}).get("status") != "resolved":
-        raise ValueError("pending concern must be resolved before landing")
+    if reason := _landing_concern_problem(root, before):
+        raise ValueError(reason)
     job = set_stage(root, job_id, stage)
     job["head"] = head
     write_job(root, job)
