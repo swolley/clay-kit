@@ -16,7 +16,8 @@ from pathlib import Path
 
 ASK_TOOLS = ("AskUserQuestion", "request_user_input")
 # User records the person did not type: a background task finishing, a local command's output, the summary after a compaction.
-NOT_TYPED = ("<task-notification>", "<local-command-stdout>", "<command-name>", "This session is being continued")
+# A slash command the person typed (`<command-name>`) does end a wait.
+NOT_TYPED = ("<task-notification>", "<local-command-stdout>", "This session is being continued")
 FIELDS = (("input", "input_tokens"), ("output", "output_tokens"), ("cache_read", "cache_read_input_tokens"),
           ("cache_write", "cache_creation_input_tokens"))
 CODEX_FIELDS = (("input", "input_tokens"), ("cached_input", "cached_input_tokens"), ("output", "output_tokens"),

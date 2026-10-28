@@ -93,3 +93,15 @@ def test_notifications_and_system_messages_are_not_waiting(tmp_path):
     ])
     out = session_usage.summarize(main, codex_home=tmp_path / "nocodex")
     assert out["waiting_seconds"] == 0 and out["active_seconds"] == 130
+
+
+def test_a_typed_slash_command_ends_a_wait(tmp_path):
+    main = tmp_path / "S6.jsonl"
+    write_jsonl(main, [
+        user("2026-10-29T10:00:00Z", "go"),
+        assistant("2026-10-29T10:00:10Z", "m1", "claude-opus-5-5", 1, 1),
+        user("2026-10-29T10:03:10Z", "<command-name>/clay:factory-run</command-name>\n<command-args>plan.md</command-args>"),
+        assistant("2026-10-29T10:03:20Z", "m2", "claude-opus-5-5", 1, 1),
+    ])
+    out = session_usage.summarize(main, codex_home=tmp_path / "nocodex")
+    assert out["waiting_seconds"] == 180 and out["active_seconds"] == 20
