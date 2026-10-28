@@ -20,17 +20,19 @@ flowchart LR
   brainstorm --> plan["/factory-plan<br/>tasks, tiers, acceptance"]
   plan --> run["/factory-run"]
   subgraph task [For each task]
-    builder[Builder] --> reviewers["Reviewers<br/>code, ui, ux, security"]
+    builder[Builder] --> reviewers["Reviewers<br/>code, interface, security"]
     reviewers --> approver{Approver}
     approver -- rework --> builder
   end
   run --> builder
-  approver -- lands --> branch([Your branch])
+  approver -- lands --> final["Final review<br/>whole plan branch"]
+  final --> branch([Your branch])
   approver -- escalates --> you([You decide])
 ```
 
-- **Reviews by route.** Code review always runs. ui, ux and security join only when the changed paths call for them.
-- **Tiers pick the model.** Light tasks run on a fast model, careful and heavy ones on a stronger one.
+- **Reviews by route.** Code review always runs. The interface reviewer joins for ui or ux paths, the security reviewer for auth, routes,
+  migrations and dependencies.
+- **Tiers pick the model.** Light and medium tasks run on a faster model, careful and heavy ones on a stronger one.
 - **Your checkout stays clean.** The recommended setup is a development branch per plan with one worktree per job. Nothing is ever pushed.
 - **You stay in charge.** After each task the run asks whether to go on. Escalations come to you with the choices ready.
 - **One run per plan.** A lock stops a second run on the same plan and keeps the plan and its spec read-only.
