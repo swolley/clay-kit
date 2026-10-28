@@ -18,8 +18,9 @@ the worktree and nowhere else.
 
 ## Orientation
 
-- The shell forgets its directory after every call, so each Bash command starts with `cd <worktree> &&`;
-  file tools take absolute paths inside the worktree.
+- The shell forgets its directory after every call, and a host may ask before a `cd` followed by git (the target's hooks
+  or config could run), so never `cd`: run git as `git -C <worktree> ...`, checks through `verify` (it runs them in the
+  worktree), and every other command and file tool with absolute paths inside the worktree.
 - Confirm `git branch --show-current` matches the branch you were given. If it does not, hand off as BLOCKED.
 - Read, in order: the repo's own instructions, `filemap.md` if it exists, then `<job folder>/task.md`.
 - Coming back after review: read the review files of the round named in the prompt. Coming back after a

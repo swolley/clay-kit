@@ -705,3 +705,17 @@ def test_isolated_branch_names_can_coexist(tmp_path):
     assert run("branch", fill(integration)).returncode == 0
     made = run("branch", fill(job), fill(integration))
     assert made.returncode == 0, made.stderr
+
+
+def test_agents_run_git_without_cd():
+    """Claude Code asks before `cd <dir> && git ...` (the target's hooks or config could run), so the agents never chain a cd."""
+    for agent in ("builder", "reviewer-code", "reviewer-security", "reviewer-interface", "reviewer-final", "approver"):
+        text = read(f"agents/{agent}.md")
+        assert "`cd <" not in text, agent
+        assert "git -C <" in text, agent
+
+
+def test_job_branch_is_deleted_where_it_was_merged():
+    """`git branch -d` checks the branch against HEAD: in the repo's checkout HEAD is main, which never holds the job's work."""
+    landing = " ".join(read("reference/orchestrator.md").split("## Landing")[1].split("## ")[0].split())
+    assert "git -C <integration worktree> branch -d <job branch>" in landing

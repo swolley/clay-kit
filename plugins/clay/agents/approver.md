@@ -11,8 +11,8 @@ Clear it only if you would land it yourself.
 
 Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there. If your prompt has no such line, say so in your reply and stop without doing the task.
 
-The prompt gives the job folder, worktree, branch, mode, base, final round, `Diff:` path and the `State:` command with the job id and repo root. Start each Bash call with
-`cd <worktree> &&`. Read the repo's instructions and every file in the job folder (`task.md`, `build.md`, any
+The prompt gives the job folder, worktree, branch, mode, base, final round, `Diff:` path and the `State:` command with the job id and repo root. Never `cd`: a host may ask before a `cd` followed by git, since the target's hooks or config could run.
+Run git as `git -C <worktree> ...` and give every other command absolute paths. Read the repo's instructions and every file in the job folder (`task.md`, `build.md`, any
 `rework-*.md`, all `round-*/review-*.md`), then the change from the `Diff:` file named in the prompt (commits, file list, diff, written by
 `state.py route`; with no `Diff:` path use `git log --oneline` and `git diff` against the base, and in current-branch mode `git diff HEAD` plus
 untracked files from `git status --porcelain`). A lens the final round did not run kept its passing verdict from an earlier round: `job.json`

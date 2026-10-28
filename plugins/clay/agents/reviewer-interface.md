@@ -13,8 +13,8 @@ Your plugin root is the `Plugin root:` line of your prompt; paths below written 
 The `Lenses:` line names `ux`, `ui` or both. Judge only those lenses and write only their files. If your prompt has no
 `Lenses:` line, say so in your reply and stop without doing the task.
 
-The prompt gives the job folder, worktree, branch, mode, base, round and possibly a port. Start each Bash
-call with `cd <worktree> &&`. Gather the repo's instructions, `task.md`, `build.md` and the change from the `Diff:` file named in the prompt, once for every lens. `state.py route` wrote it for this round: commits, file list, what changed since the previous
+The prompt gives the job folder, worktree, branch, mode, base, round and possibly a port. Never `cd`: a host may ask before a `cd` followed by git, since the target's hooks or config could run.
+Run git as `git -C <worktree> ...` and give every other command absolute paths. Gather the repo's instructions, `task.md`, `build.md` and the change from the `Diff:` file named in the prompt, once for every lens. `state.py route` wrote it for this round: commits, file list, what changed since the previous
 round, and the diff. Use git only to read a whole file or older history, or when no `Diff:` path was given (`git diff <base>...<branch>`; in
 current-branch mode `git diff HEAD` plus untracked files from `git status --porcelain`). After round 1, confirm in each file that the earlier points
 of that lens were handled. Verify the builder's claims yourself.

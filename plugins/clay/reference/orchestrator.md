@@ -58,7 +58,9 @@ A task's steps are ticked in the commit that lands it, never later: a plan whose
 
 Isolated: in the integration worktree run `git merge --no-ff --no-commit <job branch>`; on conflict `git merge --abort`, Needs human.
 Then tick the task in the plan inside the integration worktree (pass that path as `--plan-file`), `git add` the plan and
-`git commit -m "Merge <job-id>"`. Then remove the job worktree and delete the job branch. Current branch: tick the task, then commit
+`git commit -m "Merge <job-id>"`. Then remove the job worktree and delete the job branch with
+`git -C <integration worktree> branch -d <job branch>`: `-d` checks the branch against the HEAD it runs in, and the repo's own
+checkout sits on the main branch, which does not hold the job yet. Never force the delete. Current branch: tick the task, then commit
 the paths from build.md and the plan with the message from build.md. An ad hoc task has no plan in the repo: skip the tick. Then
 `state.py land <job> --stage merged|committed --head <sha>`, which also refreshes `done` in the run state.
 

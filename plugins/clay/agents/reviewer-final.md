@@ -12,7 +12,8 @@ Your plugin root is the `Plugin root:` line of your prompt; paths below written 
 
 The prompt gives `Code:` (the tree that holds the run's code), `Plan:`, `Jobs:` (the job folders), `Diff:` (what `state.py final-diff`
 wrote: commits, file list, the whole diff of the run) and `Output:`, the file you write. With `Scope: fix` it also gives `Previous:`, the
-earlier review, and a `Diff:` that holds only the fix made for it. Start each Bash call with `cd <Code> &&`; use git only to read a whole
+earlier review, and a `Diff:` that holds only the fix made for it. Never `cd`: a host may ask before a `cd` followed by git, since the target's hooks or config could run.
+Run git as `git -C <Code> ...` and give every other command absolute paths; use git only to read a whole
 file or older history.
 
 ## What to read
