@@ -218,8 +218,10 @@ def start(root, job: str, role: str, round_no: int, vendor: str, cwd: str, write
     run = f"{role}-r{int(round_no)}"
     paths = _paths(root, job, run)
     status = _read_status(paths["status"])
-    if status and status.get("state") == "running" and _alive(status.get("pid")):
-        raise RunActive(f"{run} is still running (runner pid {status['pid']}): wait for it")
+    if status and status.get("state") == "running":
+        if _alive(status.get("pid")):
+            raise RunActive(f"{run} is still running (runner pid {status['pid']}): wait for it")
+        _kill_group(status.get("pgid"))  # the runner died and left its CLI behind: two agents must never share a worktree
     paths["dir"].mkdir(parents=True, exist_ok=True)
     limit = limit_seconds or TIMEOUTS.get(role, DEFAULT_TIMEOUT)
     args = [sys.executable, str(Path(__file__).resolve()), "_run", "--root", str(root), "--job", job, "--role", role, "--run", run,

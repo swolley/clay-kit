@@ -41,6 +41,7 @@ import shutil
 import subprocess
 import sys
 import stat
+import tempfile
 import time
 from datetime import datetime, timezone
 from glob import escape as glob_escape
@@ -504,11 +505,19 @@ def fingerprints(job: dict, root) -> dict[str, str]:
     return out
 
 
+def _content_tree(cwd) -> str:
+    """The git tree of the files as they are on disk, tracked and untracked (ignored files aside), built in a throwaway index so
+    the real one is untouched: the same code gives the same tree whether or not it has been committed."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = {**os.environ, "GIT_INDEX_FILE": str(Path(tmp) / "index")}
+        for args in (["read-tree", "HEAD"], ["add", "-A"]):
+            subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, env=env)
+        return subprocess.run(["git", "-C", str(cwd), "write-tree"], capture_output=True, text=True, env=env).stdout.strip()
+
+
 def tree_state(job: dict, root) -> str:
-    """Identity of the code a check runs against: the tree of HEAD plus anything uncommitted, so a new commit of the same code keeps it."""
-    cwd = job.get("worktree") or str(root)
-    parts = [git(cwd, "rev-parse", "HEAD^{tree}").strip(), git(cwd, "status", "--porcelain"), git(cwd, "diff", "HEAD"), json.dumps(sorted(fingerprints(job, root).items()))]
-    return hashlib.sha1("\0".join(parts).encode()).hexdigest()[:16]
+    """Identity of the code a check runs against: what is on disk, so committing the same code, or committing it again, keeps it."""
+    return hashlib.sha1(_content_tree(job.get("worktree") or str(root)).encode()).hexdigest()[:16]
 
 
 def build_patch(job: dict, root, paths: list[str], round_no: int, delta: set[str] | None) -> str:
@@ -882,9 +891,10 @@ def read_run(root, plan_stem: str) -> dict:
         return {}
 
 
-def vendor(root, job_id: str | None, agent: str, host: str, plan_stem: str | None = None, risky: bool = False) -> dict:
+def vendor(root, job_id: str | None, agent: str, host: str, plan_stem: str | None = None, risky: bool = False, probe: bool = False) -> dict:
     """Which vendor runs an agent, with the model and effort to pass it, recorded where the execution record reads it: the job
-    (`vendors[agent]`, and `crossed: false` when a review stayed on the builder's vendor) or, for reviewer-final, the run state."""
+    (`vendors[agent]`, and `crossed: false` when a review stayed on the builder's vendor) or, for reviewer-final, the run state.
+    A probe answers the same and records nothing, so asking whether the peer is on never rewrites who built a job."""
     try:
         job = read_job(root, job_id) if job_id else None
     except (OSError, ValueError) as e:
@@ -902,6 +912,9 @@ def vendor(root, job_id: str | None, agent: str, host: str, plan_stem: str | Non
         return {**out, "model": None, "effort": None}
     chosen = resolve_model(root, out["vendor"], tier=job["tier"]) if agent == "builder" else resolve_model(
         root, out["vendor"], agent=agent, risky=risky and agent in RISKY_AGENTS)
+    answer = {**out, "model": chosen["model"], "effort": chosen["effort"]}
+    if probe:
+        return answer
     record = {"vendor": out["vendor"], "reason": out["reason"]}
     if agent == "reviewer-final":
         final = run.setdefault("final", {})
@@ -914,7 +927,7 @@ def vendor(root, job_id: str | None, agent: str, host: str, plan_stem: str | Non
         if out["reason"] == "not crossed":
             job["crossed"] = False
         write_job(root, job)
-    return {**out, "model": chosen["model"], "effort": chosen["effort"]}
+    return answer
 
 
 def vendor_down(root, plan_stem: str, vendor: str, reason: str, until: str | None = None) -> dict:
@@ -1314,6 +1327,7 @@ def main(argv: list[str]) -> int:
     vd.add_argument("--host", required=True)
     vd.add_argument("--plan")
     vd.add_argument("--risky", action="store_true")
+    vd.add_argument("--probe", action="store_true")
     qt = sub.add_parser("quota")
     qt.add_argument("--root", default=".")
     qt.add_argument("--vendor", required=True, choices=sorted(PEER))
@@ -1444,7 +1458,7 @@ def main(argv: list[str]) -> int:
     if a.cmd in ("vendor", "vendor-down", "quota"):
         try:
             if a.cmd == "vendor":
-                out = vendor(a.root, a.job, a.agent, a.host, a.plan, a.risky)
+                out = vendor(a.root, a.job, a.agent, a.host, a.plan, a.risky, a.probe)
             elif a.cmd == "vendor-down":
                 out = vendor_down(a.root, a.plan, a.vendor, a.reason, a.until)
             else:

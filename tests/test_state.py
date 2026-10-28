@@ -722,6 +722,23 @@ def test_a_check_stays_current_when_the_same_code_is_committed_again(repo):
     assert again["reused"] is True and again["n"] == first["n"] and again["current"] is True
 
 
+def test_a_check_stays_current_when_its_uncommitted_code_is_committed(repo):
+    """A Codex peer builder leaves its commit to the orchestrator: its checks ran on uncommitted code and must still count."""
+    state.setup(repo, repo)
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    git(repo, "checkout", "-q", "-b", "factory/demo/001")
+    j = state.new_job(repo, "docs/superpowers/plans/2026-01-01-demo.md", 1, repo_name="demo", mode="isolated", branch="factory/demo/001", worktree=str(repo), base=base)
+    (repo / "app/util.py").write_text("x = 2\n")
+    (repo / "app/new.py").write_text("y = 1\n")
+    first = state.run_check(repo, j["id"], "true")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "the builder's files, committed by the orchestrator")
+    again = state.run_check(repo, j["id"], "true", reuse=True)
+    assert again["reused"] is True and again["n"] == first["n"] and again["current"] is True
+    (repo / "app/util.py").write_text("x = 3\n")
+    assert state.run_check(repo, j["id"], "true", reuse=True)["reused"] is False
+
+
 # ---- composite commands: fewer round trips for the same bookkeeping ----
 
 
@@ -1848,3 +1865,17 @@ def test_resolve_concern_cli_refuses_unanswered_and_accepts_answer(repo, capsys)
     )
     assert state.main(["resolve-concern", job_id, "--root", str(repo)]) == 0
     assert json.loads(capsys.readouterr().out)["verdict"] == "CHANGES"
+
+
+def test_vendor_probe_answers_without_recording(repo, capsys, monkeypatch, tmp_path):
+    start_cross(repo, monkeypatch, tmp_path, tiers=["light"])
+    j = new(repo)
+    out = vendor_cli(repo, capsys, j["id"], "--agent", "builder", "--host", "claude", "--probe")
+    assert out["cross_on"] is True and out["vendor"] == "codex"
+    assert "vendors" not in state.read_job(repo, j["id"])
+    state.vendor_down(repo, STEM, "claude", "limit", "2999-01-01T00:00:00Z")
+    out = vendor_cli(repo, capsys, j["id"], "--agent", "reviewer-code", "--host", "claude", "--probe")
+    job = state.read_job(repo, j["id"])
+    assert "vendors" not in job and "crossed" not in job
+    out = vendor_cli(repo, capsys, "--agent", "reviewer-final", "--host", "claude", "--plan", STEM, "--probe")
+    assert "vendor" not in (json.loads(state.run_path(repo, STEM).read_text()).get("final") or {})

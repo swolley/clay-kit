@@ -1,9 +1,9 @@
 # Working with the peer vendor
 
 Read this only when the peer is on: the start's `preflight` printed `peer: {"vendor": "<peer>", "found": true}` and the user said yes
-(`run --cross on`). Outside the start (rework, answer, a resumed session) run `state.py vendor <job> --agent builder --host <host>` first
-(`--agent reviewer-final --plan <plan-stem>` when only the final review is left): it reads the run state's `cross`, and `cross_on: true`
-means follow this part. Otherwise every agent runs on your host as `hosts.md` says and none of this applies. `<peer>` is the other host
+(`run --cross on`). Outside the start (rework, answer, a resumed session) run `state.py vendor <job> --agent builder --host <host> --probe` first
+(`--agent reviewer-final --plan <plan-stem> --probe` when only the final review is left): it reads the run state's `cross` and
+records nothing, and `cross_on: true` means follow this part. Otherwise every agent runs on your host as `hosts.md` says and none of this applies. `<peer>` is the other host
 (`codex` on Claude Code, `claude` on Codex); a native agent is one that runs on your host. `peer.py` is `python3 <plugin root>/scripts/peer.py`.
 
 ## Decide
