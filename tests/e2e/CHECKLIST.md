@@ -1,8 +1,8 @@
 # End-to-end checklist
 
 Sections A to J run in a Claude Code session with the clay-kit marketplace and the `clay` plugin installed; section G is Claude Code only.
-Sections K (Codex) and L (Cursor) run in that host with the same marketplace. They need the real host and a person, so they cannot
-run in CI. The "Manual checks on Codex and Cursor" table in `plugins/clay/README.md` records which were run and when; it is empty
+Section K (Codex) runs in that host with the same marketplace. They need the real host and a person, so they cannot
+run in CI. The "Manual checks on Codex" table in `plugins/clay/README.md` records which were run and when; it is empty
 until someone runs them.
 
 Setup, once per scenario (use a fresh directory each time):
@@ -120,21 +120,3 @@ Fresh fixture, opened in Codex. The commands are `$factory-<verb>` or the `/skil
 - [ ] Force the thread limit (set `agents.max_concurrent_threads_per_session` to 3, or use a task that routes four reviewers): a refused spawn is retried after a slot frees, the reviewers that did not fit run afterwards, and no job goes `needs-human` because of it. (If the builder had to be closed to free a slot, the next CHANGES round starts a fresh builder: expected here, unlike the line above.)
 - [ ] The Claude Code mod hooks file (`hooks/hooks.json`) is not loaded: no hook trust prompt, no band or pane, no error about it.
 
-## L. Cursor
-
-Fresh fixture, opened in Cursor. The commands are `/factory-<verb>`. The install route is Cursor's documented one (CLI
-`/plugin marketplace add https://github.com/swolley/clay-kit`, or Dashboard, Plugins & MCPs, Import from Repo, then Customize for users) and has not been tried yet. The menu names come from a search excerpt of Cursor's page and may differ; correct them here if they do.
-
-- [ ] The plugin installs from the marketplace by one of the two routes; note which one.
-- [ ] The `factory-*` skills appear in the `/` menu or can be typed by name; note which of the user-only ones are hidden.
-- [ ] `/factory-status` runs and reports no jobs.
-- [ ] A one-task run: `/factory-task "<a trivial change in the fixture>"` builds, reviews and lands the change; the job folder has `build.md` and `decision.md` starting `APPROVE`, and the review files unless the task took the short path.
-- [ ] One agent question is answered through the plain-text fallback (numbered options in the reply, the next message read as the answer), or through the ask-question tool if the host offers it.
-- [ ] `factory/jobs/<job>/job.json` `agents` records the model actually passed (`fast`, `inherit` or empty) and an empty effort for every agent.
-- [ ] The session reports itself as Cursor (`--host cursor` in the model calls), not Claude Code.
-- [ ] The plugin root the session worked out is an absolute path that contains `skills/`; state what the session printed.
-- [ ] The plugin's agents are found without a `skills` or `agents` key in `.cursor-plugin/plugin.json`: the builder starts as the plugin's `builder` agent, not as a generic one.
-- [ ] User-only skills (`factory-run`, `factory-approve`, ...) are not started by the model on its own; they run only when typed.
-- [ ] `inherit` behaviour: with `{"cursor": {"tiers": {"light": {"model": "inherit"}}}}` in `factory/models.json`, note whether the subagent runs on the model of the chat or on another; `inherit` is reported ignored in some versions.
-- [ ] After a rework, a fresh builder is started and reads `build.md`, the rounds and the branch log.
-- [ ] The Claude Code mod hooks file (`hooks/hooks.json`) is not loaded: no band or pane, no error about it.
