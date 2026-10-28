@@ -7,7 +7,7 @@ run the plan: each task is built, reviewed by the lenses its change needs, and a
 
 ## Commands
 
-Every command is a skill named `factory-<verb>`, so on Claude Code it is typed `/factory-run` and listed together in the autocomplete under `/factory-`. The namespaced form `/clay:factory-run` also works. On Codex the same skill is `$factory-run` and on Cursor `/factory-run`; see [Hosts](#hosts). The tables below write the Claude Code and Cursor form. The exact spelling per host is in [docs/hosts.md](https://github.com/swolley/clay-kit/blob/master/docs/hosts.md).
+Every command is a skill named `factory-<verb>`, so on Claude Code it is typed `/factory-run` and listed together in the autocomplete under `/factory-`. The namespaced form `/clay:factory-run` also works. On Codex the same skill is `$factory-run`; see [Hosts](#hosts). The tables below write the Claude Code form. The exact spelling per host is in [docs/hosts.md](https://github.com/swolley/clay-kit/blob/master/docs/hosts.md).
 
 | Command | Started by | What it does |
 |---------|-----------|--------------|
@@ -91,7 +91,7 @@ python3 plan_status.py --root ~/work    # a whole workspace: every folder holdin
 python3 plan_status.py --all --format html --out backlog.html
 ```
 
-It reads `docs/superpowers/plans/` and `docs/superpowers/specs/` (also `.cursor/plans/`, `.cursor/specs/` and
+It reads `docs/superpowers/plans/` and `docs/superpowers/specs/` (also
 `Modules/*/docs/plans/`), subfolders included, in the root and in each folder one level below it; `/factory-run`
 and the pane look in the same places. It never edits anything, and `--help` lists every option.
 Each plan and spec shows its last change (`upd`), the date of the last commit that touched it; a file with uncommitted
