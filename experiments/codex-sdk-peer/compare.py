@@ -6,7 +6,9 @@ a fresh second process resuming exactly the same first-turn conversation.
 No automatic login, no API key handling, and no changes to the target repository.
 """
 import argparse
+import contextlib
 import json
+import signal
 import subprocess
 import sys
 import time
@@ -29,16 +31,17 @@ def _usage(value):
 
 def sdk_turn(cwd: Path, prompt: str, thread_id: str | None, model: str | None):
     try:
-        from openai_codex import Codex, Sandbox
+        from openai_codex import ApprovalMode, Codex, Sandbox
     except ImportError as exc:
         raise RuntimeError("Missing openai-codex: install it in a dedicated venv") from exc
 
     with Codex() as client:
-        kwargs = {"cwd": str(cwd), "sandbox": Sandbox.read_only}
+        # `codex exec` never asks for approval; deny_all gives the SDK the same behavior.
+        kwargs = {"cwd": str(cwd), "sandbox": Sandbox.read_only, "approval_mode": ApprovalMode.deny_all}
         if model:
             kwargs["model"] = model
         thread = client.thread_resume(thread_id, **kwargs) if thread_id else client.thread_start(**kwargs)
-        result = thread.run(prompt, sandbox=Sandbox.read_only)
+        result = thread.run(prompt, sandbox=Sandbox.read_only, approval_mode=ApprovalMode.deny_all)
         status = getattr(result, "status", None)
         if hasattr(status, "value"):
             status = status.value
@@ -87,9 +90,30 @@ def cli_turn(cwd: Path, prompt: str, thread_id: str | None, model: str | None):
     }
 
 
-def execute(transport: str, cwd: Path, prompt: str, thread_id: str | None, model: str | None):
+@contextlib.contextmanager
+def _deadline(seconds: int | None):
+    """Abort a turn that hangs, for example when the network is down and the runtime retries forever."""
+    if not seconds or not hasattr(signal, "SIGALRM"):
+        yield
+        return
+
+    def expired(_signum, _frame):
+        raise TimeoutError(f"turn exceeded {seconds}s")
+
+    previous = signal.signal(signal.SIGALRM, expired)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+def execute(transport: str, cwd: Path, prompt: str, thread_id: str | None, model: str | None,
+            timeout: int | None = None):
     start = time.monotonic()
-    output = (sdk_turn if transport == "sdk" else cli_turn)(cwd, prompt, thread_id, model)
+    with _deadline(timeout):
+        output = (sdk_turn if transport == "sdk" else cli_turn)(cwd, prompt, thread_id, model)
     output["elapsed_ms"] = round((time.monotonic() - start) * 1000)
     return output
 
@@ -101,6 +125,7 @@ def main(argv=None):
     parser.add_argument("--cwd", type=Path, required=True)
     parser.add_argument("--prompt-file", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True, help="separate state file for each transport")
+    parser.add_argument("--timeout", type=int, default=900, help="seconds allowed per turn, 0 disables (default 900)")
     parser.add_argument("--model", help="omit to use the signed-in account's configured default")
     args = parser.parse_args(argv)
     cwd = args.cwd.resolve()
@@ -125,7 +150,7 @@ def main(argv=None):
         parser.error("start refuses to overwrite an existing experiment state")
     prompt = args.prompt_file.read_text()
     try:
-        result = execute(args.transport, cwd, prompt, old.get("session_id"), args.model)
+        result = execute(args.transport, cwd, prompt, old.get("session_id"), args.model, args.timeout)
     except Exception as exc:
         print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
         return 1

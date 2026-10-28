@@ -25,8 +25,10 @@ review, not of mid-turn `steer()` or interactive collaboration.
 
 ```bash
 python3 -m venv .venv-codex-peer
-.venv-codex-peer/bin/python -m pip install openai-codex
+.venv-codex-peer/bin/python -m pip install openai-codex==0.163.0
 ```
+
+Record the version you installed in your notes; the commands below were checked against 0.163.0.
 
 Do not pass credentials to the script. It does not perform login or use
 OpenAI API keys, although the local Codex configuration determines billing
@@ -66,6 +68,10 @@ The state files record the `session_id`, elapsed milliseconds, whatever token
 counters the transport exposes, status, error, and raw final response per
 turn. They may contain repository details: keep them out of Git. Do not share
 them without inspecting their contents.
+
+Each turn is aborted after `--timeout` seconds (default 900, `0` disables) so a blocked network does not hang the
+run; an aborted turn writes no state file. Both transports never ask for approval: the CLI because `codex exec` is
+non-interactive, the SDK because the script passes `ApprovalMode.deny_all`.
 
 A turn error is recorded in the state file for diagnosis. A failed first
 turn should be retried with a **new output path**. `resume` refuses a changed

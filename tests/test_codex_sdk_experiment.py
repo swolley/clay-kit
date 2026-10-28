@@ -3,6 +3,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -62,6 +63,9 @@ def test_sdk_starts_and_resumes_without_a_real_runtime(monkeypatch, tmp_path):
     class Sandbox:
         read_only = "readonly"
 
+    class ApprovalMode:
+        deny_all = "deny_all"
+
     class FakeThread:
         id = "sdk-123"
 
@@ -87,13 +91,14 @@ def test_sdk_starts_and_resumes_without_a_real_runtime(monkeypatch, tmp_path):
             calls.append(("resume", identifier, kwargs))
             return FakeThread()
 
-    monkeypatch.setitem(sys.modules, "openai_codex", types.SimpleNamespace(Codex=FakeCodex, Sandbox=Sandbox))
+    monkeypatch.setitem(sys.modules, "openai_codex", types.SimpleNamespace(Codex=FakeCodex, Sandbox=Sandbox, ApprovalMode=ApprovalMode))
     first = mod.sdk_turn(tmp_path, "review", None, None)
     second = mod.sdk_turn(tmp_path, "followup", first["session_id"], None)
     assert first["session_id"] == second["session_id"] == "sdk-123"
     assert calls[0][0] == "start"
-    assert calls[2] == ("resume", "sdk-123", {"cwd": str(tmp_path), "sandbox": "readonly"})
-    assert all(event[-1]["sandbox"] == "readonly" for event in calls if event[0] == "run")
+    assert calls[2] == ("resume", "sdk-123", {"cwd": str(tmp_path), "sandbox": "readonly", "approval_mode": "deny_all"})
+    assert all(event[-1]["sandbox"] == "readonly" and event[-1]["approval_mode"] == "deny_all"
+               for event in calls if event[0] == "run")
 
 
 def test_start_then_resume_persists_two_turns_and_rejects_overwrite(monkeypatch, tmp_path, capsys):
@@ -121,3 +126,21 @@ def test_start_then_resume_persists_two_turns_and_rejects_overwrite(monkeypatch,
     assert [turn["phase"] for turn in saved["turns"]] == ["start", "resume"]
     assert saved["session_id"] == "sdk-1"
     assert all("elapsed_ms" in turn for turn in saved["turns"])
+
+
+def test_a_hanging_turn_is_aborted_and_leaves_no_state(monkeypatch, tmp_path, capsys):
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("review")
+    state = tmp_path / "state.json"
+
+    def hangs(cwd, prompt, thread_id, model):
+        time.sleep(5)
+
+    monkeypatch.setattr(mod, "sdk_turn", hangs)
+    started = time.monotonic()
+    code = mod.main(["sdk", "start", "--cwd", str(tmp_path), "--prompt-file", str(prompt),
+                     "--out", str(state), "--timeout", "1"])
+    assert code == 1
+    assert time.monotonic() - started < 4
+    assert not state.exists()
+    assert "exceeded 1s" in capsys.readouterr().err
