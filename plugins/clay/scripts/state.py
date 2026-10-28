@@ -309,6 +309,8 @@ def merge_job(root, job_id: str) -> dict:
     merged (`-d` checks against the HEAD it runs in) and record the job as merged. A conflict aborts the merge and lands nothing."""
     root = Path(root)
     job = read_job(root, job_id)
+    if job.get("concerns") and job.get("concern", {}).get("status") != "resolved":
+        return {"ok": False, "reason": "pending concern must be resolved before landing"}
     run = read_run(root, job["plan"])
     iwt = Path(run.get("integration_worktree") or factory_dir(root) / f"_integration-{job['plan']}")
     merge = _git_run(iwt, "merge", "--no-ff", "--no-commit", job["branch"])
@@ -917,6 +919,9 @@ def vendor_down(root, plan_stem: str, vendor: str, reason: str, until: str | Non
 
 
 def land_job(root, job_id: str, stage: str, head: str) -> dict:
+    before = read_job(root, job_id)
+    if before.get("concerns") and before.get("concern", {}).get("status") != "resolved":
+        raise ValueError("pending concern must be resolved before landing")
     job = set_stage(root, job_id, stage)
     job["head"] = head
     write_job(root, job)
@@ -1487,7 +1492,11 @@ def main(argv: list[str]) -> int:
     elif a.cmd == "checks":
         out = list_checks(a.root, a.job)
     else:
-        out = {"id": a.job, "stage": land_job(a.root, a.job, a.to_stage, a.head)["stage"]}
+        try:
+            out = {"id": a.job, "stage": land_job(a.root, a.job, a.to_stage, a.head)["stage"]}
+        except ValueError as e:
+            print(json.dumps({"ok": False, "reason": str(e)}))
+            return 1
     print(json.dumps(out, indent=2))
     if a.cmd == "verdicts" and not out["ok"]:
         return 1
