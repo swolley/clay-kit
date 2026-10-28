@@ -41,6 +41,7 @@ import shutil
 import subprocess
 import sys
 import stat
+import tempfile
 import time
 from datetime import datetime, timezone
 from glob import escape as glob_escape
@@ -504,11 +505,19 @@ def fingerprints(job: dict, root) -> dict[str, str]:
     return out
 
 
+def _content_tree(cwd) -> str:
+    """The git tree of the files as they are on disk, tracked and untracked (ignored files aside), built in a throwaway index so
+    the real one is untouched: the same code gives the same tree whether or not it has been committed."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = {**os.environ, "GIT_INDEX_FILE": str(Path(tmp) / "index")}
+        for args in (["read-tree", "HEAD"], ["add", "-A"]):
+            subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, env=env)
+        return subprocess.run(["git", "-C", str(cwd), "write-tree"], capture_output=True, text=True, env=env).stdout.strip()
+
+
 def tree_state(job: dict, root) -> str:
-    """Identity of the code a check runs against: the tree of HEAD plus anything uncommitted, so a new commit of the same code keeps it."""
-    cwd = job.get("worktree") or str(root)
-    parts = [git(cwd, "rev-parse", "HEAD^{tree}").strip(), git(cwd, "status", "--porcelain"), git(cwd, "diff", "HEAD"), json.dumps(sorted(fingerprints(job, root).items()))]
-    return hashlib.sha1("\0".join(parts).encode()).hexdigest()[:16]
+    """Identity of the code a check runs against: what is on disk, so committing the same code, or committing it again, keeps it."""
+    return hashlib.sha1(_content_tree(job.get("worktree") or str(root)).encode()).hexdigest()[:16]
 
 
 def build_patch(job: dict, root, paths: list[str], round_no: int, delta: set[str] | None) -> str:

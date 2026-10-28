@@ -722,6 +722,23 @@ def test_a_check_stays_current_when_the_same_code_is_committed_again(repo):
     assert again["reused"] is True and again["n"] == first["n"] and again["current"] is True
 
 
+def test_a_check_stays_current_when_its_uncommitted_code_is_committed(repo):
+    """A Codex peer builder leaves its commit to the orchestrator: its checks ran on uncommitted code and must still count."""
+    state.setup(repo, repo)
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    git(repo, "checkout", "-q", "-b", "factory/demo/001")
+    j = state.new_job(repo, "docs/superpowers/plans/2026-01-01-demo.md", 1, repo_name="demo", mode="isolated", branch="factory/demo/001", worktree=str(repo), base=base)
+    (repo / "app/util.py").write_text("x = 2\n")
+    (repo / "app/new.py").write_text("y = 1\n")
+    first = state.run_check(repo, j["id"], "true")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "the builder's files, committed by the orchestrator")
+    again = state.run_check(repo, j["id"], "true", reuse=True)
+    assert again["reused"] is True and again["n"] == first["n"] and again["current"] is True
+    (repo / "app/util.py").write_text("x = 3\n")
+    assert state.run_check(repo, j["id"], "true", reuse=True)["reused"] is False
+
+
 # ---- composite commands: fewer round trips for the same bookkeeping ----
 
 
