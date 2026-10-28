@@ -47,7 +47,7 @@ plan, tell the user in one line and ask before running.
 |-------|-------|--------|
 | done | all non-cancelled steps checked | skip |
 | landed, not ticked | stage `merged` or `committed` | tick its steps (`state.py tick-plan`), commit the plan, skip |
-| interrupted | stage `spec`, `build`, `review` or `approve` | resume from that stage |
+| interrupted | stage `spec`, `build`, `review` or `approve` | resume from that stage; a `concern_status` follows `concerns.md` first |
 | needs-human | stage `needs-human` | do not touch; list it |
 | waiting-input | stage `waiting-input` | read the pending `questions-<k>.md` and ask again; see `questions.md` |
 | not started | no job | start |
