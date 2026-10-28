@@ -1,6 +1,6 @@
 # clay-kit
 
-Personal marketplace of plugins, skills and tools for Claude Code, Codex and Cursor.
+Personal marketplace of plugins, skills and tools for Claude Code and Codex.
 
 | Tool | What it does |
 |------|--------------|
@@ -31,18 +31,6 @@ codex plugin add clay@clay-kit
 ```
 
 Codex reads `.codex-plugin/plugin.json` for the plugin and the existing `.claude-plugin/marketplace.json` for the marketplace. Start a skill with `$factory-run`, or pick it from the `/skills` picker, where plugin skills are namespaced (`clay:factory-run`).
-
-### Cursor
-
-As documented by Cursor, not yet tried by us. In the Cursor CLI:
-
-```
-/plugin marketplace add https://github.com/swolley/clay-kit
-```
-
-For a team, an admin imports the repository from the Cursor Dashboard (Plugins & MCPs, Import from Repo), and users install it from Customize. Then type `/factory-run`.
-
-Codex and Cursor are supported with limits (no progress band, different model names, a question fallback, and more); see the "Hosts" section of the [clay README](plugins/clay/README.md#hosts).
 
 ## Development
 
