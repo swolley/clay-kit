@@ -97,7 +97,7 @@ def main():
         p.add_argument("--root", type=Path, default=Path("."))
         p.add_argument("--name", required=True)
         if action == "start":
-            p.add_argument("--host", choices=("claude", "codex", "cursor"), required=True)
+            p.add_argument("--host", choices=("claude", "codex"), required=True)
             p.add_argument("--mode", choices=("full", "lean"), required=True)
         if action == "finish":
             p.add_argument("--session-cost-before", type=float)
