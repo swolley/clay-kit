@@ -106,7 +106,7 @@ The target repo's own `AGENTS.md` or `CLAUDE.md` must say how to set up a checko
 
 ## Hosts
 
-The marketplace is `clay-kit` and the plugin `clay`. The same files serve all three hosts, with one manifest each; the host
+The marketplace is `clay-kit` and the plugin `clay`. The same files serve both supported hosts, with one manifest each; the host
 differences the run has to handle are written in [reference/hosts.md](reference/hosts.md) and one part per host
 (`reference/hosts-<host>.md`), and the facts behind them, with
 their sources, in [docs/hosts.md](https://github.com/swolley/clay-kit/blob/master/docs/hosts.md).
