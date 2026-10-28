@@ -2,16 +2,16 @@
 """Model and effort per host for a tier or an agent, from the defaults of tiers.md and the optional <root>/factory/models.json.
 
 models.json: {"<host>": {"tiers": {"<tier>": {"model": M, "effort": E}}, "agents": {"<agent>": {"model": M, "effort": E}}}}
-Hosts are claude, codex and cursor; both keys of an entry are optional and the entry wins over the defaults, per key.
+Hosts are claude and codex; both keys of an entry are optional and the entry wins over the defaults, per key.
 The top-level key `cross` is not a host: {"cross": {"builder_tiers": [tier, ...], "threshold": 1..100}} configures running agents through the peer vendor's CLI (defaults [] and 80): the tiers whose builders go to the peer, and the used_percent at which a vendor counts as over its limit.
-Vocabulary: claude takes its model names and efforts, codex any non-empty text, cursor `fast` or `inherit` and no effort.
+Vocabulary: claude takes its model names and efforts; codex accepts any non-empty model and effort value.
 """
 import json
 from pathlib import Path
 
 from factory_plan import TIERS
 
-HOSTS = ("claude", "codex", "cursor")
+HOSTS = ("claude", "codex")
 
 # Mirrors the two tables of tiers.md; tests/test_models.py fails when they disagree.
 TIER_DEFAULTS: dict[str, tuple[str, str]] = {
@@ -38,7 +38,6 @@ RISKY_AGENTS = ("approver", "reviewer-final")
 
 CLAUDE_MODELS = ("haiku", "sonnet", "opus", "fable", "inherit")
 CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")
-CURSOR_MODELS = ("fast", "inherit")
 FILE = "factory/models.json"
 CROSS_DEFAULTS = {"builder_tiers": [], "threshold": 80}
 
@@ -55,8 +54,6 @@ def _check_value(where: str, host: str, key: str, value) -> None:
             raise ModelsError(f"{where}.model: {value!r} is not one of {', '.join(CLAUDE_MODELS)} or a claude- id")
         if key == "effort" and value not in CLAUDE_EFFORTS:
             raise ModelsError(f"{where}.effort: {value!r} is not one of {', '.join(CLAUDE_EFFORTS)}")
-    elif host == "cursor" and key == "model" and value not in CURSOR_MODELS:
-        raise ModelsError(f"{where}.model: {value!r} is not one of {', '.join(CURSOR_MODELS)}")
 
 
 def _validate_cross(body) -> None:
@@ -100,8 +97,6 @@ def _validate(data) -> None:
                 for key, value in entry.items():
                     if key not in ("model", "effort"):
                         raise ModelsError(f"{where}.{key}: unknown key, expected model or effort")
-                    if host == "cursor" and key == "effort":
-                        raise ModelsError(f"{where}.effort: cursor has no per-call effort")
                     _check_value(where, host, key, value)
 
 
