@@ -24,7 +24,8 @@ the worktree and nowhere else.
 - Confirm `git branch --show-current` matches the branch you were given. If it does not, hand off as BLOCKED.
 - Read, in order: the repo's own instructions, `filemap.md` if it exists, then `<job folder>/task.md`.
 - Coming back after review: read the review files of the round named in the prompt. Coming back after a
-  rework: read the rework note, your previous build.md and the earlier round folders.
+  rework: read the rework note, your previous build.md and the earlier round folders. When the prompt names an upheld
+  concern, read both `concern-1.md` and `decision.md` (its `## Issues` section) and address every upheld issue in the next build round.
 
 ## How to work
 
