@@ -40,9 +40,6 @@ def test_peer_off_keeps_every_agent_on_the_host(agent):
         assert d({"tier": "light"}, run, agent) == {"vendor": "claude", "peer": False, "reason": "session", "crossed": False, "cross_on": False}
 
 
-def test_a_host_without_a_peer_stays_on_itself_even_when_on():
-
-
 def test_builder_on_a_listed_tier_goes_to_the_peer():
     out = d({"tier": "light"}, on(builder_tiers=["light"]), "builder")
     assert out == {"vendor": "codex", "peer": True, "reason": "builder_tiers", "crossed": False, "cross_on": True}
