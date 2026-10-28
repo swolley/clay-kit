@@ -385,6 +385,9 @@ def preflight(root, plan_file: str | None = None, repo_name: str = "", host: str
             status = "pending"  # recovers a crash between writing the concern file and job.json
         if status:
             view["concern_status"] = status
+            if status == "resolved":
+                view["concern_verdict"] = j["concern"].get("verdict")
+                view["concern_round"] = j["concern"].get("round")
         out["jobs"].append(view)
     out["audit"] = [f for f in audit_plans(root) if (root.resolve() / f["root"] / f["path"]) == path.resolve()]
     out["git_identity"] = git_identity(root)
