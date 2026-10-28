@@ -68,7 +68,8 @@ def env(tmp_path, monkeypatch):
     for path in (write / "peer").glob("*.status.json"):
         status = json.loads(path.read_text())
         for pgid in (status.get("pgid"), status.get("pid")):
-            if isinstance(pgid, int) and pgid > 0:
+            # Only a live leader: a hand-written status names reaped pids, which the system may already have given to another group.
+            if peer._alive(pgid):
                 try:
                     os.killpg(pgid, signal.SIGKILL)
                 except (ProcessLookupError, PermissionError):
