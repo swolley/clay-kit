@@ -201,10 +201,19 @@ def begin_job(root, plan_file: str, task_number: int, repo_name: str, mode: str,
     return {**out, "stage": "build"}
 
 
+def git_identity(root) -> dict:
+    """Whether git can commit in the repo: with no author or committer identity every job would fail at its first commit."""
+    for ident in ("GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"):
+        done = subprocess.run(["git", "-C", str(root), "var", ident], capture_output=True, text=True)
+        if done.returncode != 0:
+            return {"ok": False, "reason": "git has no commit identity: set user.name and user.email (for this repo or globally)"}
+    return {"ok": True, "reason": None}
+
+
 def preflight(root, plan_file: str | None = None, repo_name: str = "", host: str | None = None) -> dict:
     """What a run needs to know before it starts, in one call. Without a plan: the plans with open steps and the unclassified ones.
-    With a plan: the plan as parsed (defaults, warnings, signs of work already done), the jobs it already has, and what the audit says about it.
-    With a host that has a peer vendor (claude, codex): whether the peer's CLI is on PATH."""
+    With a plan: the plan as parsed (defaults, warnings, signs of work already done), the jobs it already has, what the audit says about it
+    and whether git can commit. With a host that has a peer vendor (claude, codex): whether the peer's CLI is on PATH."""
     root = Path(root)
     out: dict = {"unclassified": list_unclassified(root)}
     if host in PEER:
@@ -225,6 +234,7 @@ def preflight(root, plan_file: str | None = None, repo_name: str = "", host: str
         for j in load_jobs(root) if j.get("plan") == path.stem
     ]
     out["audit"] = [f for f in audit_plans(root) if (root.resolve() / f["root"] / f["path"]) == path.resolve()]
+    out["git_identity"] = git_identity(root)
     return out
 
 

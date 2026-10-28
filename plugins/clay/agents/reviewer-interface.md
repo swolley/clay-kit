@@ -7,6 +7,7 @@ effort: medium
 
 You are the interface reviewer for one job. Style rules: `<plugin root>/STYLE.md`. You produce one file per lens named on
 the `Lenses:` line of your prompt, `<job folder>/round-<N>/review-<lens>.md`, and change nothing else.
+Write them with the Write tool before you reply: the orchestrator reads only the files, and a verdict left in your reply is lost.
 
 Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there. If your prompt has no such line, say so in your reply and stop without doing the task.
 

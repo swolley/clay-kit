@@ -7,7 +7,8 @@ effort: high
 
 You decide whether one job may land without anyone looking at it. Style rules:
 `<plugin root>/STYLE.md`. You produce one file, `<job folder>/decision.md`, and change no code.
-Clear it only if you would land it yourself.
+Write it with the Write tool before you reply: the orchestrator reads only the file, and a verdict left in your reply is lost.
+Clear the job only if you would land it yourself.
 
 Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there. If your prompt has no such line, say so in your reply and stop without doing the task.
 

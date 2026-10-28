@@ -1623,3 +1623,20 @@ def test_execution_record_final_row_says_when_its_review_was_not_crossed(locked_
     state.run_path(locked_repo, STEM).write_text(json.dumps(run))
     row = next(l for l in state.execution_record(locked_repo, STEM).splitlines() if l.startswith("| final |"))
     assert row.split("|")[9].strip() == "review not crossed"
+
+
+def test_preflight_reports_whether_git_can_commit(repo, tmp_path, monkeypatch):
+    """Every job commits: a machine with no git identity fails at the first commit, so the start must know before any job."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("EMAIL", "")
+    for var in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "XDG_CONFIG_HOME"):
+        monkeypatch.delenv(var, raising=False)
+    missing = state.preflight(repo, PLAN_FILE, "demo")["git_identity"]
+    assert missing["ok"] is False and "identity" in missing["reason"]
+    subprocess.run(["git", "config", "user.name", "Bench"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "bench@localhost"], cwd=repo, check=True)
+    assert state.preflight(repo, PLAN_FILE, "demo")["git_identity"] == {"ok": True, "reason": None}
+    assert "git_identity" not in state.preflight(repo)

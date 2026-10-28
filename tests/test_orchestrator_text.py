@@ -719,3 +719,21 @@ def test_job_branch_is_deleted_where_it_was_merged():
     """`git branch -d` checks the branch against HEAD: in the repo's checkout HEAD is main, which never holds the job's work."""
     landing = " ".join(read("reference/orchestrator.md").split("## Landing")[1].split("## ")[0].split())
     assert "git -C <integration worktree> branch -d <job branch>" in landing
+
+
+FILE_ONLY = "Write it with the Write tool before you reply: the orchestrator reads only the file, and a verdict left in your reply is lost."
+
+
+def test_agents_that_record_a_verdict_are_told_only_the_file_counts():
+    """A reviewer that answered in chat and wrote no file cost a second run of the same review."""
+    for agent in ("reviewer-code", "reviewer-security", "reviewer-final", "approver"):
+        assert FILE_ONLY in " ".join(read(f"agents/{agent}.md").split()), agent
+    assert "the orchestrator reads only the files, and a verdict left in your reply is lost" in read("agents/reviewer-interface.md")
+
+
+def test_claude_passes_the_tier_effort_as_the_users_choice():
+    """Claude Code's Agent tool reserves `effort` for an explicit request: without saying the tier is that request, the orchestrator
+    sometimes left it out and the builder ran at the session's effort instead of the tier's."""
+    text = " ".join(read("reference/hosts-claude.md").split())
+    assert "Pass `effort` whenever the `Agent` tool shows an `effort` parameter" in text
+    assert "the user's explicit choice" in text
