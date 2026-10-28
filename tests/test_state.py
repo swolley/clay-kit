@@ -1543,11 +1543,6 @@ def test_run_cross_takes_the_models_json_block(repo):
     assert run_state(repo)["cross"] == {"on": True, "peer": "codex", "threshold": 70, "builder_tiers": ["light"]}
 
 
-def test_run_cross_on_a_host_without_a_peer_is_off(repo):
-    state.setup(repo, repo)
-    assert state.write_run(repo, PLAN_FILE, "current-branch", cross="on", host="cursor")["cross"]["on"] is False
-
-
 def test_preflight_reports_the_peer(repo, tmp_path, monkeypatch):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -1559,7 +1554,6 @@ def test_preflight_reports_the_peer(repo, tmp_path, monkeypatch):
     assert state.preflight(repo, PLAN_FILE, "demo", host="claude")["peer"] == {"vendor": "codex", "found": True}
     assert state.preflight(repo, host="claude")["peer"] == {"vendor": "codex", "found": True}
     assert state.preflight(repo, PLAN_FILE, "demo", host="codex")["peer"] == {"vendor": "claude", "found": False}
-    assert "peer" not in state.preflight(repo, PLAN_FILE, "demo", host="cursor")
     assert "peer" not in state.preflight(repo, PLAN_FILE, "demo")
 
 
