@@ -735,3 +735,13 @@ def test_claude_passes_the_tier_effort_as_the_users_choice():
     text = " ".join(read("reference/hosts-claude.md").split())
     assert "Pass `effort` whenever the `Agent` tool shows an `effort` parameter" in text
     assert "the user's explicit choice" in text
+
+
+def test_an_orchestrator_concern_goes_to_the_approver_not_the_user():
+    """The orchestrator flags, the approver decides, the builder fixes: one concern per job, and no question to the user."""
+    loop = " ".join(read("reference/job-loop.md").split())
+    assert "`state.py concern <job>`" in loop and "neither land nor ask" in loop and "`CHANGES` (a concern upheld) to step 5" in loop
+    approver = " ".join(read("agents/approver.md").split())
+    assert "## Concerns" in approver and "`CHANGES` only in answer to a concern" in approver
+    assert "a reading the text leaves open is not a defect" in approver
+    assert "the approver for a concern" in read("reference/hosts-claude.md") and "a concern starts it again" in read("reference/hosts-codex.md")

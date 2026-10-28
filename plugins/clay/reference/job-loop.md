@@ -54,7 +54,10 @@ fields as options records one agent). The usage of your own session is not repor
    check must not still start the approver), `state.py stage <job> approve` and spawn the `approver` as `hosts.md` says (with the peer on, as `peer.md` says) with `<paths> Final round: N.`, its model and effort
    from `state.py model --host <host> --agent approver`, adding `--risky` when the job is risky (the rule is in `tiers.md`). In the short path, when
    the approver has finished, run `state.py verdicts <job>` in its own step, as in step 4: `CHANGES` goes to step 5 like any review, and
-   `all_pass` goes on to decision.md. Line one of decision.md routes it: `APPROVE` goes to step 7, `ESCALATE` to step 8.
+   `all_pass` goes on to decision.md. Line one of decision.md routes it: `APPROVE` to step 7, `ESCALATE` to step 8, `CHANGES` (a
+   concern upheld) to step 5. **Concern.** You never review; if after `APPROVE` the change misses something the task states, neither
+   land nor ask: `state.py concern <job>` (once per job; `ok: false`: land and report the point), write the file it prints, each point
+   a task.md quote with `file:line`, and send the approver back to it (resumed, or restarted with `Concerns: <file>`).
 7. **Land.** As in Landing (`orchestrator.md`).
 8. **Needs human.** `state.py stage <job> needs-human`; keep the branch and worktree; name the waiting job for the user, give its
    worktree path, and quote either decision.md or the reason given for BLOCKED.

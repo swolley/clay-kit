@@ -1712,3 +1712,14 @@ def test_merge_job_of_an_adhoc_plan_ticks_nothing(isolated):
     git(Path(out["worktree"]), "commit", "-q", "--allow-empty", "-m", "work")
     assert state.merge_job(isolated, out["id"])["ok"]
     assert state.read_job(isolated, out["id"])["stage"] == "merged"
+
+
+def test_concern_opens_one_file_per_job(repo):
+    """The orchestrator may send an approved job back to the approver once: a second concern would loop."""
+    state.setup(repo, repo)
+    j = new(repo, 1)
+    first = state.concern(repo, j["id"])
+    assert first["ok"] and Path(first["file"]) == state.jobs_dir(repo) / j["id"] / "concern-1.md"
+    assert state.read_job(repo, j["id"])["concerns"] == 1
+    again = state.concern(repo, j["id"])
+    assert again["ok"] is False and "one" in again["reason"]

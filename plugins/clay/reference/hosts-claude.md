@@ -20,7 +20,7 @@ The usage is `subagent_tokens`, `tool_uses` and `duration_ms` of the spawn resul
 
 ## Resuming an agent
 
-Send the message to the builder's agent id with `SendMessage`.
+Send the message to the agent's id with `SendMessage`: the builder after a review, the approver for a concern.
 
 ## Asking the user
 

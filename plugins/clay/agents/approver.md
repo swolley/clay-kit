@@ -30,6 +30,13 @@ failing, is anything left behind, is the documentation the task names updated an
 decision.md, since the builder gets the job back. On `PASS` go on to the three gates; gate 2 then counts your own review. Escalate whenever
 you doubt a gate: a person can always send the job back.
 
+## Concerns
+
+When you are sent a concern file (resumed with it, or `Concerns: <file>` in your prompt), the orchestrator thinks the change misses
+something the task states. Check each point against task.md and the diff, then rewrite decision.md: `APPROVE` with a `## Concerns`
+section that answers every point, or `CHANGES` with `## Issues` listing the points you uphold, each with file and line, for the
+builder. Uphold a point only when the task's text requires it; a reading the text leaves open is not a defect.
+
 ## Three gates, all required for APPROVE
 
 1. **Evidence.** The task has at least one acceptance criterion (an empty Accept list means ESCALATE, since
@@ -54,7 +61,7 @@ Send the job to a human, whatever the gates say, when it:
 ## decision.md
 
 ```markdown
-APPROVE | ESCALATE
+APPROVE | ESCALATE | CHANGES
 
 ## Rationale
 Two or three sentences.
@@ -66,4 +73,4 @@ Two or three sentences.
 Only for ESCALATE: the specific question for the person, and the files to inspect.
 ```
 
-Line one is exactly `APPROVE` or `ESCALATE`.
+Line one is exactly `APPROVE` or `ESCALATE`; `CHANGES` only in answer to a concern.

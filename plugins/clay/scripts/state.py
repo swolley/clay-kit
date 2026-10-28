@@ -247,6 +247,17 @@ def open_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, 
     return {"ok": True, **out, "branch": branch, "worktree": str(wt), "integration": integration, "integration_worktree": str(iwt)}
 
 
+def concern(root, job_id: str) -> dict:
+    """Open the one concern an approved job may get: the orchestrator found something the task states and the change misses, and
+    the approver, not the orchestrator, decides. A second one is refused, so a job never loops between the two."""
+    job = read_job(root, job_id)
+    if job.get("concerns", 0) >= 1:
+        return {"ok": False, "reason": "this job already had its one concern: land it as the approver decided"}
+    job["concerns"] = 1
+    write_job(root, job)
+    return {"ok": True, "file": str(jobs_dir(root) / job_id / "concern-1.md")}
+
+
 def merge_job(root, job_id: str) -> dict:
     """Isolated landing in one step: merge the job branch into the integration worktree, tick the task in the plan there (not for
     an ad hoc plan, which is not in the repo), commit "Merge <job-id>", remove the job worktree, delete the job branch where it was
@@ -1264,6 +1275,9 @@ def main(argv: list[str]) -> int:
     mj = sub.add_parser("merge-job")
     mj.add_argument("--root", default=".")
     mj.add_argument("job")
+    cn = sub.add_parser("concern")
+    cn.add_argument("--root", default=".")
+    cn.add_argument("job")
     for name in ("setup", "run", "preflight", "new-job", "begin-job", "stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks", "rework", "lean-check", "promote"):
         sp = sub.add_parser(name)
         sp.add_argument("--root", default=".")
@@ -1311,8 +1325,11 @@ def main(argv: list[str]) -> int:
             sp.add_argument("--stage", dest="to_stage", default="committed")
             sp.add_argument("--head", required=True)
     a = ap.parse_args(argv)
-    if a.cmd in ("open-job", "merge-job"):
-        out = open_job(a.root, a.plan_file, a.task, a.repo_name, a.mode, a.lean) if a.cmd == "open-job" else merge_job(a.root, a.job)
+    if a.cmd in ("open-job", "merge-job", "concern"):
+        if a.cmd == "open-job":
+            out = open_job(a.root, a.plan_file, a.task, a.repo_name, a.mode, a.lean)
+        else:
+            out = merge_job(a.root, a.job) if a.cmd == "merge-job" else concern(a.root, a.job)
         print(json.dumps(out, indent=2))
         return 0 if out["ok"] else 1
     if a.cmd == "clean":
