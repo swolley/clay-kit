@@ -4,15 +4,16 @@ This is a declarative checklist, not a new execution abstraction. Keep the
 workflow and persistent job state independent of the host. Host-specific tool
 calls belong at the agent execution boundary.
 
-| --- | --- | --- | --- |
-| Spawn role | Named plugin agent | Generic subagent + role file | Plugin agent or generic fallback |
-| Resume live builder | SendMessage | send_input | No documented resume; fresh builder |
-| Per-call model | Supported | Supported | fast/inherit reported; unverified |
-| Per-call effort | Conditional on Agent tool | reasoning_effort; retry without on rejection | Unavailable |
-| User questions | AskUserQuestion | request_user_input in Plan mode; text fallback | Host question tool when present; text fallback |
-| Usage metadata | subagent_tokens/tool_uses/duration_ms | Spawn result, when available | Spawn result, when available |
-| Progress mod | Available | Unavailable | Unavailable |
-| Cross-vendor peer | Codex CLI | Claude CLI | Unavailable |
+| Capability | Claude Code | Codex |
+|---|---|---|
+| Spawn role | Named plugin agent | Generic subagent + role file |
+| Resume live builder | SendMessage | send_input |
+| Per-call model | Supported | Supported |
+| Per-call effort | Conditional on Agent tool | reasoning_effort; retry without on rejection |
+| User questions | AskUserQuestion | request_user_input in Plan mode; text fallback |
+| Usage metadata | subagent_tokens/tool_uses/duration_ms | Spawn result, when available |
+| Progress mod | Available | Unavailable |
+| Cross-vendor peer | Codex CLI | Claude CLI |
 
 The entries summarize current behavior described by `reference/hosts-*.md`.
 Reported or untested capabilities are **not** guarantees.
