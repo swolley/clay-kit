@@ -312,7 +312,7 @@ def _landing_concern_problem(root, job: dict) -> str | None:
         if job.get("round", 0) <= record.get("round", job.get("round", 0)):
             return "upheld concern requires a new review round before landing"
         decision = jobs_dir(root) / job["id"] / "decision.md"
-        if not decision.is_file() or not decision.read_text(encoding="utf-8").startswith("APPROVE\n"):
+        if not decision.is_file() or (decision.read_text(encoding="utf-8").splitlines() or [""])[0].strip() != "APPROVE":
             return "upheld concern requires a fresh APPROVE after rework"
     return None
 
