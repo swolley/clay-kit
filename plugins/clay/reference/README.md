@@ -15,5 +15,6 @@ skills name the parts they read; nothing reads this file at runtime.
 | `commands.md` | resolving a job, approve, rework, answer, status | approve, rework, answer, status |
 | `questions.md` | questions from agents | answer; run, task and rework when an agent asks something |
 | `lean.md` | lean tasks, built in the session and gated by their checks | run, task, when a task is lean or the user chose lean |
+| `concerns.md` | pending/resolved concern recovery, approver verdict and builder rework | run, task, only after an APPROVE is questioned or when resuming a concern |
 | `peer.md` | working with the peer vendor: who runs which agent, running one through the other CLI, falling back | run, task, only when the peer is on |
 | `completion.md` | closing a finished plan | run, task, once every task has landed |
