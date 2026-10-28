@@ -1735,6 +1735,7 @@ def test_concern_recovers_file_written_before_state_and_recreates_missing_file(r
     job_id = new(repo)["id"]
     path = state.jobs_dir(repo) / job_id / "concern-1.md"
     path.write_text("# Concern 1\n\n## Points\n\n1. task.md: Works; app/util.py:1\n")
+    assert state.preflight(repo, PLAN_FILE, "demo")["jobs"][0]["concern_status"] == "pending"
     recovered = state.concern(repo, job_id)
     assert recovered["ok"] and recovered["resumed"]
     assert "task.md" in path.read_text()
@@ -1778,6 +1779,7 @@ def test_approver_can_reject_an_unfounded_concern_and_land(repo):
     )
     answer = state.resolve_concern(repo, job_id)
     assert answer["ok"] and answer["status"] == "resolved" and answer["verdict"] == "APPROVE"
+    assert state.preflight(repo, PLAN_FILE, "demo")["jobs"][0]["concern_status"] == "resolved"
     assert state.concern(repo, job_id)["ok"] is False  # never open a second concern
     assert state.resolve_concern(repo, job_id)["ok"] is False
     assert state.land_job(repo, job_id, "committed", "abc")["stage"] == "committed"
