@@ -60,36 +60,23 @@ from a search engine's excerpt of the official page, not from reading it: confir
 | Agent shell env | No variable points to the plugin folder in commands the agent runs | GH: no match outside hooks and MCP |
 | Custom prompts | `~/.codex/prompts` is deprecated in favour of skills **(S)** | developers.openai.com/codex/custom-prompts (S) |
 
-## What the three hosts share and where they differ
+## Supported-host comparison
 
-| Need of this tool | Claude Code | Codex |
+| Capability | Claude Code | Codex |
 |---|---|---|
-| Find the plugin | `.claude-plugin/` | `.codex-plugin/plugin.json` first; `.claude-plugin/` files only for the marketplace |
-| Shared files from a skill | `${CLAUDE_PLUGIN_ROOT}` substituted | path relative to SKILL.md |
-| Bundled agents | `agents/*.md` | not possible from a plugin |
-| Per-call model | yes (`model`) | yes (`model`, `reasoning_effort`) |
-| Model names | `haiku`, `sonnet`, `opus`, `fable` | OpenAI model ids |
-| User-only command | `disable-model-invocation` | `agents/openai.yaml` policy |
-| Arguments | `$ARGUMENTS` | the message text |
-| Question tool | `AskUserQuestion`, main session | `request_user_input`, Plan mode only by default |
-| Progress mod | yes | no |
+| Plugin discovery | `.claude-plugin/` | `.codex-plugin/`, Claude marketplace compatibility |
+| Bundled agent roles | Named plugin agents | Generic subagents reading the role file |
+| Model override | `model` | `model` |
+| Effort override | When Agent supports it | `reasoning_effort` |
+| Questions | `AskUserQuestion` | `request_user_input` in Plan mode; text fallback |
+| Resume | `SendMessage` | `send_input` |
+| Progress mod | Available | Unavailable |
+| External peer | Codex CLI | Claude CLI |
 
-Consequences, as built (design: `docs/superpowers/specs/2026-10-15-codex-cursor-design.md`; the host-by-host instructions
-the orchestrator follows are in `plugins/clay/reference/hosts.md` and one part per host, `hosts-claude.md`, `hosts-codex.md`):
-- Every skill opens with `Plugin root: ${CLAUDE_PLUGIN_ROOT}` and a fallback line saying the root is the folder two levels
-  above the folder that holds its `SKILL.md`. Claude Code substitutes the variable; Codex use the fallback, which follows their documented
-  rule of paths relative to the skill. The rest of the text says `<plugin root>`. Agents never use the variable: they read the
-  `Plugin root:` line of their prompt, which the orchestrator adds on every host.
-- Codex cannot install agents with the plugin, so there the orchestrator spawns a generic subagent told to read
-  host does not list it. No TOML installer was written.
-- Tiers name Claude models only in the defaults of `tiers.md` (mirrored in `scripts/models.py`). Other hosts map them with the
-  optional `factory/models.json`, resolved by `state.py model`; without an entry Codex passes no model and keeps the tier's
-  effort. The values each host accepts are checked when the file is read.
-- Every question has a plain-text fallback: numbered options in the reply, then wait for the user's answer. Codex's
-  `request_user_input` is used in Plan mode, and a list longer than 3 options goes to plain text.
-- The progress band and pane stay Claude Code only; `factory/jobs/dashboard.html` works on every host.
-- Our `hooks/hooks.json` holds a Claude Code mod (`{"modules": [...]}`) and Codex load that path by default, so
-  both manifests declare hooks inline and empty (`"hooks": {"hooks": {}}` for Codex, `"hooks": {"version": 1, "hooks": {}}` for
-  `disable-model-invocation: true`.
+The supported host instructions live in `plugins/clay/reference/hosts.md`,
+`hosts-claude.md`, and `hosts-codex.md`. Older design plans are preserved
+as historical records and do not define supported integrations.
 
-default `hooks/hooks.json` is not documented.
+The host detection policy requires `Agent` or `AskUserQuestion` for Claude,
+then `spawn_agent` for Codex. Without either tool the run stops rather than
+silently selecting an unsupported host.
