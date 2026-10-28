@@ -12,6 +12,7 @@ from pathlib import Path
 DEFAULT_PLUGIN = Path(__file__).resolve().parents[1] / "plugins" / "clay"
 HOSTS = ("claude", "codex", "cursor")
 REFERENCE_RE = re.compile(r"reference/([\w-]+\.md)")
+QUOTED_MD_RE = re.compile(r"`([\w-]+\.md)`")
 
 
 def inventory(plugin: Path) -> dict:
