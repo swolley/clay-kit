@@ -689,3 +689,19 @@ def test_the_final_recheck_is_round_2():
 def test_a_fresh_builder_continues_from_the_tree_as_it_stands():
     flat = peer_flat()
     assert "uncommitted edits" in flat and "no reset" in flat.lower()
+
+
+def test_isolated_branch_names_can_coexist(tmp_path):
+    """Git cannot hold a branch that is also the folder of another one: the job branch must not nest under the integration branch."""
+    import re
+    import subprocess
+    isolated = " ".join(read("reference/orchestrator.md").split("**Isolated.**")[1].split("**Current branch.**")[0].split())
+    integration = re.search(r"integration branch `([^`]+)`", isolated).group(1)
+    job = re.search(r"Per job: branch `([^`]+)`", isolated).group(1)
+    fill = lambda name: name.replace("<plan-slug>", "2026-01-01-demo").replace("<job-id>", "001-add-endpoint")
+    run = lambda *args: subprocess.run(["git", "-C", str(tmp_path), *args], capture_output=True, text=True)
+    run("init", "-q", "-b", "main")
+    run("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "base")
+    assert run("branch", fill(integration)).returncode == 0
+    made = run("branch", fill(job), fill(integration))
+    assert made.returncode == 0, made.stderr

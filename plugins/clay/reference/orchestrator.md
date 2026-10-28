@@ -37,7 +37,7 @@ Ask once per run, with the question tool, and record the answer in the run state
 
 **Isolated.** Per plan and repo: integration branch `factory/<plan-slug>` from the repo's main
 branch, checked out in its own worktree `<repo-parent>/<repo-name>-factory/_integration-<plan-slug>`.
-Per job: branch `factory/<plan-slug>/<job-id>` and worktree `<repo-parent>/<repo-name>-factory/<job-id>`,
+Per job: branch `factory/<plan-slug>--<job-id>` (not nested under the integration branch, which git refuses) and worktree `<repo-parent>/<repo-name>-factory/<job-id>`,
 created from the integration branch. Run the repo's fresh-checkout setup in the worktree; if it fails, stop.
 Tasks run in plan order. Run two tasks in parallel only when both declared `Depends` and a non-empty `Files`
 (the parser lists what a task left out in `defaults_applied`; such a task is assumed to follow the one before it),
