@@ -17,6 +17,8 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
   state.py verdicts JOB --root DIR
   state.py verify JOB --cmd COMMAND [--reuse] [--timeout S] --root DIR
   state.py checks JOB --root DIR
+  state.py concern JOB --root DIR
+  state.py resolve-concern JOB --root DIR
   state.py land JOB --stage committed|merged --head SHA --root DIR
   state.py tick-plan --plan-file P [--task N] --root DIR
   state.py close-plan --plan-file P --root DIR
@@ -248,14 +250,57 @@ def open_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, 
 
 
 def concern(root, job_id: str) -> dict:
-    """Open the one concern an approved job may get: the orchestrator found something the task states and the change misses, and
-    the approver, not the orchestrator, decides. A second one is refused, so a job never loops between the two."""
+    """Open or recover the one concern per job.
+
+    Create its file before recording the pending state. If interrupted between those writes,
+    a second call recovers the existing file instead of spending a second concern.
+    Only the approver can decide whether the concern is upheld.
+    """
     job = read_job(root, job_id)
-    if job.get("concerns", 0) >= 1:
-        return {"ok": False, "reason": "this job already had its one concern: land it as the approver decided"}
+    path = jobs_dir(root) / job_id / "concern-1.md"
+    record = job.get("concern", {})
+    if record.get("status") == "resolved":
+        return {"ok": False, "reason": "this job already had its one resolved concern; follow the approver's verdict"}
+    if record and record.get("status") != "pending":
+        return {"ok": False, "reason": "unrecognized concern status"}
+    resumed = record.get("status") == "pending" or job.get("concerns", 0) >= 1 or path.exists()
+    if not path.exists():
+        # The orchestrator fills in numbered points before sending this file to the approver.
+        path.write_text("# Concern 1\n\n## Points\n\n", encoding="utf-8")
     job["concerns"] = 1
+    job["concern"] = {"status": "pending", "file": path.name}
     write_job(root, job)
-    return {"ok": True, "file": str(jobs_dir(root) / job_id / "concern-1.md")}
+    return {"ok": True, "file": str(path), "status": "pending", "resumed": resumed}
+
+
+def resolve_concern(root, job_id: str) -> dict:
+    """Record the approver's answer to a pending concern; reject stale verdict files.
+
+    APPROVE needs a Concerns section and CHANGES needs an Issues section, so the
+    original, pre-concern APPROVE cannot be mistaken for the new answer on resume.
+    """
+    job = read_job(root, job_id)
+    record = job.get("concern", {})
+    if record.get("status") != "pending":
+        return {"ok": False, "reason": "no pending concern to resolve"}
+    path = jobs_dir(root) / job_id / "concern-1.md"
+    if not path.is_file() or not re.search(r"(?m)^1\.\s+\S", path.read_text(encoding="utf-8")):
+        return {"ok": False, "reason": "concern file needs numbered points before the approver can answer"}
+    decision_path = jobs_dir(root) / job_id / "decision.md"
+    if not decision_path.is_file():
+        return {"ok": False, "reason": "approver decision.md is missing"}
+    decision = decision_path.read_text(encoding="utf-8")
+    verdict = decision.splitlines()[0].strip() if decision.splitlines() else ""
+    section = {"APPROVE": "Concerns", "CHANGES": "Issues"}.get(verdict)
+    if section is None:
+        return {"ok": False, "reason": "concern verdict must be APPROVE or CHANGES"}
+    m = re.search(r"(?ms)^## " + section + r"\s*\n(.*?)(?=^## |\Z)", decision)
+    if not m or not m.group(1).strip():
+        return {"ok": False, "reason": "the approver must answer the concern in ## " + section}
+    record.update(status="resolved", verdict=verdict)
+    job["concern"] = record
+    write_job(root, job)
+    return {"ok": True, "file": str(path), "status": "resolved", "verdict": verdict}
 
 
 def merge_job(root, job_id: str) -> dict:
@@ -1275,9 +1320,10 @@ def main(argv: list[str]) -> int:
     mj = sub.add_parser("merge-job")
     mj.add_argument("--root", default=".")
     mj.add_argument("job")
-    cn = sub.add_parser("concern")
-    cn.add_argument("--root", default=".")
-    cn.add_argument("job")
+    for action in ("concern", "resolve-concern"):
+        cn = sub.add_parser(action)
+        cn.add_argument("--root", default=".")
+        cn.add_argument("job")
     for name in ("setup", "run", "preflight", "new-job", "begin-job", "stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks", "rework", "lean-check", "promote"):
         sp = sub.add_parser(name)
         sp.add_argument("--root", default=".")
@@ -1325,11 +1371,15 @@ def main(argv: list[str]) -> int:
             sp.add_argument("--stage", dest="to_stage", default="committed")
             sp.add_argument("--head", required=True)
     a = ap.parse_args(argv)
-    if a.cmd in ("open-job", "merge-job", "concern"):
+    if a.cmd in ("open-job", "merge-job", "concern", "resolve-concern"):
         if a.cmd == "open-job":
             out = open_job(a.root, a.plan_file, a.task, a.repo_name, a.mode, a.lean)
+        elif a.cmd == "merge-job":
+            out = merge_job(a.root, a.job)
+        elif a.cmd == "concern":
+            out = concern(a.root, a.job)
         else:
-            out = merge_job(a.root, a.job) if a.cmd == "merge-job" else concern(a.root, a.job)
+            out = resolve_concern(a.root, a.job)
         print(json.dumps(out, indent=2))
         return 0 if out["ok"] else 1
     if a.cmd == "clean":
