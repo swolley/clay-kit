@@ -33,9 +33,9 @@ you doubt a gate: a person can always send the job back.
 ## Concerns
 
 When you are sent a concern file (resumed with it, or `Concerns: <file>` in your prompt), the orchestrator thinks the change misses
-something the task states. Check each point against task.md and the diff, then rewrite decision.md: `APPROVE` with a `## Concerns`
-section that answers every point, or `CHANGES` with `## Issues` listing the points you uphold, each with file and line, for the
-builder. Uphold a point only when the task's text requires it; a reading the text leaves open is not a defect.
+something the task states. Check each point against task.md and the diff, then rewrite decision.md: `APPROVE` with a nonempty `## Concerns`
+section answering each point, or `CHANGES` with a nonempty `## Issues` section listing the points you uphold, each with file and line,
+for the builder. The original APPROVE does not count until you rewrite decision.md. Uphold a point only when the task's text requires it; a reading the text leaves open is not a defect.
 
 ## Three gates, all required for APPROVE
 
