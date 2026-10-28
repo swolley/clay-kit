@@ -35,7 +35,7 @@ def test_parallel_only_when_declared():
 
 
 def test_adhoc_task_gets_completion_and_criterion():
-    assert "Completion" in read("skills/factory-task/SKILL.md")
+    assert "**Finish.**" in read("skills/factory-task/SKILL.md") and "`completion.md`" in read("skills/factory-task/SKILL.md")
     assert "Accept" in read("agents/approver.md") and "empty" in read("agents/approver.md")
 
 
@@ -104,7 +104,7 @@ def test_no_undefined_build_check_step():
 
 
 def test_job_json_is_written_after_the_worktree_exists():
-    assert "before writing `job.json`" in reference() or "only then write `job.json`" in reference()
+    assert "creates the branches and worktrees `orchestrator.md` names before it writes `task.md` and `job.json`" in " ".join(reference().split())
 
 
 def test_job_records_head_and_build_round_for_resume():
@@ -178,7 +178,7 @@ def test_approver_model_depends_on_risk():
 
 def test_run_uses_the_state_script_for_bookkeeping():
     t = reference()
-    for cmd in ("state.py begin-job", "state.py route", "state.py verdicts", "state.py after-agent", "state.py land", "state.py stage"):
+    for cmd in ("state.py open-job", "state.py merge-job", "state.py route", "state.py verdicts", "state.py after-agent", "state.py land", "state.py stage"):
         assert cmd in t, cmd
 
 
@@ -238,7 +238,8 @@ def test_completion_records_the_run_in_the_plan_and_cleans_the_local_jobs():
 
 def test_landing_ticks_the_task_in_its_own_commit():
     landing = read("reference/orchestrator.md").split("## Landing")[1]
-    assert "--task <n>" in landing and "--no-commit" in landing and "never closes the plan" in landing
+    assert "--task <n>" in landing and "never closes the plan" in landing
+    assert "`state.py merge-job <job>`" in landing and "ticks the task in the plan there" in " ".join(landing.split())
 
 
 def test_completion_closes_the_plan_with_its_documentation_and_never_deletes_it():
@@ -281,7 +282,8 @@ def test_each_command_reads_only_the_parts_it_needs():
     assert parts_read_by("factory-status") == {"orchestrator.md", "commands.md"}
     assert parts_read_by("factory-approve") == {"orchestrator.md", "lock.md", "commands.md", "hosts.md"}
     assert {"job-loop.md", "start.md", "lock.md", "orchestrator.md"} <= parts_read_by("factory-run")
-    assert {"job-loop.md", "start.md", "lock.md", "orchestrator.md"} <= parts_read_by("factory-task")
+    assert {"job-loop.md", "lock.md", "orchestrator.md"} <= parts_read_by("factory-task")
+    assert not {"start.md", "completion.md"} & parts_read_by("factory-task")  # one ad hoc task needs neither the run setup nor the plan close
     assert {"job-loop.md", "commands.md", "lock.md", "questions.md"} <= parts_read_by("factory-answer")
     assert {"job-loop.md", "commands.md", "lock.md"} <= parts_read_by("factory-rework")
 
@@ -348,7 +350,7 @@ def test_agents_read_the_diff_file_and_the_recorded_checks():
 
 def test_the_composite_commands_replace_the_step_by_step_calls_in_the_loop():
     loop, start = read("reference/job-loop.md"), read("reference/start.md")
-    assert "state.py begin-job" in loop and "state.py after-agent" in loop and "in one call" in loop
+    assert "state.py open-job" in loop and "state.py after-agent" in loop and "in one call" in loop
     assert "state.py preflight" in start and "`jobs`" in start and "`audit`" in start
     assert "state.py new-job" not in start and "factory_plan.py <plan> --repo <name> --root <repo>` prints it" in start
 
@@ -542,7 +544,7 @@ def test_completion_runs_the_final_review_first():
 
 def test_lean_reference_names_its_commands():
     t = read("reference/lean.md")
-    for word in ("lean-check", "promote", "begin-job", "--lean", "lean_reason", "long", "session's model"):
+    for word in ("lean-check", "promote", "open-job", "--lean", "lean_reason", "long", "session's model"):
         assert word in t, word
 
 
@@ -711,10 +713,10 @@ def test_agents_run_git_without_cd():
         assert "git -C <" in text, agent
 
 
-def test_job_branch_is_deleted_where_it_was_merged():
-    """`git branch -d` checks the branch against HEAD: in the repo's checkout HEAD is main, which never holds the job's work."""
+def test_isolated_landing_is_one_command():
+    """The merge, the commit, the worktree removal and the branch delete are `merge_job` (tested in test_state); the text only names it."""
     landing = " ".join(read("reference/orchestrator.md").split("## Landing")[1].split("## ")[0].split())
-    assert "git -C <integration worktree> branch -d <job branch>" in landing
+    assert "`state.py merge-job <job>`" in landing and "deletes the job branch" in landing and "git merge" not in landing
 
 
 FILE_ONLY = "Write it with the Write tool before you reply: the orchestrator reads only the file, and a verdict left in your reply is lost."

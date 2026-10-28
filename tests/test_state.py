@@ -1634,3 +1634,81 @@ def test_preflight_reports_whether_git_can_commit(repo, tmp_path, monkeypatch):
     subprocess.run(["git", "config", "user.email", "bench@localhost"], cwd=repo, check=True)
     assert state.preflight(repo, PLAN_FILE, "demo")["git_identity"] == {"ok": True, "reason": None}
     assert "git_identity" not in state.preflight(repo)
+
+
+@pytest.fixture
+def isolated(repo):
+    """The repo with a commit identity of its own (merge_job commits) and a run in isolated mode."""
+    subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=repo, check=True)
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "isolated")
+    return repo
+
+
+def factory_dir(repo):
+    return repo.parent / f"{repo.name}-factory"
+
+
+def test_open_job_creates_the_integration_and_job_worktrees(isolated):
+    out = state.open_job(isolated, PLAN_FILE, 1, "demo", "isolated")
+    stem = Path(PLAN_FILE).stem
+    assert out["ok"] and out["stage"] == "build"
+    assert out["integration"] == f"factory/{stem}" and out["branch"] == f"factory/{stem}--{out['id']}"
+    assert Path(out["integration_worktree"]) == factory_dir(isolated) / f"_integration-{stem}"
+    assert Path(out["worktree"]) == factory_dir(isolated) / out["id"]
+    assert subprocess.run(["git", "-C", out["worktree"], "branch", "--show-current"], capture_output=True, text=True).stdout.strip() == out["branch"]
+    job = state.read_job(isolated, out["id"])
+    assert (job["branch"], job["worktree"], job["stage"], job["mode"]) == (out["branch"], out["worktree"], "build", "isolated")
+    assert state.read_run(isolated, stem)["integration"] == out["integration"]
+
+
+def test_open_job_reuses_the_integration_worktree(isolated):
+    first = state.open_job(isolated, PLAN_FILE, 1, "demo", "isolated")
+    second = state.open_job(isolated, PLAN_FILE, 2, "demo", "isolated")
+    assert second["ok"] and second["integration_worktree"] == first["integration_worktree"] and second["id"] != first["id"]
+
+
+def test_open_job_in_current_branch_mode_uses_the_repo(repo):
+    state.setup(repo, repo)
+    out = state.open_job(repo, PLAN_FILE, 1, "demo", "current-branch")
+    job = state.read_job(repo, out["id"])
+    assert (job["branch"], Path(job["worktree"]), job["stage"]) == ("main", repo, "build")
+
+
+def test_merge_job_lands_ticks_and_cleans_up(isolated):
+    out = state.open_job(isolated, PLAN_FILE, 1, "demo", "isolated")
+    wt = Path(out["worktree"])
+    (wt / "app/util.py").write_text("x = 2\n")
+    git(wt, "commit", "-qam", "work")
+    merged = state.merge_job(isolated, out["id"])
+    iwt = Path(out["integration_worktree"])
+    assert merged["ok"] and merged["head"] == subprocess.run(["git", "-C", str(iwt), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    assert (iwt / "app/util.py").read_text() == "x = 2\n"
+    assert "- [x] **Step 1" in (iwt / PLAN_FILE).read_text() and "- [ ] **Step 1: Do it" in (iwt / PLAN_FILE).read_text()
+    assert not wt.exists()
+    assert subprocess.run(["git", "-C", str(isolated), "branch", "--list", out["branch"]], capture_output=True, text=True).stdout.strip() == ""
+    assert state.read_job(isolated, out["id"])["stage"] == "merged"
+    assert "Merge " + out["id"] in subprocess.run(["git", "-C", str(iwt), "log", "-1", "--format=%s"], capture_output=True, text=True).stdout
+
+
+def test_merge_job_on_conflict_aborts_and_lands_nothing(isolated):
+    out = state.open_job(isolated, PLAN_FILE, 1, "demo", "isolated")
+    wt, iwt = Path(out["worktree"]), Path(out["integration_worktree"])
+    (wt / "app/util.py").write_text("x = 2\n")
+    git(wt, "commit", "-qam", "job")
+    (iwt / "app/util.py").write_text("x = 3\n")
+    git(iwt, "commit", "-qam", "other")
+    merged = state.merge_job(isolated, out["id"])
+    assert merged["ok"] is False and "conflict" in merged["reason"]
+    assert subprocess.run(["git", "-C", str(iwt), "status", "--porcelain"], capture_output=True, text=True).stdout == ""
+    assert wt.exists() and state.read_job(isolated, out["id"])["stage"] == "build"
+
+
+def test_merge_job_of_an_adhoc_plan_ticks_nothing(isolated):
+    plan = state.adhoc_plan(isolated, "tier=light Change x")
+    state.write_run(isolated, plan["plan_file"], "isolated")
+    out = state.open_job(isolated, plan["plan_file"], 1, "demo", "isolated")
+    git(Path(out["worktree"]), "commit", "-q", "--allow-empty", "-m", "work")
+    assert state.merge_job(isolated, out["id"])["ok"]
+    assert state.read_job(isolated, out["id"])["stage"] == "merged"

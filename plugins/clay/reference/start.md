@@ -69,4 +69,4 @@ continue from them, stash them or stop. Before continuing, say in one line per j
 `factory/jobs/_runs/adhoc-<YYYYMMDD-HHMMSS>-<slug>.md` (title from the first words of the text, tier `medium` unless a leading `tier=<name>` says
 `light`, `medium`, `careful`, `heavy` or `fable`, one `Accept` criterion taken from the text) and prints `plan_file`, `plan_stem`, `title` and `tier`; an
 unknown tier or an empty text exits 2. The file is local and git ignores it, so it never reaches the repo's plans folder. Use `plan_file` as the plan path
-for `run`, `lock`, `new-job` and `begin-job`, and run it through the Job loop and Completion. Landing skips the tick (there is nothing in the repo to tick), and Completion does what `completion.md` says for an ad hoc plan.
+for `run`, `lock` and `open-job`, and run it through the Job loop and Completion. Landing skips the tick (there is nothing in the repo to tick), and Completion does what `completion.md` says for an ad hoc plan.

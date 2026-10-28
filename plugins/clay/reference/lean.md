@@ -23,7 +23,7 @@ when its tier is `light` or `medium`, it declares `Files` whose routing (`routin
 
 ## The lean job
 
-1. **Create.** `state.py begin-job ... --lean`, in the run's mode: isolated mode still cuts the job's branch and worktree from the
+1. **Create.** `state.py open-job ... --lean`, in the run's mode: isolated mode still cuts the job's branch and worktree from the
    integration branch. `job.json` records `lean: true` and `verify`, the task's commands.
 2. **Build.** Do the builder's work yourself in the job's worktree: read `<plugin root>/agents/builder.md` and follow it, test first,
    and write `build.md`. Record no builder usage. A `NEEDS_INPUT` goes to the user as `questions.md` says for the builder. One rule of

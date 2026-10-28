@@ -171,12 +171,12 @@ def _verify_commands(task) -> list[str]:
 
 
 def new_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, branch: str, worktree: str, base: str | None = None,
-            lean: bool = False) -> dict:
+            lean: bool = False, job_id: str | None = None) -> dict:
     root = Path(root)
     path = Path(plan_file) if Path(plan_file).is_absolute() else root / plan_file
     plan = parse_plan(path.read_text(), default_repo=repo_name)
     task = next(t for t in plan.tasks if t.number == task_number)
-    job_id = claim_id(root, slugify(task.title))
+    job_id = job_id or claim_id(root, slugify(task.title))
     folder = jobs_dir(root) / job_id
     (folder / "task.md").write_text(render_brief(plan_file, task, repo_name))
     head = base or git(worktree, "rev-parse", "HEAD").strip()
@@ -194,11 +194,85 @@ def new_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, b
 
 
 def begin_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, branch: str, worktree: str, base: str | None = None,
-              lean: bool = False) -> dict:
+              lean: bool = False, job_id: str | None = None) -> dict:
     """new_job and the move to the build stage in one step."""
-    out = new_job(root, plan_file, task_number, repo_name, mode, branch, worktree, base, lean)
+    out = new_job(root, plan_file, task_number, repo_name, mode, branch, worktree, base, lean, job_id)
     set_stage(root, out["id"], "build")
     return {**out, "stage": "build"}
+
+
+def factory_dir(root) -> Path:
+    """Where the worktrees of isolated runs live: next to the repo, never inside it."""
+    root = Path(root).resolve()
+    return root.parent / f"{root.name}-factory"
+
+
+def _git_run(cwd, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True)
+
+
+def open_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, lean: bool = False) -> dict:
+    """Claim a job and begin it. Isolated: the plan's integration branch `factory/<plan>` and its worktree
+    `<repo-parent>/<repo-name>-factory/_integration-<plan>` are created the first time, from the repo's main branch; the job gets
+    `factory/<plan>--<job-id>` (a branch cannot nest under another one) in `.../<job-id>`, cut from the integration branch, and only
+    then its job.json, so a failure leaves at most an abandoned claim. Current branch: the job runs in the repo on its branch."""
+    root = Path(root)
+    if mode != "isolated":
+        return {"ok": True, **begin_job(root, plan_file, task_number, repo_name, mode,
+                                        git(root, "branch", "--show-current").strip(), str(root), lean=lean)}
+    path = _plan_path(root, plan_file)
+    task = next(t for t in parse_plan(path.read_text(), default_repo=repo_name).tasks if t.number == task_number)
+    integration, base_dir = f"factory/{path.stem}", factory_dir(root)
+    iwt = base_dir / f"_integration-{path.stem}"
+    if not iwt.exists():
+        if _commit(root, integration):
+            done = _git_run(root, "worktree", "add", str(iwt), integration)
+        elif main := _main_branch(root):
+            done = _git_run(root, "worktree", "add", "-b", integration, str(iwt), main)
+        else:
+            return {"ok": False, "reason": "no main branch to start the integration branch from"}
+        if done.returncode:
+            return {"ok": False, "reason": done.stderr.strip()}
+    job_id = claim_id(root, slugify(task.title))
+    branch, wt = f"{integration}--{job_id}", base_dir / job_id
+    done = _git_run(root, "worktree", "add", "-b", branch, str(wt), integration)
+    if done.returncode:
+        return {"ok": False, "reason": done.stderr.strip(), "id": job_id}
+    out = begin_job(root, plan_file, task_number, repo_name, mode, branch, str(wt), lean=lean, job_id=job_id)
+    rp = run_path(root, path.stem)
+    if rp.exists():
+        run = json.loads(rp.read_text())
+        run.update(integration=integration, integration_worktree=str(iwt))
+        rp.write_text(json.dumps(run, indent=2))
+    return {"ok": True, **out, "branch": branch, "worktree": str(wt), "integration": integration, "integration_worktree": str(iwt)}
+
+
+def merge_job(root, job_id: str) -> dict:
+    """Isolated landing in one step: merge the job branch into the integration worktree, tick the task in the plan there (not for
+    an ad hoc plan, which is not in the repo), commit "Merge <job-id>", remove the job worktree, delete the job branch where it was
+    merged (`-d` checks against the HEAD it runs in) and record the job as merged. A conflict aborts the merge and lands nothing."""
+    root = Path(root)
+    job = read_job(root, job_id)
+    run = read_run(root, job["plan"])
+    iwt = Path(run.get("integration_worktree") or factory_dir(root) / f"_integration-{job['plan']}")
+    merge = _git_run(iwt, "merge", "--no-ff", "--no-commit", job["branch"])
+    if merge.returncode:
+        _git_run(iwt, "merge", "--abort")
+        return {"ok": False, "reason": "conflict: " + (merge.stdout + merge.stderr).strip()[-400:]}
+    plan = Path(run.get("path") or "")
+    if plan.parts and "_runs" not in plan.parts:
+        rel = plan.relative_to(root.resolve()) if plan.is_absolute() else plan
+        tick_plan(root, str(iwt / rel), job["task"])
+        _git_run(iwt, "add", str(rel))
+    done = _git_run(iwt, "commit", "-m", f"Merge {job_id}")
+    if done.returncode:
+        _git_run(iwt, "merge", "--abort")
+        return {"ok": False, "reason": "commit failed: " + done.stderr.strip()[-400:]}
+    head = git(iwt, "rev-parse", "HEAD").strip()
+    removed = _git_run(root, "worktree", "remove", job["worktree"]).returncode == 0
+    deleted = _git_run(iwt, "branch", "-d", job["branch"]).returncode == 0
+    land_job(root, job_id, "merged", head)
+    return {"ok": True, "head": head, "worktree_removed": removed, "branch_deleted": deleted}
 
 
 def git_identity(root) -> dict:
@@ -1181,6 +1255,15 @@ def main(argv: list[str]) -> int:
     cl = sub.add_parser("clean")
     cl.add_argument("--root", default=".")
     cl.add_argument("--plan", required=True)
+    oj = sub.add_parser("open-job")
+    oj.add_argument("--root", default=".")
+    for opt in ("--plan-file", "--repo-name", "--mode"):
+        oj.add_argument(opt, required=True)
+    oj.add_argument("--task", type=int, required=True)
+    oj.add_argument("--lean", action="store_true")
+    mj = sub.add_parser("merge-job")
+    mj.add_argument("--root", default=".")
+    mj.add_argument("job")
     for name in ("setup", "run", "preflight", "new-job", "begin-job", "stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks", "rework", "lean-check", "promote"):
         sp = sub.add_parser(name)
         sp.add_argument("--root", default=".")
@@ -1228,6 +1311,10 @@ def main(argv: list[str]) -> int:
             sp.add_argument("--stage", dest="to_stage", default="committed")
             sp.add_argument("--head", required=True)
     a = ap.parse_args(argv)
+    if a.cmd in ("open-job", "merge-job"):
+        out = open_job(a.root, a.plan_file, a.task, a.repo_name, a.mode, a.lean) if a.cmd == "open-job" else merge_job(a.root, a.job)
+        print(json.dumps(out, indent=2))
+        return 0 if out["ok"] else 1
     if a.cmd == "clean":
         out = clean_jobs(a.root, a.plan)
         print(json.dumps(out, indent=2))
