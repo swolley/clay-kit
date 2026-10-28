@@ -1714,12 +1714,124 @@ def test_merge_job_of_an_adhoc_plan_ticks_nothing(isolated):
     assert state.read_job(isolated, out["id"])["stage"] == "merged"
 
 
-def test_concern_opens_one_file_per_job(repo):
-    """The orchestrator may send an approved job back to the approver once: a second concern would loop."""
+def test_concern_creates_file_and_recovers_pending_without_overwriting(repo):
     state.setup(repo, repo)
-    j = new(repo, 1)
-    first = state.concern(repo, j["id"])
-    assert first["ok"] and Path(first["file"]) == state.jobs_dir(repo) / j["id"] / "concern-1.md"
-    assert state.read_job(repo, j["id"])["concerns"] == 1
-    again = state.concern(repo, j["id"])
-    assert again["ok"] is False and "one" in again["reason"]
+    job_id = new(repo)["id"]
+    initial = state.concern(repo, job_id)
+    path = Path(initial["file"])
+    assert initial == {"ok": True, "file": str(path), "status": "pending", "resumed": False}
+    assert path.exists() and "## Points" in path.read_text()
+    assert state.read_job(repo, job_id)["concern"] == {"status": "pending", "file": "concern-1.md"}
+
+    path.write_text("# Concern 1\n\n## Points\n\n1. task.md says Works; app/util.py:1 misses it\n")
+    again = state.concern(repo, job_id)
+    assert again["ok"] and again["resumed"] and again["file"] == str(path)
+    assert "app/util.py:1" in path.read_text()
+    assert state.read_job(repo, job_id)["concerns"] == 1
+
+
+def test_concern_recovers_file_written_before_state_and_recreates_missing_file(repo):
+    state.setup(repo, repo)
+    job_id = new(repo)["id"]
+    path = state.jobs_dir(repo) / job_id / "concern-1.md"
+    path.write_text("# Concern 1\n\n## Points\n\n1. task.md: Works; app/util.py:1\n")
+    recovered = state.concern(repo, job_id)
+    assert recovered["ok"] and recovered["resumed"]
+    assert "task.md" in path.read_text()
+    path.unlink()
+    recovered = state.concern(repo, job_id)
+    assert recovered["ok"] and recovered["resumed"] and path.exists()
+    assert state.read_job(repo, job_id)["concern"]["status"] == "pending"
+
+
+def test_concern_legacy_counter_without_state_is_resumable(repo):
+    state.setup(repo, repo)
+    job_id = new(repo)["id"]
+    job = state.read_job(repo, job_id)
+    job["concerns"] = 1
+    state.write_job(repo, job)
+    out = state.concern(repo, job_id)
+    assert out["ok"] and out["resumed"]
+    assert Path(out["file"]).exists()
+
+
+def test_concern_does_not_resolve_from_the_original_approve(repo):
+    state.setup(repo, repo)
+    job_id = new(repo)["id"]
+    path = Path(state.concern(repo, job_id)["file"])
+    folder = path.parent
+    (folder / "decision.md").write_text("APPROVE\n\n## Rationale\nLooks good.\n")
+    assert state.resolve_concern(repo, job_id)["ok"] is False  # the skeleton has no numbered points
+    path.write_text("# Concern 1\n\n## Points\n\n1. task.md: Works; app/util.py:1\n")
+    out = state.resolve_concern(repo, job_id)
+    assert out["ok"] is False and "## Concerns" in out["reason"]
+    assert state.read_job(repo, job_id)["concern"]["status"] == "pending"
+
+
+def test_approver_can_reject_an_unfounded_concern_and_land(repo):
+    state.setup(repo, repo)
+    job_id = new(repo)["id"]
+    folder = Path(state.concern(repo, job_id)["file"]).parent
+    (folder / "concern-1.md").write_text("# Concern 1\n\n## Points\n\n1. task.md: Works; app/util.py:1\n")
+    (folder / "decision.md").write_text(
+        "APPROVE\n\n## Rationale\nRequirement satisfied.\n\n## Concerns\n1. app/util.py:1 already satisfies task.md.\n"
+    )
+    answer = state.resolve_concern(repo, job_id)
+    assert answer["ok"] and answer["status"] == "resolved" and answer["verdict"] == "APPROVE"
+    assert state.concern(repo, job_id)["ok"] is False  # never open a second concern
+    assert state.resolve_concern(repo, job_id)["ok"] is False
+    assert state.land_job(repo, job_id, "committed", "abc")["stage"] == "committed"
+
+
+def test_upheld_concern_returns_changes_to_the_builder(repo):
+    state.setup(repo, repo)
+    job_id = new(repo)["id"]
+    folder = Path(state.concern(repo, job_id)["file"]).parent
+    (folder / "concern-1.md").write_text("# Concern 1\n\n## Points\n\n1. task.md: Works; app/util.py:1\n")
+    (folder / "decision.md").write_text("CHANGES\n\n## Issues\n1. app/util.py:1 does not meet task.md.\n")
+    out = state.resolve_concern(repo, job_id)
+    assert out["ok"] and out["verdict"] == "CHANGES"
+    assert state.read_job(repo, job_id)["concern"] == {
+        "status": "resolved", "file": "concern-1.md", "verdict": "CHANGES"
+    }
+    state.set_stage(repo, job_id, "build")
+    assert state.read_job(repo, job_id)["stage"] == "build"
+    assert state.concern(repo, job_id)["ok"] is False
+
+
+def test_pending_concern_blocks_direct_landing_and_recovers_on_cli(repo, capsys):
+    state.setup(repo, repo)
+    job_id = new(repo)["id"]
+    assert state.main(["concern", job_id, "--root", str(repo)]) == 0
+    first = json.loads(capsys.readouterr().out)
+    assert Path(first["file"]).is_file()
+    assert state.main(["concern", job_id, "--root", str(repo)]) == 0
+    assert json.loads(capsys.readouterr().out)["resumed"] is True
+    with pytest.raises(ValueError, match="pending concern"):
+        state.land_job(repo, job_id, "committed", "abc")
+    assert state.main(["land", job_id, "--root", str(repo), "--stage", "committed", "--head", "abc"]) == 1
+    assert json.loads(capsys.readouterr().out)["ok"] is False
+    assert state.read_job(repo, job_id)["stage"] == "spec"
+
+
+def test_pending_concern_blocks_isolated_merge(isolated):
+    out = state.open_job(isolated, PLAN_FILE, 1, "demo", "isolated")
+    state.concern(isolated, out["id"])
+    merged = state.merge_job(isolated, out["id"])
+    assert merged["ok"] is False and "pending concern" in merged["reason"]
+    assert Path(out["worktree"]).exists()
+    assert state.read_job(isolated, out["id"])["stage"] == "build"
+
+
+def test_resolve_concern_cli_refuses_unanswered_and_accepts_answer(repo, capsys):
+    state.setup(repo, repo)
+    job_id = new(repo)["id"]
+    path = Path(state.concern(repo, job_id)["file"])
+    path.write_text("# Concern 1\n\n## Points\n\n1. task.md: Works; app/util.py:1\n")
+    assert state.main(["resolve-concern", job_id, "--root", str(repo)]) == 1
+    assert json.loads(capsys.readouterr().out)["ok"] is False
+    (path.parent / "decision.md").write_text(
+        "CHANGES\n\n## Issues\n1. Missing requirement at app/util.py:1.\n"
+    )
+    assert state.main(["resolve-concern", job_id, "--root", str(repo)]) == 0
+    assert json.loads(capsys.readouterr().out)["verdict"] == "CHANGES"
