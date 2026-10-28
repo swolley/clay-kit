@@ -361,10 +361,17 @@ def preflight(root, plan_file: str | None = None, repo_name: str = "", host: str
         view["lean"], view["lean_reason"] = lean_eligibility(task, rules, adhoc=path.parent.name == "_runs")
     out["lean_count"] = sum(1 for t in out["plan"]["tasks"] if t["lean"])
     out["long"] = out["lean_count"] > LONG_LEAN
-    out["jobs"] = [
-        {k: j.get(k) for k in ("id", "task", "stage", "round", "build_round", "head", "branch", "worktree")}
-        for j in load_jobs(root) if j.get("plan") == path.stem
-    ]
+    out["jobs"] = []
+    for j in load_jobs(root):
+        if j.get("plan") != path.stem:
+            continue
+        view = {k: j.get(k) for k in ("id", "task", "stage", "round", "build_round", "head", "branch", "worktree")}
+        status = j.get("concern", {}).get("status")
+        if status is None and (j.get("concerns") or (jobs_dir(root) / j["id"] / "concern-1.md").is_file()):
+            status = "pending"  # recovers a crash between writing the concern file and job.json
+        if status:
+            view["concern_status"] = status
+        out["jobs"].append(view)
     out["audit"] = [f for f in audit_plans(root) if (root.resolve() / f["root"] / f["path"]) == path.resolve()]
     out["git_identity"] = git_identity(root)
     return out
