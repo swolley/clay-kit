@@ -17,7 +17,7 @@ from pathlib import Path
 ASK_TOOLS = ("AskUserQuestion", "request_user_input")
 # User records the person did not type: a background task finishing, a local command's output, the summary after a compaction.
 # A slash command the person typed (`<command-name>`) does end a wait.
-NOT_TYPED = ("<task-notification>", "<local-command-stdout>", "This session is being continued")
+NOT_TYPED = ("<task-notification>", "<system-reminder>", "<local-command-stdout>", "This session is being continued")
 FIELDS = (("input", "input_tokens"), ("output", "output_tokens"), ("cache_read", "cache_read_input_tokens"),
           ("cache_write", "cache_creation_input_tokens"))
 CODEX_FIELDS = (("input", "input_tokens"), ("cached_input", "cached_input_tokens"), ("output", "output_tokens"),
@@ -88,10 +88,13 @@ def _times(records: list[dict]) -> dict:
         return {"start": None, "end": None, "wall_seconds": 0, "waiting_seconds": 0, "active_seconds": 0}
     asked = {b.get("id") for _, _, rec in timed if rec.get("type") == "assistant"
              for b in ((rec.get("message") or {}).get("content") or []) if isinstance(b, dict) and b.get("name") in ASK_TOOLS}
-    waiting = 0.0
-    for (t0, _, _), (t1, _, rec) in zip(timed, timed[1:]):
-        if _human_input(rec, asked):
-            waiting += t1 - t0
+    waiting, last_reply = 0.0, None  # a wait runs from the model's last message to the person's input, whatever sits between
+    for t, _, rec in timed:
+        if rec.get("type") == "assistant":
+            last_reply = t
+        elif last_reply is not None and _human_input(rec, asked):
+            waiting += t - last_reply
+            last_reply = None
     wall = timed[-1][0] - timed[0][0]
     return {"start": timed[0][0], "end": timed[-1][0], "wall_seconds": round(wall), "waiting_seconds": round(waiting),
             "active_seconds": round(wall - waiting)}

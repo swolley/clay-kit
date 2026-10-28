@@ -105,3 +105,17 @@ def test_a_typed_slash_command_ends_a_wait(tmp_path):
     ])
     out = session_usage.summarize(main, codex_home=tmp_path / "nocodex")
     assert out["waiting_seconds"] == 180 and out["active_seconds"] == 20
+
+
+def test_a_wait_runs_from_the_last_assistant_message(tmp_path):
+    main = tmp_path / "S7.jsonl"
+    write_jsonl(main, [
+        user("2026-10-29T10:00:00Z", "<system-reminder>\nLinked sessions now</system-reminder>"),
+        user("2026-10-29T10:00:01Z", "go"),
+        assistant("2026-10-29T10:00:10Z", "m1", "claude-opus-5-5", 1, 1),
+        {"type": "system", "timestamp": "2026-10-29T10:05:09Z"},  # bookkeeping written just before the person's message
+        user("2026-10-29T10:05:10Z", "<command-message>clay:factory-run</command-message>\n<command-name>/clay:factory-run</command-name>"),
+        assistant("2026-10-29T10:05:20Z", "m2", "claude-opus-5-5", 1, 1),
+    ])
+    out = session_usage.summarize(main, codex_home=tmp_path / "nocodex")
+    assert out["waiting_seconds"] == 300 and out["active_seconds"] == 20
