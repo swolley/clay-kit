@@ -272,11 +272,10 @@ def test_missing_codex_manifest_fails(tmp_path):
     assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "missing" in p for p in validate(tmp_path))
 
 
-
 def test_version_mismatch_fails(tmp_path):
     make_scaffold(tmp_path)
-    edit_json(tmp_path, "plugins/clay/.cursor-plugin/plugin.json", version="0.2.0")
-    assert any("plugins/clay/.cursor-plugin/plugin.json" in p and "plugins/clay/.claude-plugin/plugin.json" in p and "version" in p for p in validate(tmp_path))
+    edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", version="0.2.0")
+    assert any("plugins/clay/.codex-plugin/plugin.json" in p and "plugins/clay/.claude-plugin/plugin.json" in p and "version" in p for p in validate(tmp_path))
 
 
 def test_codex_description_mismatch_fails(tmp_path):
@@ -285,15 +284,10 @@ def test_codex_description_mismatch_fails(tmp_path):
     assert any("plugins/clay/.codex-plugin/plugin.json" in p and "description" in p for p in validate(tmp_path))
 
 
-
-
-
-
 def test_codex_hooks_not_empty_inline_fails(tmp_path):
     make_scaffold(tmp_path)
     edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", hooks="./hooks/hooks.json")
     assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "hooks" in p for p in validate(tmp_path))
-
 
 
 def test_codex_path_without_dot_slash_fails(tmp_path):
@@ -316,7 +310,6 @@ def test_codex_path_list_is_checked_entry_by_entry(tmp_path):
     assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "./" in p for p in validate(tmp_path))
     edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", skills=["./skills/", "./more/"])
     assert validate(tmp_path) == []
-
 
 
 def test_claude_marketplace_version_must_match_plugin_version(tmp_path):
