@@ -1779,7 +1779,8 @@ def test_approver_can_reject_an_unfounded_concern_and_land(repo):
     )
     answer = state.resolve_concern(repo, job_id)
     assert answer["ok"] and answer["status"] == "resolved" and answer["verdict"] == "APPROVE"
-    assert state.preflight(repo, PLAN_FILE, "demo")["jobs"][0]["concern_status"] == "resolved"
+    view = state.preflight(repo, PLAN_FILE, "demo")["jobs"][0]
+    assert (view["concern_status"], view["concern_verdict"], view["concern_round"]) == ("resolved", "APPROVE", 0)
     assert state.concern(repo, job_id)["ok"] is False  # never open a second concern
     assert state.resolve_concern(repo, job_id)["ok"] is False
     assert state.land_job(repo, job_id, "committed", "abc")["stage"] == "committed"
