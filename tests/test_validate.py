@@ -42,8 +42,6 @@ def make_scaffold(root: Path) -> None:
     put_json(root, ".claude-plugin/marketplace.json", {"name": "k", "plugins": [{"name": "clay", "source": "./plugins/clay", "description": DESC, "version": "0.1.0", "category": "skill"}]})
     put_json(root, "plugins/clay/.claude-plugin/plugin.json", {"name": "clay", "version": "0.1.0", "description": DESC})
     put_json(root, "plugins/clay/.codex-plugin/plugin.json", {"name": "clay", "version": "0.1.0", "description": DESC, "skills": "./skills/", "hooks": {"hooks": {}}, "interface": {"displayName": "Clay", "category": "skill"}})
-    put_json(root, "plugins/clay/.cursor-plugin/plugin.json", {"name": "clay", "version": "0.1.0", "description": DESC, "hooks": {"version": 1, "hooks": {}}})
-    put_json(root, ".cursor-plugin/marketplace.json", {"name": "k", "owner": {"name": "o"}, "metadata": {"description": "m"}, "plugins": [{"name": "clay", "source": "./plugins/clay", "description": DESC}]})
     write(root, "plugins/clay/skills/factory-brainstorm/SKILL.md", skill("factory-brainstorm"))
     write(root, "plugins/clay/skills/factory-plan/SKILL.md", skill("factory-plan"))
     for cmd in MANUAL:
@@ -53,7 +51,7 @@ def make_scaffold(root: Path) -> None:
     write(root, "plugins/clay/agents/builder.md", agent("builder") + ROOT_SENTENCE + "\n")
     write(root, "plugins/clay/reference/orchestrator.md", "core\n")
     write(root, "plugins/clay/reference/hosts.md", "hosts\n")
-    for host in ("claude", "codex", "cursor"):
+    for host in ("claude", "codex"):
         write(root, f"plugins/clay/reference/hosts-{host}.md", f"{host}\n")
 
 
@@ -274,14 +272,6 @@ def test_missing_codex_manifest_fails(tmp_path):
     assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "missing" in p for p in validate(tmp_path))
 
 
-def test_missing_cursor_manifest_and_marketplace_fail(tmp_path):
-    make_scaffold(tmp_path)
-    (tmp_path / "plugins/clay/.cursor-plugin/plugin.json").unlink()
-    (tmp_path / ".cursor-plugin/marketplace.json").unlink()
-    problems = validate(tmp_path)
-    assert any(p.startswith("plugins/clay/.cursor-plugin/plugin.json:") and "missing" in p for p in problems)
-    assert any(p.startswith(".cursor-plugin/marketplace.json:") and "missing" in p for p in problems)
-
 
 def test_version_mismatch_fails(tmp_path):
     make_scaffold(tmp_path)
@@ -295,28 +285,8 @@ def test_codex_description_mismatch_fails(tmp_path):
     assert any("plugins/clay/.codex-plugin/plugin.json" in p and "description" in p for p in validate(tmp_path))
 
 
-def test_cursor_unknown_key_fails(tmp_path):
-    make_scaffold(tmp_path)
-    edit_json(tmp_path, "plugins/clay/.cursor-plugin/plugin.json", types="./types/index.d.ts")
-    assert any(p.startswith("plugins/clay/.cursor-plugin/plugin.json:") and "types" in p for p in validate(tmp_path))
 
 
-def test_cursor_marketplace_unknown_key_fails(tmp_path):
-    make_scaffold(tmp_path)
-    edit_json(tmp_path, ".cursor-plugin/marketplace.json", version="1")
-    assert any(p.startswith(".cursor-plugin/marketplace.json:") and "version" in p for p in validate(tmp_path))
-
-
-def test_cursor_marketplace_source_mismatch_fails(tmp_path):
-    make_scaffold(tmp_path)
-    edit_json(tmp_path, ".cursor-plugin/marketplace.json", plugins=[{"name": "clay", "source": "./plugins/other", "description": DESC}])
-    assert any(p.startswith(".cursor-plugin/marketplace.json:") and "clay" in p and "source" in p for p in validate(tmp_path))
-
-
-def test_cursor_marketplace_plugin_list_mismatch_fails(tmp_path):
-    make_scaffold(tmp_path)
-    edit_json(tmp_path, ".cursor-plugin/marketplace.json", plugins=[])
-    assert any(p.startswith(".cursor-plugin/marketplace.json:") and "clay" in p for p in validate(tmp_path))
 
 
 def test_codex_hooks_not_empty_inline_fails(tmp_path):
@@ -324,11 +294,6 @@ def test_codex_hooks_not_empty_inline_fails(tmp_path):
     edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", hooks="./hooks/hooks.json")
     assert any(p.startswith("plugins/clay/.codex-plugin/plugin.json:") and "hooks" in p for p in validate(tmp_path))
 
-
-def test_cursor_hooks_not_empty_inline_fails(tmp_path):
-    make_scaffold(tmp_path)
-    edit_json(tmp_path, "plugins/clay/.cursor-plugin/plugin.json", hooks="./hooks/hooks.json")
-    assert any(p.startswith("plugins/clay/.cursor-plugin/plugin.json:") and "hooks" in p for p in validate(tmp_path))
 
 
 def test_codex_path_without_dot_slash_fails(tmp_path):
@@ -352,13 +317,6 @@ def test_codex_path_list_is_checked_entry_by_entry(tmp_path):
     edit_json(tmp_path, "plugins/clay/.codex-plugin/plugin.json", skills=["./skills/", "./more/"])
     assert validate(tmp_path) == []
 
-
-@pytest.mark.parametrize("key", ["skills", "agents"])
-def test_cursor_manifest_must_not_declare_skills_or_agents(tmp_path, key):
-    make_scaffold(tmp_path)
-    assert validate(tmp_path) == []
-    edit_json(tmp_path, "plugins/clay/.cursor-plugin/plugin.json", **{key: "./" + key + "/"})
-    assert any(p.startswith("plugins/clay/.cursor-plugin/plugin.json:") and repr(key) in p and "default" in p for p in validate(tmp_path))
 
 
 def test_claude_marketplace_version_must_match_plugin_version(tmp_path):
