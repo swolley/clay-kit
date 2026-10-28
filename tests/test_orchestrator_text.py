@@ -765,3 +765,8 @@ def test_the_peer_check_outside_the_start_is_a_probe():
     for part in ("reference/peer.md", "reference/job-loop.md"):
         flat = " ".join(read(part).split())
         assert "--agent builder --host <host> --probe" in flat, part
+
+
+def test_a_sandboxed_approver_reports_the_rerun_it_could_not_make():
+    gate = " ".join(read("agents/approver.md").split("1. **Evidence.**")[1].split("2. **Reviews.**")[0].split())
+    assert "`Sandbox:`" in gate and "could not re-run" in gate and "does not fail this gate" in gate
