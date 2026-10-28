@@ -4,7 +4,6 @@ This is a declarative checklist, not a new execution abstraction. Keep the
 workflow and persistent job state independent of the host. Host-specific tool
 calls belong at the agent execution boundary.
 
-| Capability | Claude Code | Codex | Cursor |
 | --- | --- | --- | --- |
 | Spawn role | Named plugin agent | Generic subagent + role file | Plugin agent or generic fallback |
 | Resume live builder | SendMessage | send_input | No documented resume; fresh builder |
