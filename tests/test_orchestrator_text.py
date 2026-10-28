@@ -738,10 +738,24 @@ def test_claude_passes_the_tier_effort_as_the_users_choice():
 
 
 def test_an_orchestrator_concern_goes_to_the_approver_not_the_user():
-    """The orchestrator flags, the approver decides, the builder fixes: one concern per job, and no question to the user."""
+    """Flag one explicit requirement, let the approver decide, then send upheld issues to the builder."""
     loop = " ".join(read("reference/job-loop.md").split())
-    assert "`state.py concern <job>`" in loop and "neither land nor ask" in loop and "`CHANGES` (a concern upheld) to step 5" in loop
+    assert "`concerns.md`" in loop and "neither land nor ask" in loop
+    concerns = " ".join(read("reference/concerns.md").split())
+    for name in ("`state.py concern <job>`", "`state.py resolve-concern <job>`", "`concern-1.md`", "`decision.md`"):
+        assert name in concerns
+    assert "normal resume/escalation rule" in concerns and "do not start a fourth automatic round" in concerns
+    assert "On resume with `resolved`" in concerns and "pending" in concerns
     approver = " ".join(read("agents/approver.md").split())
     assert "## Concerns" in approver and "`CHANGES` only in answer to a concern" in approver
     assert "a reading the text leaves open is not a defect" in approver
+    builder = " ".join(read("agents/builder.md").split())
+    assert "`concern-1.md` and `decision.md`" in builder
     assert "the approver for a concern" in read("reference/hosts-claude.md") and "a concern starts it again" in read("reference/hosts-codex.md")
+
+
+def test_concern_reference_is_loaded_only_when_needed():
+    for command in ("factory-run", "factory-task"):
+        t = read(f"skills/{command}/SKILL.md")
+        assert "`concerns.md` only for a concern or its resume" in t
+        assert "<plugin root>/reference/concerns.md" not in t.split("Read these parts")[1].split("Read `")[0]
