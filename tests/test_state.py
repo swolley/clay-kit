@@ -1794,11 +1794,21 @@ def test_upheld_concern_returns_changes_to_the_builder(repo):
     out = state.resolve_concern(repo, job_id)
     assert out["ok"] and out["verdict"] == "CHANGES"
     assert state.read_job(repo, job_id)["concern"] == {
-        "status": "resolved", "file": "concern-1.md", "verdict": "CHANGES"
+        "status": "resolved", "file": "concern-1.md", "verdict": "CHANGES", "round": 0
     }
+    with pytest.raises(ValueError, match="new review round"):
+        state.land_job(repo, job_id, "committed", "abc")
     state.set_stage(repo, job_id, "build")
     assert state.read_job(repo, job_id)["stage"] == "build"
     assert state.concern(repo, job_id)["ok"] is False
+    (repo / "app/util.py").write_text("x = 2\n")
+    assert state.route_job(repo, job_id)["lite"] is True
+    with pytest.raises(ValueError, match="fresh APPROVE"):
+        state.land_job(repo, job_id, "committed", "abc")
+    (folder / "round-1/review-code.md").write_text("VERDICT: PASS\n")
+    assert state.check_verdicts(repo, job_id)["all_pass"]
+    (folder / "decision.md").write_text("APPROVE\n\n## Rationale\nRework passed.\n")
+    assert state.land_job(repo, job_id, "committed", "abc")["stage"] == "committed"
 
 
 def test_pending_concern_blocks_direct_landing_and_recovers_on_cli(repo, capsys):
