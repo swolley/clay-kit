@@ -30,12 +30,9 @@ def test_codex_without_file(tmp_path):
     assert resolve(tmp_path, "codex", tier="heavy") == {"model": None, "effort": "xhigh", "source": "session"}
 
 
-def test_cursor_without_file(tmp_path):
-    assert resolve(tmp_path, "cursor", tier="light") == {"model": None, "effort": None, "source": "session"}
-
 
 def test_fable_off_claude_is_heavy(tmp_path):
-    for host in ("codex", "cursor"):
+    for host in ("codex",):
         assert resolve(tmp_path, host, tier="fable") == resolve(tmp_path, host, tier="heavy")
     write_models(tmp_path, {"codex": {"tiers": {"fable": {"model": "x"}}}})
     assert resolve(tmp_path, "codex", tier="fable")["model"] == "x"
@@ -77,8 +74,6 @@ def test_risky_approver_mapping(tmp_path):
         ({"codex": {"agents": {"reviewer-cod": {"model": "x"}}}}, "codex", {"tier": "light"}, "reviewer-cod"),
         ({"claude": {"tiers": {"light": {"model": "gpt-x"}}}}, "claude", {"tier": "light"}, "gpt-x"),
         ({"claude": {"tiers": {"light": {"effort": "huge"}}}}, "claude", {"tier": "light"}, "huge"),
-        ({"cursor": {"tiers": {"light": {"model": "auto"}}}}, "cursor", {"tier": "light"}, "auto"),
-        ({"cursor": {"tiers": {"light": {"effort": "low"}}}}, "cursor", {"tier": "light"}, "cursor.tiers.light.effort"),
         ({"codex": {"tiers": {"light": {"model": ""}}}}, "codex", {"tier": "light"}, "codex.tiers.light.model"),
         ("", "claude", {"tier": "light"}, "models.json"),
         ([], "claude", {"tier": "light"}, "top level"),

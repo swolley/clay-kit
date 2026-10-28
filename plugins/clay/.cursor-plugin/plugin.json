@@ -1,9 +1,0 @@
-{
-  "name": "clay",
-  "version": "0.1.0",
-  "description": "The factory workflow: brainstorm a design, write a plan, then run each task through build, routed review and approval, with a progress band and pane.",
-  "hooks": {
-    "version": 1,
-    "hooks": {}
-  }
-}

@@ -18,7 +18,8 @@ plan, tell the user in one line and ask before running.
 ## Preconditions (run)
 
 1. The plan file exists. One call gathers what the start needs: `python3 <plugin root>/scripts/state.py preflight --root <repo> --plan-file <plan> --repo-name <name> --host <host>`.
-   It returns `plan` (as `factory_plan.py <plan> --repo <name> --root <repo>` prints it), `jobs` (for Resume), `audit`, `unclassified` and `peer`. If there are no tasks, point to the `factory-brainstorm` and `factory-plan` skills and stop.
+   It returns `plan` (as `factory_plan.py <plan> --repo <name> --root <repo>` prints it), `jobs` (for Resume), `audit`, `unclassified`, `peer` and `git_identity`. If there are no tasks, point to the `factory-brainstorm` and `factory-plan` skills and stop.
+   If `git_identity.ok` is false, give its `reason` and stop: no job could commit.
 2. Tell the user which defaults the parser applied (`defaults_applied`) and any `warnings`, in one line per task.
    Look for work that may already be done: a task that has no job and carries `done_signals` (its planned commit
    is already in the git history, or every file it creates exists) may already be implemented, for instance a plan that
@@ -46,7 +47,7 @@ plan, tell the user in one line and ask before running.
 |-------|-------|--------|
 | done | all non-cancelled steps checked | skip |
 | landed, not ticked | stage `merged` or `committed` | tick its steps (`state.py tick-plan`), commit the plan, skip |
-| interrupted | stage `spec`, `build`, `review` or `approve` | resume from that stage |
+| interrupted | stage `spec`, `build`, `review` or `approve` | resume from that stage; a pending concern or a just-resolved `CHANGES` follows `concerns.md` first |
 | needs-human | stage `needs-human` | do not touch; list it |
 | waiting-input | stage `waiting-input` | read the pending `questions-<k>.md` and ask again; see `questions.md` |
 | not started | no job | start |
@@ -68,4 +69,4 @@ continue from them, stash them or stop. Before continuing, say in one line per j
 `factory/jobs/_runs/adhoc-<YYYYMMDD-HHMMSS>-<slug>.md` (title from the first words of the text, tier `medium` unless a leading `tier=<name>` says
 `light`, `medium`, `careful`, `heavy` or `fable`, one `Accept` criterion taken from the text) and prints `plan_file`, `plan_stem`, `title` and `tier`; an
 unknown tier or an empty text exits 2. The file is local and git ignores it, so it never reaches the repo's plans folder. Use `plan_file` as the plan path
-for `run`, `lock`, `new-job` and `begin-job`, and run it through the Job loop and Completion. Landing skips the tick (there is nothing in the repo to tick), and Completion does what `completion.md` says for an ad hoc plan.
+for `run`, `lock` and `open-job`, and run it through the Job loop and Completion. Landing skips the tick (there is nothing in the repo to tick), and Completion does what `completion.md` says for an ad hoc plan.

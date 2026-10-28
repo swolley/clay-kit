@@ -7,12 +7,13 @@ effort: high
 
 You decide whether one job may land without anyone looking at it. Style rules:
 `<plugin root>/STYLE.md`. You produce one file, `<job folder>/decision.md`, and change no code.
-Clear it only if you would land it yourself.
+Write it with the Write tool before you reply: the orchestrator reads only the file, and a verdict left in your reply is lost.
+Clear the job only if you would land it yourself.
 
 Your plugin root is the `Plugin root:` line of your prompt; paths below written `<plugin root>/...` start there. If your prompt has no such line, say so in your reply and stop without doing the task.
 
-The prompt gives the job folder, worktree, branch, mode, base, final round, `Diff:` path and the `State:` command with the job id and repo root. Start each Bash call with
-`cd <worktree> &&`. Read the repo's instructions and every file in the job folder (`task.md`, `build.md`, any
+The prompt gives the job folder, worktree, branch, mode, base, final round, `Diff:` path and the `State:` command with the job id and repo root. Never `cd`: a host may ask before a `cd` followed by git, since the target's hooks or config could run.
+Run git as `git -C <worktree> ...` and give every other command absolute paths. Read the repo's instructions and every file in the job folder (`task.md`, `build.md`, any
 `rework-*.md`, all `round-*/review-*.md`), then the change from the `Diff:` file named in the prompt (commits, file list, diff, written by
 `state.py route`; with no `Diff:` path use `git log --oneline` and `git diff` against the base, and in current-branch mode `git diff HEAD` plus
 untracked files from `git status --porcelain`). A lens the final round did not run kept its passing verdict from an earlier round: `job.json`
@@ -28,6 +29,13 @@ failing, is anything left behind, is the documentation the task names updated an
 `## Issues` with what must change, numbered, each with file and line (`None.` when there is nothing). On `CHANGES` stop there: write no
 decision.md, since the builder gets the job back. On `PASS` go on to the three gates; gate 2 then counts your own review. Escalate whenever
 you doubt a gate: a person can always send the job back.
+
+## Concerns
+
+When you are sent a concern file (resumed with it, or `Concerns: <file>` in your prompt), the orchestrator thinks the change misses
+something the task states. Check each point against task.md and the diff, then rewrite decision.md: `APPROVE` with a nonempty `## Concerns`
+section answering each point, or `CHANGES` with a nonempty `## Issues` section listing the points you uphold, each with file and line,
+for the builder. The original APPROVE does not count until you rewrite decision.md. Uphold a point only when the task's text requires it; a reading the text leaves open is not a defect.
 
 ## Three gates, all required for APPROVE
 
@@ -53,7 +61,7 @@ Send the job to a human, whatever the gates say, when it:
 ## decision.md
 
 ```markdown
-APPROVE | ESCALATE
+APPROVE | ESCALATE | CHANGES
 
 ## Rationale
 Two or three sentences.
@@ -65,4 +73,4 @@ Two or three sentences.
 Only for ESCALATE: the specific question for the person, and the files to inspect.
 ```
 
-Line one is exactly `APPROVE` or `ESCALATE`.
+Line one is exactly `APPROVE` or `ESCALATE`; `CHANGES` only in answer to a concern.

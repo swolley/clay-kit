@@ -7,7 +7,7 @@ argument-hint: <plan file> [lean|full]
 
 Plugin root: ${CLAUDE_PLUGIN_ROOT}
 If the line above does not show an absolute path, the plugin root is the folder two levels above the folder that holds this SKILL.md (the folder that contains skills/).
-Follow <plugin root>/STYLE.md. Read these parts of the shared reference together, in one message: <plugin root>/reference/orchestrator.md, <plugin root>/reference/lock.md, <plugin root>/reference/start.md, <plugin root>/reference/job-loop.md, <plugin root>/reference/hosts.md. Read `questions.md` only when an agent asks something, `peer.md` only when the user chose to work with the peer, `lean.md` when the preflight counts lean tasks or the word `lean` is given, and `completion.md` once every task has landed (all in the same folder). Use the plugin root above wherever they say `<plugin root>`.
+Follow <plugin root>/STYLE.md. Read these parts of the shared reference together, in one message: <plugin root>/reference/orchestrator.md, <plugin root>/reference/lock.md, <plugin root>/reference/start.md, <plugin root>/reference/job-loop.md, <plugin root>/reference/hosts.md. Read `questions.md` only when an agent asks something, `peer.md` only when the user chose to work with the peer, `lean.md` when the preflight counts lean tasks or the word `lean` is given, and `concerns.md` only for a concern or its resume, and `completion.md` once every task has landed (all in the same folder). Use the plugin root above wherever they say `<plugin root>`.
 
 Arguments: $ARGUMENTS (a plan, may be empty: see "Resolving a plan" in `start.md`; `lean` and `full` choose for the lean tasks, see `lean.md`)
 If the Arguments line still shows a placeholder that starts with $, the arguments are the text the user typed after the command name.

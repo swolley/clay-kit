@@ -14,7 +14,7 @@ refuses a `reasoning_effort` value, spawn again without it and record the effort
 
 ## Resuming an agent
 
-Send the message to the builder's agent id with `send_input`. Codex limits the live agent threads (default 6, or 4 including the
+Send the message to the builder's agent id with `send_input`. The approver is closed once read, so a concern starts it again. Codex limits the live agent threads (default 6, or 4 including the
 root under multi-agent v2; see `docs/hosts.md`), so close each reviewer and the approver with `close_agent` once its file has been
 read, and the builder when the job leaves review or lands. A spawn refused for the thread limit (`AgentLimitReached`) is not a
 failed agent, and starting a round's reviewers in several messages is allowed then. In this order: close the agents already read;

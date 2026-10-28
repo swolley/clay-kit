@@ -7,7 +7,7 @@ run the plan: each task is built, reviewed by the lenses its change needs, and a
 
 ## Commands
 
-Every command is a skill named `factory-<verb>`, so on Claude Code it is typed `/factory-run` and listed together in the autocomplete under `/factory-`. The namespaced form `/clay:factory-run` also works. On Codex the same skill is `$factory-run` and on Cursor `/factory-run`; see [Hosts](#hosts). The tables below write the Claude Code and Cursor form. The exact spelling per host is in [docs/hosts.md](https://github.com/swolley/clay-kit/blob/master/docs/hosts.md).
+Every command is a skill named `factory-<verb>`, so on Claude Code it is typed `/factory-run` and listed together in the autocomplete under `/factory-`. The namespaced form `/clay:factory-run` also works. On Codex the same skill is `$factory-run`; see [Hosts](#hosts). The tables below write the Claude Code form. The exact spelling per host is in [docs/hosts.md](https://github.com/swolley/clay-kit/blob/master/docs/hosts.md).
 
 | Command | Started by | What it does |
 |---------|-----------|--------------|
@@ -63,7 +63,7 @@ and a pane for whoever follows the work: one sentence of the situation, and per 
 Rows that need you have buttons that write the ready command into the prompt, and the plan shows its lock.
 `/factory-progress` shows or hides the band and `/factory-agents` opens the pane. They use a hyphen because Claude Code
 refuses a colon in a mod command name. The mod only reads the files in `factory/jobs/`, so it costs no tokens.
-Codex and Cursor have no band or pane; the static dashboard below works on every host.
+Codex has no band or pane; the static dashboard below works on every host.
 
 State lives in `factory/jobs/` (ignored by git). A static dashboard shows it, with selectable text, copy buttons and the usage of each agent:
 `/factory-run` copies the page to `factory/jobs/dashboard.html`; serve that folder with
@@ -91,7 +91,7 @@ python3 plan_status.py --root ~/work    # a whole workspace: every folder holdin
 python3 plan_status.py --all --format html --out backlog.html
 ```
 
-It reads `docs/superpowers/plans/` and `docs/superpowers/specs/` (also `.cursor/plans/`, `.cursor/specs/` and
+It reads `docs/superpowers/plans/` and `docs/superpowers/specs/` (also
 `Modules/*/docs/plans/`), subfolders included, in the root and in each folder one level below it; `/factory-run`
 and the pane look in the same places. It never edits anything, and `--help` lists every option.
 Each plan and spec shows its last change (`upd`), the date of the last commit that touched it; a file with uncommitted
@@ -101,34 +101,34 @@ that does not name existing documentation on a `**Documented in:**` line is repo
 
 ## Requirements
 
-A host that runs plugins: Claude Code, Codex or Cursor (see [Hosts](#hosts)), plus `git` and `python3` (standard library only) for the plan parser, the reviewer routing and the run bookkeeping (`scripts/state.py`).
+A host that runs plugins: Claude Code or Codex (see [Hosts](#hosts)), plus `git` and `python3` (standard library only) for the plan parser, the reviewer routing and the run bookkeeping (`scripts/state.py`).
 The target repo's own `AGENTS.md` or `CLAUDE.md` must say how to set up a checkout and run its tests, and should say where its documentation lives; `/factory-plan` asks once when it does not.
 
 ## Hosts
 
-The marketplace is `clay-kit` and the plugin `clay`. The same files serve all three hosts, with one manifest each; the host
+The marketplace is `clay-kit` and the plugin `clay`. The same files serve both supported hosts, with one manifest each; the host
 differences the run has to handle are written in [reference/hosts.md](reference/hosts.md) and one part per host
 (`reference/hosts-<host>.md`), and the facts behind them, with
 their sources, in [docs/hosts.md](https://github.com/swolley/clay-kit/blob/master/docs/hosts.md).
 
-| | Claude Code | Codex | Cursor |
-|---|---|---|---|
-| Install | `/plugin marketplace add swolley/clay-kit`, then `/plugin install clay@clay-kit` | `codex plugin marketplace add swolley/clay-kit`, then `codex plugin add clay@clay-kit` | CLI `/plugin marketplace add https://github.com/swolley/clay-kit`, or a team admin imports the repo in the Dashboard (Plugins & MCPs, Import from Repo), and users install from Customize. As documented by Cursor, not yet tried by us |
-| Manifest read | `.claude-plugin/` | `.codex-plugin/`, and `.claude-plugin/` for the marketplace | `.cursor-plugin/` |
-| Invoke | `/factory-run` (or `/clay:factory-run`) | `$factory-run`, or the `/skills` picker (`clay:factory-run`) | `/factory-run` |
-| Agents | the plugin's `clay:<role>` agents | generic subagents told to read the agent file | the plugin's agents, generic ones if the host does not list them |
-| Model per call | `model`, and `effort` only if the Agent tool shows it | `model` and `reasoning_effort` | reported to take only `fast` or `inherit`, no effort |
-| Questions | `AskUserQuestion`, up to 4 options | `request_user_input`, 2 to 3 options, in Plan mode, else plain text | the ask-question tool (reported to depend on the model, and to be skipped in headless mode, `cursor-agent -p`) |
-| Resume the builder | `SendMessage` | `send_input` | a fresh builder |
-| Progress band and pane | yes | no | no |
-| `factory/jobs/dashboard.html` | yes | yes | yes |
+| | Claude Code | Codex |
+|---|---|---|
+| Install | `/plugin marketplace add swolley/clay-kit`, then `/plugin install clay@clay-kit` | `codex plugin marketplace add swolley/clay-kit`, then `codex plugin add clay@clay-kit` |
+| Manifest read | `.claude-plugin/` | `.codex-plugin/`, and `.claude-plugin/` for the marketplace |
+| Invoke | `/factory-run` (or `/clay:factory-run`) | `$factory-run`, or the `/skills` picker (`clay:factory-run`) |
+| Agents | the plugin's `clay:<role>` agents | generic subagents told to read the agent file |
+| Model per call | `model`, and `effort` when supported | `model` and `reasoning_effort` |
+| Questions | `AskUserQuestion`, up to 4 options | `request_user_input`, 2 to 3 options in Plan mode, else plain text |
+| Resume the builder | `SendMessage` | `send_input` |
+| Progress band and pane | yes | no |
+| `factory/jobs/dashboard.html` | yes | yes |
 
 Where the host does not substitute the plugin root, a skill finds the plugin's shared files from the folder of its own `SKILL.md`
 (each skill states its plugin root on its first two lines of the body).
 
 ### Model mapping (`factory/models.json`)
 
-Model names differ per host, and the plugin fixes no OpenAI or Cursor model id. `factory/models.json` in the target repository,
+Model names differ per host, and the plugin fixes no OpenAI model id. `factory/models.json` in the target repository,
 beside `factory/routing.md`, is optional and maps tiers and agents to the host's own names. It has one entry per host, with
 `tiers` and `agents` inside; every entry may give `model`, `effort` or both.
 
@@ -151,9 +151,6 @@ beside `factory/routing.md`, is optional and maps tiers and agents to the host's
       "approver": { "model": "<your model id>" },
       "approver-risky": { "model": "<your model id>" }
     }
-  },
-  "cursor": {
-    "tiers": { "light": { "model": "fast" }, "heavy": { "model": "inherit" } }
   }
 }
 ```
@@ -164,7 +161,6 @@ beside `factory/routing.md`, is optional and maps tiers and agents to the host's
 |------|---------|----------|
 | `claude` | `haiku`, `sonnet`, `opus`, `fable`, `inherit`, or an id starting with `claude-` | `low`, `medium`, `high`, `xhigh`, `max` |
 | `codex` | any non-empty text, the id Codex knows | any non-empty text, as Codex accepts for that model |
-| `cursor` | `fast` or `inherit` | not allowed: Cursor has no per-call effort |
 
 Tiers are `light`, `medium`, `careful`, `heavy`, `fable`. Agents are `reviewer-code`, `reviewer-interface`,
 `reviewer-security`, `reviewer-spec`, `approver`, `approver-risky` (the approver of a risky job), `reviewer-final` (the review of a
@@ -176,7 +172,7 @@ finished plan's branch) and `reviewer-final-risky` (the same, when any job of th
 
 1. The entry in `factory/models.json` for the host.
 2. On Claude Code, the defaults of [tiers.md](tiers.md).
-3. Otherwise the session's own model: on Codex the model is not passed but the effort of `tiers.md` is kept; on Cursor nothing is passed.
+3. Otherwise the session's own model: on Codex the model is not passed but the effort of `tiers.md` is kept.
 
 On a host other than Claude Code, tier `fable` with no entry of its own is resolved as `heavy`. To check what a run will pass:
 
@@ -187,7 +183,7 @@ python3 <plugin root>/scripts/state.py model --host <host> --agent <agent> [--ri
 
 Add `--root <repo>` when you do not run it from the repository. It prints the `model`, the `effort` and the `source`
 (`models.json`, `tiers.md` or `session`); `null` means that key is not passed. A mistake in the file (bad JSON, an unknown host,
-tier or agent, a value the host cannot take) stops the run with a message that names the key. On Codex and Cursor `source` is
+tier or agent, a value the host cannot take) stops the run with a message that names the key. On Codex `source` is
 `session` when the model is the session's, even when the Codex effort comes from `tiers.md`.
 
 ### Working with the other vendor (Claude Code and Codex)
@@ -196,7 +192,7 @@ With both the `claude` and the `codex` CLI on `PATH`, a run on either host asks 
 session stays the orchestrator and some agents run through the other vendor's CLI (`scripts/peer.py`, detached, so a long build never hits a command timeout):
 the builder stays on your host, and each job's reviewers and approver, and the final review, come from the vendor that did not write the code, or the record says
 `review not crossed`. A vendor that hits its limit hands its agents to the other instead of stopping the run, and the execution record keeps each agent's vendor.
-Cursor sessions have no peer. The optional `cross` key of `factory/models.json` sets which builders go to the peer and when a vendor counts as over its limit:
+The optional `cross` key of `factory/models.json` sets which builders go to the peer and when a vendor counts as over its limit:
 
 ```json
 { "cross": { "builder_tiers": ["light"], "threshold": 80 } }
@@ -209,7 +205,7 @@ approver relies on the checks on record (`state.py verify --reuse`) and says in 
 reviewer works from the code, and a Codex builder in isolated mode leaves its commit to the orchestrator. On Codex, starting a Claude peer
 (`claude -p` needs the network and writes `~/.claude`) runs outside the session's sandbox, with your approval.
 
-### Known limits on Codex and Cursor
+### Known limits on Codex
 
 - The progress band and pane exist only on Claude Code. `factory/jobs/dashboard.html` works everywhere.
 - **Codex questions.** `request_user_input` works only in Plan mode by default and is refused for subagents. Outside it the run
@@ -217,27 +213,20 @@ reviewer works from the code, and a Codex builder in isolated mode leaves its co
   to plain text.
 - **Codex agents.** A Codex plugin cannot install agents, so each role runs as a generic subagent that is told to read the plugin's
   agent file.
-- **Cursor model and effort.** The per-call model is reported to accept only `fast` or `inherit` (a forum report), and there is no effort. `inherit` is reported
-  ignored in some versions of Cursor. The model of your chat applies when nothing is passed, Auto included.
-- **Cursor menu.** Plugin skills marked user-only were reported hidden from the `/` menu. Type the command by name.
-- **Cursor, untested.** Whether Cursor finds the plugin's agents by default, and how it imports a Claude Code plugin, are not
-  tested yet; the install route above comes from Cursor's documentation, not from our own run.
-- Model names differ per host, so a repository that runs on Codex or Cursor needs a `factory/models.json` to choose models per
-  tier; without one Codex uses the session's model with the effort of `tiers.md`, and Cursor the model of your chat.
+- Model names differ per host, so a repository that runs on Codex needs a `factory/models.json` to choose models per
+  tier; without one Codex uses the session's model with the effort of `tiers.md`.
 - **Codex reviewers.** Codex runs them as generic subagents, which ignore the `tools:` frontmatter of the agent files, so reviewers
   and the approver keep their no-code-change promise by instruction only.
-- A Cursor builder cannot be resumed: a rework starts a fresh builder that reads `build.md`, the rounds and the branch log.
-- The Claude Code progress mod in `hooks/` is meant to stay unloaded on Codex and Cursor: their manifests declare empty hooks.
+- The Claude Code progress mod in `hooks/` is meant to stay unloaded on Codex whose manifest declares empty hooks.
 
-### Manual checks on Codex and Cursor
+### Manual checks on Codex
 
-The Codex and Cursor sections of [tests/e2e/CHECKLIST.md](https://github.com/swolley/clay-kit/blob/master/tests/e2e/CHECKLIST.md)
+The Codex section of [tests/e2e/CHECKLIST.md](https://github.com/swolley/clay-kit/blob/master/tests/e2e/CHECKLIST.md)
 need the real host and cannot run in CI. Record here which were run and when.
 
 | Host | Host version | Date | Sections run | Result |
 |------|--------------|------|--------------|--------|
 | Codex | | | | |
-| Cursor | | | | |
 
 ## Credits
 

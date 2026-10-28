@@ -139,7 +139,7 @@ At the start of `/factory-run` the orchestrator proposes a mode through the nati
 
 **Isolated (recommended, default).**
 - One integration branch per plan and repo: `factory/<plan-slug>`, created from the repo's main branch.
-- One worktree and one branch per job: `factory/<plan-slug>/<task-id>`, created from the integration branch. Worktrees live next to the repo.
+- One worktree and one branch per job: `factory/<plan-slug>--<task-id>`, created from the integration branch (git cannot nest a branch under another one). Worktrees live next to the repo.
 - Tasks run in sequence by default. Tasks whose `depends` are satisfied and whose `files` do not overlap may run in parallel.
 - The user's checkout is never touched except by the final merge the user chooses.
 

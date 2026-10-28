@@ -35,7 +35,7 @@ def test_parallel_only_when_declared():
 
 
 def test_adhoc_task_gets_completion_and_criterion():
-    assert "Completion" in read("skills/factory-task/SKILL.md")
+    assert "**Finish.**" in read("skills/factory-task/SKILL.md") and "`completion.md`" in read("skills/factory-task/SKILL.md")
     assert "Accept" in read("agents/approver.md") and "empty" in read("agents/approver.md")
 
 
@@ -104,7 +104,7 @@ def test_no_undefined_build_check_step():
 
 
 def test_job_json_is_written_after_the_worktree_exists():
-    assert "before writing `job.json`" in reference() or "only then write `job.json`" in reference()
+    assert "creates the branches and worktrees `orchestrator.md` names before it writes `task.md` and `job.json`" in " ".join(reference().split())
 
 
 def test_job_records_head_and_build_round_for_resume():
@@ -178,7 +178,7 @@ def test_approver_model_depends_on_risk():
 
 def test_run_uses_the_state_script_for_bookkeeping():
     t = reference()
-    for cmd in ("state.py begin-job", "state.py route", "state.py verdicts", "state.py after-agent", "state.py land", "state.py stage"):
+    for cmd in ("state.py open-job", "state.py merge-job", "state.py route", "state.py verdicts", "state.py after-agent", "state.py land", "state.py stage"):
         assert cmd in t, cmd
 
 
@@ -238,7 +238,8 @@ def test_completion_records_the_run_in_the_plan_and_cleans_the_local_jobs():
 
 def test_landing_ticks_the_task_in_its_own_commit():
     landing = read("reference/orchestrator.md").split("## Landing")[1]
-    assert "--task <n>" in landing and "--no-commit" in landing and "never closes the plan" in landing
+    assert "--task <n>" in landing and "never closes the plan" in landing
+    assert "`state.py merge-job <job>`" in landing and "ticks the task in the plan there" in " ".join(landing.split())
 
 
 def test_completion_closes_the_plan_with_its_documentation_and_never_deletes_it():
@@ -281,7 +282,8 @@ def test_each_command_reads_only_the_parts_it_needs():
     assert parts_read_by("factory-status") == {"orchestrator.md", "commands.md"}
     assert parts_read_by("factory-approve") == {"orchestrator.md", "lock.md", "commands.md", "hosts.md"}
     assert {"job-loop.md", "start.md", "lock.md", "orchestrator.md"} <= parts_read_by("factory-run")
-    assert {"job-loop.md", "start.md", "lock.md", "orchestrator.md"} <= parts_read_by("factory-task")
+    assert {"job-loop.md", "lock.md", "orchestrator.md"} <= parts_read_by("factory-task")
+    assert not {"start.md", "completion.md"} & parts_read_by("factory-task")  # one ad hoc task needs neither the run setup nor the plan close
     assert {"job-loop.md", "commands.md", "lock.md", "questions.md"} <= parts_read_by("factory-answer")
     assert {"job-loop.md", "commands.md", "lock.md"} <= parts_read_by("factory-rework")
 
@@ -308,7 +310,7 @@ def words(rel: str) -> int:
 
 def test_a_run_reads_at_most_4800_words_at_the_start():
     for skill in ("factory-run", "factory-task"):
-        for host in ("claude", "codex", "cursor"):
+        for host in ("claude", "codex"):
             start = words(f"skills/{skill}/SKILL.md") + sum(words(f"reference/{p}") for p in parts_read_by(skill))
             assert start + words(f"reference/hosts-{host}.md") <= 4800, (skill, host)
 
@@ -348,7 +350,7 @@ def test_agents_read_the_diff_file_and_the_recorded_checks():
 
 def test_the_composite_commands_replace_the_step_by_step_calls_in_the_loop():
     loop, start = read("reference/job-loop.md"), read("reference/start.md")
-    assert "state.py begin-job" in loop and "state.py after-agent" in loop and "in one call" in loop
+    assert "state.py open-job" in loop and "state.py after-agent" in loop and "in one call" in loop
     assert "state.py preflight" in start and "`jobs`" in start and "`audit`" in start
     assert "state.py new-job" not in start and "factory_plan.py <plan> --repo <name> --root <repo>` prints it" in start
 
@@ -432,7 +434,7 @@ def test_plan_handover_names_every_fable_task():
 
 HOST_SECTIONS = ("## Which host", "## Starting an agent", "## Model and effort", "## Asking the user")
 HOST_PART_SECTIONS = ("## Starting an agent", "## Model and effort", "## Resuming an agent", "## Asking the user")
-HOSTS = ("claude", "codex", "cursor")
+HOSTS = ("claude", "codex")
 
 
 def host_part(host: str) -> str:
@@ -457,8 +459,7 @@ def test_each_host_has_its_own_part():
         for heading in HOST_PART_SECTIONS:
             assert f"\n{heading}\n" in t, (host, heading)
     tools = {"claude": ("`Agent`", "`AskUserQuestion`", "`SendMessage`", "`subagent_tokens`"),
-             "codex": ("`spawn_agent`", "`request_user_input`", "`send_input`", "`reasoning_effort`"),
-             "cursor": ("`Task`", "`fast`", "`inherit`")}
+             "codex": ("`spawn_agent`", "`request_user_input`", "`send_input`", "`reasoning_effort`")}
     for host, names in tools.items():
         for name in names:
             assert name in host_part(host), (host, name)
@@ -467,9 +468,9 @@ def test_each_host_has_its_own_part():
 def test_hosts_detection_is_an_ordered_check():
     flat = " ".join(read("reference/hosts.md").split())
     which = flat.split("## Which host")[1].split("##")[0]
-    assert which.index("`AskUserQuestion`") < which.index("`spawn_agent`") < which.index("`Task`")
+    assert which.index("`AskUserQuestion`") < which.index("`spawn_agent`")
     assert "`Agent` or `AskUserQuestion` is Claude Code" in which
-    assert "If none is present, say so in one line and stop" in which
+    assert "If neither is present, say so in one line and stop" in which
     assert "SendMessage" not in which
 
 
@@ -486,9 +487,6 @@ def test_hosts_handles_refused_spawn_on_thread_limit():
     assert flat.index("`wait_agent` for the reviewers still running") < flat.index("only if no slot is free yet, close the builder")
     assert "a later round starts a fresh builder" in flat
 
-
-def test_cursor_starts_a_fresh_builder():
-    assert "fresh builder" in host_part("cursor")
 
 
 def test_claude_part_holds_the_progress_band():
@@ -546,7 +544,7 @@ def test_completion_runs_the_final_review_first():
 
 def test_lean_reference_names_its_commands():
     t = read("reference/lean.md")
-    for word in ("lean-check", "promote", "begin-job", "--lean", "lean_reason", "long", "session's model"):
+    for word in ("lean-check", "promote", "open-job", "--lean", "lean_reason", "long", "session's model"):
         assert word in t, word
 
 
@@ -689,3 +687,75 @@ def test_the_final_recheck_is_round_2():
 def test_a_fresh_builder_continues_from_the_tree_as_it_stands():
     flat = peer_flat()
     assert "uncommitted edits" in flat and "no reset" in flat.lower()
+
+
+def test_isolated_branch_names_can_coexist(tmp_path):
+    """Git cannot hold a branch that is also the folder of another one: the job branch must not nest under the integration branch."""
+    import re
+    import subprocess
+    isolated = " ".join(read("reference/orchestrator.md").split("**Isolated.**")[1].split("**Current branch.**")[0].split())
+    integration = re.search(r"integration branch `([^`]+)`", isolated).group(1)
+    job = re.search(r"Per job: branch `([^`]+)`", isolated).group(1)
+    fill = lambda name: name.replace("<plan-slug>", "2026-01-01-demo").replace("<job-id>", "001-add-endpoint")
+    run = lambda *args: subprocess.run(["git", "-C", str(tmp_path), *args], capture_output=True, text=True)
+    run("init", "-q", "-b", "main")
+    run("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "base")
+    assert run("branch", fill(integration)).returncode == 0
+    made = run("branch", fill(job), fill(integration))
+    assert made.returncode == 0, made.stderr
+
+
+def test_agents_run_git_without_cd():
+    """Claude Code asks before `cd <dir> && git ...` (the target's hooks or config could run), so the agents never chain a cd."""
+    for agent in ("builder", "reviewer-code", "reviewer-security", "reviewer-interface", "reviewer-final", "approver"):
+        text = read(f"agents/{agent}.md")
+        assert "`cd <" not in text, agent
+        assert "git -C <" in text, agent
+
+
+def test_isolated_landing_is_one_command():
+    """The merge, the commit, the worktree removal and the branch delete are `merge_job` (tested in test_state); the text only names it."""
+    landing = " ".join(read("reference/orchestrator.md").split("## Landing")[1].split("## ")[0].split())
+    assert "`state.py merge-job <job>`" in landing and "deletes the job branch" in landing and "git merge" not in landing
+
+
+FILE_ONLY = "Write it with the Write tool before you reply: the orchestrator reads only the file, and a verdict left in your reply is lost."
+
+
+def test_agents_that_record_a_verdict_are_told_only_the_file_counts():
+    """A reviewer that answered in chat and wrote no file cost a second run of the same review."""
+    for agent in ("reviewer-code", "reviewer-security", "reviewer-final", "approver"):
+        assert FILE_ONLY in " ".join(read(f"agents/{agent}.md").split()), agent
+    assert "the orchestrator reads only the files, and a verdict left in your reply is lost" in read("agents/reviewer-interface.md")
+
+
+def test_claude_passes_the_tier_effort_as_the_users_choice():
+    """Claude Code's Agent tool reserves `effort` for an explicit request: without saying the tier is that request, the orchestrator
+    sometimes left it out and the builder ran at the session's effort instead of the tier's."""
+    text = " ".join(read("reference/hosts-claude.md").split())
+    assert "Pass `effort` whenever the `Agent` tool shows an `effort` parameter" in text
+    assert "the user's explicit choice" in text
+
+
+def test_an_orchestrator_concern_goes_to_the_approver_not_the_user():
+    """Flag one explicit requirement, let the approver decide, then send upheld issues to the builder."""
+    loop = " ".join(read("reference/job-loop.md").split())
+    assert "`concerns.md`" in loop and "neither land nor ask" in loop
+    concerns = " ".join(read("reference/concerns.md").split())
+    for name in ("`state.py concern <job>`", "`state.py resolve-concern <job>`", "`concern-1.md`", "`decision.md`"):
+        assert name in concerns
+    assert "normal resume/escalation rule" in concerns and "do not start a fourth automatic round" in concerns
+    assert "On resume with `resolved`" in concerns and "pending" in concerns
+    approver = " ".join(read("agents/approver.md").split())
+    assert "## Concerns" in approver and "`CHANGES` only in answer to a concern" in approver
+    assert "a reading the text leaves open is not a defect" in approver
+    builder = " ".join(read("agents/builder.md").split())
+    assert "`concern-1.md` and `decision.md`" in builder
+    assert "the approver for a concern" in read("reference/hosts-claude.md") and "a concern starts it again" in read("reference/hosts-codex.md")
+
+
+def test_concern_reference_is_loaded_only_when_needed():
+    for command in ("factory-run", "factory-task"):
+        t = read(f"skills/{command}/SKILL.md")
+        assert "`concerns.md` only for a concern or its resume" in t
+        assert "<plugin root>/reference/concerns.md" not in t.split("Read these parts")[1].split("Read `")[0]

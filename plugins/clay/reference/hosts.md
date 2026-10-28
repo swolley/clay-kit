@@ -5,10 +5,10 @@
 ## Which host
 
 The tools your session has name the host. Check in this order and stop at the first match: `Agent` or `AskUserQuestion` is
-Claude Code; else `spawn_agent` is Codex; else `Task` is Cursor. If none is present, say so in one line and stop. There is
-nothing to run. `<host>` in the commands is `claude`, `codex` or `cursor` accordingly.
+Claude Code; else `spawn_agent` is Codex. If neither is present, say so in one line and stop. There is
+nothing to run. `<host>` in the commands is `claude` or `codex` accordingly.
 
-Then read your host part, `hosts-<host>.md` in this folder (`hosts-claude.md`, `hosts-codex.md` or `hosts-cursor.md`), before you
+Then read your host part, `hosts-<host>.md` in this folder (`hosts-claude.md` or `hosts-codex.md`), before you
 start an agent or ask anything. It says how that host starts, resumes and asks.
 
 ## Starting an agent

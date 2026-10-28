@@ -5,7 +5,7 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
 
   state.py setup --root DIR --plugin-root DIR
   state.py adhoc --root DIR --text "[tier=NAME] TEXT"
-  state.py model --root DIR --host claude|codex|cursor (--tier T | --agent A) [--risky]
+  state.py model --root DIR --host claude|codex (--tier T | --agent A) [--risky]
   state.py run --root DIR --plan-file P --mode M --pace step|auto [--cross on|off --host H]
   state.py preflight --root DIR [--plan-file P --repo-name R] [--host H]
   state.py new-job --root DIR --plan-file P --task N --repo-name R --mode M --branch B --worktree W [--lean]
@@ -17,6 +17,8 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
   state.py verdicts JOB --root DIR
   state.py verify JOB --cmd COMMAND [--reuse] [--timeout S] --root DIR
   state.py checks JOB --root DIR
+  state.py concern JOB --root DIR
+  state.py resolve-concern JOB --root DIR
   state.py land JOB --stage committed|merged --head SHA --root DIR
   state.py tick-plan --plan-file P [--task N] --root DIR
   state.py close-plan --plan-file P --root DIR
@@ -171,12 +173,12 @@ def _verify_commands(task) -> list[str]:
 
 
 def new_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, branch: str, worktree: str, base: str | None = None,
-            lean: bool = False) -> dict:
+            lean: bool = False, job_id: str | None = None) -> dict:
     root = Path(root)
     path = Path(plan_file) if Path(plan_file).is_absolute() else root / plan_file
     plan = parse_plan(path.read_text(), default_repo=repo_name)
     task = next(t for t in plan.tasks if t.number == task_number)
-    job_id = claim_id(root, slugify(task.title))
+    job_id = job_id or claim_id(root, slugify(task.title))
     folder = jobs_dir(root) / job_id
     (folder / "task.md").write_text(render_brief(plan_file, task, repo_name))
     head = base or git(worktree, "rev-parse", "HEAD").strip()
@@ -194,17 +196,170 @@ def new_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, b
 
 
 def begin_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, branch: str, worktree: str, base: str | None = None,
-              lean: bool = False) -> dict:
+              lean: bool = False, job_id: str | None = None) -> dict:
     """new_job and the move to the build stage in one step."""
-    out = new_job(root, plan_file, task_number, repo_name, mode, branch, worktree, base, lean)
+    out = new_job(root, plan_file, task_number, repo_name, mode, branch, worktree, base, lean, job_id)
     set_stage(root, out["id"], "build")
     return {**out, "stage": "build"}
 
 
+def factory_dir(root) -> Path:
+    """Where the worktrees of isolated runs live: next to the repo, never inside it."""
+    root = Path(root).resolve()
+    return root.parent / f"{root.name}-factory"
+
+
+def _git_run(cwd, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True)
+
+
+def open_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, lean: bool = False) -> dict:
+    """Claim a job and begin it. Isolated: the plan's integration branch `factory/<plan>` and its worktree
+    `<repo-parent>/<repo-name>-factory/_integration-<plan>` are created the first time, from the repo's main branch; the job gets
+    `factory/<plan>--<job-id>` (a branch cannot nest under another one) in `.../<job-id>`, cut from the integration branch, and only
+    then its job.json, so a failure leaves at most an abandoned claim. Current branch: the job runs in the repo on its branch."""
+    root = Path(root)
+    if mode != "isolated":
+        return {"ok": True, **begin_job(root, plan_file, task_number, repo_name, mode,
+                                        git(root, "branch", "--show-current").strip(), str(root), lean=lean)}
+    path = _plan_path(root, plan_file)
+    task = next(t for t in parse_plan(path.read_text(), default_repo=repo_name).tasks if t.number == task_number)
+    integration, base_dir = f"factory/{path.stem}", factory_dir(root)
+    iwt = base_dir / f"_integration-{path.stem}"
+    if not iwt.exists():
+        if _commit(root, integration):
+            done = _git_run(root, "worktree", "add", str(iwt), integration)
+        elif main := _main_branch(root):
+            done = _git_run(root, "worktree", "add", "-b", integration, str(iwt), main)
+        else:
+            return {"ok": False, "reason": "no main branch to start the integration branch from"}
+        if done.returncode:
+            return {"ok": False, "reason": done.stderr.strip()}
+    job_id = claim_id(root, slugify(task.title))
+    branch, wt = f"{integration}--{job_id}", base_dir / job_id
+    done = _git_run(root, "worktree", "add", "-b", branch, str(wt), integration)
+    if done.returncode:
+        return {"ok": False, "reason": done.stderr.strip(), "id": job_id}
+    out = begin_job(root, plan_file, task_number, repo_name, mode, branch, str(wt), lean=lean, job_id=job_id)
+    rp = run_path(root, path.stem)
+    if rp.exists():
+        run = json.loads(rp.read_text())
+        run.update(integration=integration, integration_worktree=str(iwt))
+        rp.write_text(json.dumps(run, indent=2))
+    return {"ok": True, **out, "branch": branch, "worktree": str(wt), "integration": integration, "integration_worktree": str(iwt)}
+
+
+def concern(root, job_id: str) -> dict:
+    """Open or recover the one concern per job.
+
+    Create its file before recording the pending state. If interrupted between those writes,
+    a second call recovers the existing file instead of spending a second concern.
+    Only the approver can decide whether the concern is upheld.
+    """
+    job = read_job(root, job_id)
+    path = jobs_dir(root) / job_id / "concern-1.md"
+    record = job.get("concern", {})
+    if record.get("status") == "resolved":
+        return {"ok": False, "reason": "this job already had its one resolved concern; follow the approver's verdict"}
+    if record and record.get("status") != "pending":
+        return {"ok": False, "reason": "unrecognized concern status"}
+    resumed = record.get("status") == "pending" or job.get("concerns", 0) >= 1 or path.exists()
+    if not path.exists():
+        # The orchestrator fills in numbered points before sending this file to the approver.
+        path.write_text("# Concern 1\n\n## Points\n\n", encoding="utf-8")
+    job["concerns"] = 1
+    job["concern"] = {"status": "pending", "file": path.name}
+    write_job(root, job)
+    return {"ok": True, "file": str(path), "status": "pending", "resumed": resumed}
+
+
+def resolve_concern(root, job_id: str) -> dict:
+    """Record the approver's answer to a pending concern; reject stale verdict files.
+
+    APPROVE needs a Concerns section and CHANGES needs an Issues section, so the
+    original, pre-concern APPROVE cannot be mistaken for the new answer on resume.
+    """
+    job = read_job(root, job_id)
+    record = job.get("concern", {})
+    if record.get("status") != "pending":
+        return {"ok": False, "reason": "no pending concern to resolve"}
+    path = jobs_dir(root) / job_id / "concern-1.md"
+    if not path.is_file() or not re.search(r"(?m)^1\.\s+\S", path.read_text(encoding="utf-8")):
+        return {"ok": False, "reason": "concern file needs numbered points before the approver can answer"}
+    decision_path = jobs_dir(root) / job_id / "decision.md"
+    if not decision_path.is_file():
+        return {"ok": False, "reason": "approver decision.md is missing"}
+    decision = decision_path.read_text(encoding="utf-8")
+    verdict = decision.splitlines()[0].strip() if decision.splitlines() else ""
+    section = {"APPROVE": "Concerns", "CHANGES": "Issues"}.get(verdict)
+    if section is None:
+        return {"ok": False, "reason": "concern verdict must be APPROVE or CHANGES"}
+    m = re.search(r"(?ms)^## " + section + r"\s*\n(.*?)(?=^## |\Z)", decision)
+    if not m or not m.group(1).strip():
+        return {"ok": False, "reason": "the approver must answer the concern in ## " + section}
+    record.update(status="resolved", verdict=verdict, round=job.get("round", 0))
+    job["concern"] = record
+    write_job(root, job)
+    return {"ok": True, "file": str(path), "status": "resolved", "verdict": verdict}
+
+
+def _landing_concern_problem(root, job: dict) -> str | None:
+    """A concern must be settled, and upheld CHANGES must get a fresh approved round."""
+    record = job.get("concern", {})
+    if record.get("status") == "pending" or (job.get("concerns") and record.get("status") != "resolved"):
+        return "pending concern must be resolved before landing"
+    if record.get("verdict") == "CHANGES":
+        if job.get("round", 0) <= record.get("round", job.get("round", 0)):
+            return "upheld concern requires a new review round before landing"
+        decision = jobs_dir(root) / job["id"] / "decision.md"
+        if not decision.is_file() or (decision.read_text(encoding="utf-8").splitlines() or [""])[0].strip() != "APPROVE":
+            return "upheld concern requires a fresh APPROVE after rework"
+    return None
+
+
+def merge_job(root, job_id: str) -> dict:
+    """Isolated landing in one step: merge the job branch into the integration worktree, tick the task in the plan there (not for
+    an ad hoc plan, which is not in the repo), commit "Merge <job-id>", remove the job worktree, delete the job branch where it was
+    merged (`-d` checks against the HEAD it runs in) and record the job as merged. A conflict aborts the merge and lands nothing."""
+    root = Path(root)
+    job = read_job(root, job_id)
+    if reason := _landing_concern_problem(root, job):
+        return {"ok": False, "reason": reason}
+    run = read_run(root, job["plan"])
+    iwt = Path(run.get("integration_worktree") or factory_dir(root) / f"_integration-{job['plan']}")
+    merge = _git_run(iwt, "merge", "--no-ff", "--no-commit", job["branch"])
+    if merge.returncode:
+        _git_run(iwt, "merge", "--abort")
+        return {"ok": False, "reason": "conflict: " + (merge.stdout + merge.stderr).strip()[-400:]}
+    plan = Path(run.get("path") or "")
+    if plan.parts and "_runs" not in plan.parts:
+        rel = plan.relative_to(root.resolve()) if plan.is_absolute() else plan
+        tick_plan(root, str(iwt / rel), job["task"])
+        _git_run(iwt, "add", str(rel))
+    done = _git_run(iwt, "commit", "-m", f"Merge {job_id}")
+    if done.returncode:
+        _git_run(iwt, "merge", "--abort")
+        return {"ok": False, "reason": "commit failed: " + done.stderr.strip()[-400:]}
+    head = git(iwt, "rev-parse", "HEAD").strip()
+    removed = _git_run(root, "worktree", "remove", job["worktree"]).returncode == 0
+    deleted = _git_run(iwt, "branch", "-d", job["branch"]).returncode == 0
+    land_job(root, job_id, "merged", head)
+    return {"ok": True, "head": head, "worktree_removed": removed, "branch_deleted": deleted}
+
+
+def git_identity(root) -> dict:
+    """Whether git can commit in the repo: with no author or committer identity every job would fail at its first commit."""
+    for ident in ("GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"):
+        done = subprocess.run(["git", "-C", str(root), "var", ident], capture_output=True, text=True)
+        if done.returncode != 0:
+            return {"ok": False, "reason": "git has no commit identity: set user.name and user.email (for this repo or globally)"}
+    return {"ok": True, "reason": None}
+
+
 def preflight(root, plan_file: str | None = None, repo_name: str = "", host: str | None = None) -> dict:
     """What a run needs to know before it starts, in one call. Without a plan: the plans with open steps and the unclassified ones.
-    With a plan: the plan as parsed (defaults, warnings, signs of work already done), the jobs it already has, and what the audit says about it.
-    With a host that has a peer vendor (claude, codex): whether the peer's CLI is on PATH."""
+    With a plan: the plan as parsed (defaults, warnings, signs of work already done), the jobs it already has, what the audit says about it
+    and whether git can commit. With a host that has a peer vendor (claude, codex): whether the peer's CLI is on PATH."""
     root = Path(root)
     out: dict = {"unclassified": list_unclassified(root)}
     if host in PEER:
@@ -220,11 +375,22 @@ def preflight(root, plan_file: str | None = None, repo_name: str = "", host: str
         view["lean"], view["lean_reason"] = lean_eligibility(task, rules, adhoc=path.parent.name == "_runs")
     out["lean_count"] = sum(1 for t in out["plan"]["tasks"] if t["lean"])
     out["long"] = out["lean_count"] > LONG_LEAN
-    out["jobs"] = [
-        {k: j.get(k) for k in ("id", "task", "stage", "round", "build_round", "head", "branch", "worktree")}
-        for j in load_jobs(root) if j.get("plan") == path.stem
-    ]
+    out["jobs"] = []
+    for j in load_jobs(root):
+        if j.get("plan") != path.stem:
+            continue
+        view = {k: j.get(k) for k in ("id", "task", "stage", "round", "build_round", "head", "branch", "worktree")}
+        status = j.get("concern", {}).get("status")
+        if status is None and (j.get("concerns") or (jobs_dir(root) / j["id"] / "concern-1.md").is_file()):
+            status = "pending"  # recovers a crash between writing the concern file and job.json
+        if status:
+            view["concern_status"] = status
+            if status == "resolved":
+                view["concern_verdict"] = j["concern"].get("verdict")
+                view["concern_round"] = j["concern"].get("round")
+        out["jobs"].append(view)
     out["audit"] = [f for f in audit_plans(root) if (root.resolve() / f["root"] / f["path"]) == path.resolve()]
+    out["git_identity"] = git_identity(root)
     return out
 
 
@@ -777,6 +943,9 @@ def vendor_down(root, plan_stem: str, vendor: str, reason: str, until: str | Non
 
 
 def land_job(root, job_id: str, stage: str, head: str) -> dict:
+    before = read_job(root, job_id)
+    if reason := _landing_concern_problem(root, before):
+        raise ValueError(reason)
     job = set_stage(root, job_id, stage)
     job["head"] = head
     write_job(root, job)
@@ -1171,6 +1340,19 @@ def main(argv: list[str]) -> int:
     cl = sub.add_parser("clean")
     cl.add_argument("--root", default=".")
     cl.add_argument("--plan", required=True)
+    oj = sub.add_parser("open-job")
+    oj.add_argument("--root", default=".")
+    for opt in ("--plan-file", "--repo-name", "--mode"):
+        oj.add_argument(opt, required=True)
+    oj.add_argument("--task", type=int, required=True)
+    oj.add_argument("--lean", action="store_true")
+    mj = sub.add_parser("merge-job")
+    mj.add_argument("--root", default=".")
+    mj.add_argument("job")
+    for action in ("concern", "resolve-concern"):
+        cn = sub.add_parser(action)
+        cn.add_argument("--root", default=".")
+        cn.add_argument("job")
     for name in ("setup", "run", "preflight", "new-job", "begin-job", "stage", "agent", "after-agent", "route", "verdicts", "land", "verify", "checks", "rework", "lean-check", "promote"):
         sp = sub.add_parser(name)
         sp.add_argument("--root", default=".")
@@ -1218,6 +1400,17 @@ def main(argv: list[str]) -> int:
             sp.add_argument("--stage", dest="to_stage", default="committed")
             sp.add_argument("--head", required=True)
     a = ap.parse_args(argv)
+    if a.cmd in ("open-job", "merge-job", "concern", "resolve-concern"):
+        if a.cmd == "open-job":
+            out = open_job(a.root, a.plan_file, a.task, a.repo_name, a.mode, a.lean)
+        elif a.cmd == "merge-job":
+            out = merge_job(a.root, a.job)
+        elif a.cmd == "concern":
+            out = concern(a.root, a.job)
+        else:
+            out = resolve_concern(a.root, a.job)
+        print(json.dumps(out, indent=2))
+        return 0 if out["ok"] else 1
     if a.cmd == "clean":
         out = clean_jobs(a.root, a.plan)
         print(json.dumps(out, indent=2))
@@ -1323,7 +1516,11 @@ def main(argv: list[str]) -> int:
     elif a.cmd == "checks":
         out = list_checks(a.root, a.job)
     else:
-        out = {"id": a.job, "stage": land_job(a.root, a.job, a.to_stage, a.head)["stage"]}
+        try:
+            out = {"id": a.job, "stage": land_job(a.root, a.job, a.to_stage, a.head)["stage"]}
+        except ValueError as e:
+            print(json.dumps({"ok": False, "reason": str(e)}))
+            return 1
     print(json.dumps(out, indent=2))
     if a.cmd == "verdicts" and not out["ok"]:
         return 1

@@ -16,13 +16,12 @@ fields as options records one agent). The usage of your own session is not repor
 0. **Once per run.** Take the run lock (see `lock.md`), then `state.py setup --plugin-root <plugin root>` (creates `factory/jobs/`, ignored by git, and copies the
    dashboard) and `state.py run --plan-file <plan> --mode <mode> --pace <pace> [--cross on|off --host <host>]` (writes the run state: total, tasks, and `done`
    counted from the landed jobs).
-1. **Create** the job. In isolated mode create the branch and worktree first, and only then write `job.json`:
-   `state.py begin-job --plan-file <plan> --task <n> --repo-name <name> --mode <mode> --branch <b> --worktree <w>` claims the next job
-   id, writes `task.md` and `job.json`, moves the job to `build` and prints the id, so a crash never leaves a job without its worktree
-   (`new-job` does the same without the move). A job folder that has
-   no `job.json` is an abandoned claim: start the task fresh.
+1. **Create** the job with `state.py open-job --plan-file <plan> --task <n> --repo-name <name> --mode <mode>`. It claims the next job
+   id and, in isolated mode, creates the branches and worktrees `orchestrator.md` names before it writes `task.md` and `job.json`, then
+   moves the job to `build`; it prints `id`, `branch`, `worktree` and `integration_worktree`. `ok: false`: say its `reason` and stop.
+   Run the repo's fresh-checkout setup in a new worktree. A job folder that has no `job.json` is an abandoned claim: start the task fresh.
 2. **Build.** A job with `lean` in `job.json` follows `lean.md` from here instead of steps 2 to 6. The job is in `build` already; on a resume or a rework set it with `state.py stage <job> build`. With the peer on, who builds is decided as `peer.md` says (outside the start, run `state.py vendor <job> --agent builder --host <host>` first: `cross_on: true` means follow `peer.md`). Spawn the `builder` as `hosts.md` says, with the model and effort
-   `state.py model --host <host> --tier <tier>` prints for the task's tier (after the `fable` answer in `start.md`),
+   `state.py model --host <host> --tier <tier>` prints for the task's tier (after any `fable` answer at the start),
    prompt `<paths> Build round 1.` plus `Port: <5100+10n>` (n = job number), and name it `builder-<job-id>` where the host allows it.
    Keep the agent id the spawn returns; it replaces the name when you resume the builder.
    The first line of build.md decides what happens next: `STATUS: READY` moves on, `STATUS: NEEDS_INPUT` goes to
@@ -55,7 +54,9 @@ fields as options records one agent). The usage of your own session is not repor
    check must not still start the approver), `state.py stage <job> approve` and spawn the `approver` as `hosts.md` says (with the peer on, as `peer.md` says) with `<paths> Final round: N.`, its model and effort
    from `state.py model --host <host> --agent approver`, adding `--risky` when the job is risky (the rule is in `tiers.md`). In the short path, when
    the approver has finished, run `state.py verdicts <job>` in its own step, as in step 4: `CHANGES` goes to step 5 like any review, and
-   `all_pass` goes on to decision.md. Line one of decision.md routes it: `APPROVE` goes to step 7, `ESCALATE` to step 8.
+   `all_pass` goes on to decision.md. Its first line routes `APPROVE` to step 7, `ESCALATE` to step 8, and `CHANGES` after a concern
+   through `concerns.md`. **Concern.** If an approved change misses an explicit task requirement, neither land nor ask: read
+   `concerns.md` and follow it. On resume, resolve a pending concern before any landing.
 7. **Land.** As in Landing (`orchestrator.md`).
 8. **Needs human.** `state.py stage <job> needs-human`; keep the branch and worktree; name the waiting job for the user, give its
    worktree path, and quote either decision.md or the reason given for BLOCKED.
@@ -67,7 +68,7 @@ Recorded in the run state as `pace`: `step` (the default) or `auto`.
 **Guided (`step`).** When a job ends, ask with the question tool what to do next, and do it without making the user
 type another command.
 - A job landed and tasks are left: continue with the next task (recommended), stop here, or
-  run the rest without asking (sets `pace: auto`). After the last task, read `completion.md`.
+  run the rest without asking (sets `pace: auto`). After the last task, finish as your command says.
 - A job needs a person (`needs-human`): quote in two lines the question in the `## Handoff to the human` of its
   decision.md, or the BLOCKED reason, then offer: approve as it stands (Land), rework with a note (take the note as
   free text), skip this task and go on, or stop. Apply the answer and continue the loop. In current-branch mode

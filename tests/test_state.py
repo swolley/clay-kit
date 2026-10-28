@@ -1543,11 +1543,6 @@ def test_run_cross_takes_the_models_json_block(repo):
     assert run_state(repo)["cross"] == {"on": True, "peer": "codex", "threshold": 70, "builder_tiers": ["light"]}
 
 
-def test_run_cross_on_a_host_without_a_peer_is_off(repo):
-    state.setup(repo, repo)
-    assert state.write_run(repo, PLAN_FILE, "current-branch", cross="on", host="cursor")["cross"]["on"] is False
-
-
 def test_preflight_reports_the_peer(repo, tmp_path, monkeypatch):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -1559,7 +1554,6 @@ def test_preflight_reports_the_peer(repo, tmp_path, monkeypatch):
     assert state.preflight(repo, PLAN_FILE, "demo", host="claude")["peer"] == {"vendor": "codex", "found": True}
     assert state.preflight(repo, host="claude")["peer"] == {"vendor": "codex", "found": True}
     assert state.preflight(repo, PLAN_FILE, "demo", host="codex")["peer"] == {"vendor": "claude", "found": False}
-    assert "peer" not in state.preflight(repo, PLAN_FILE, "demo", host="cursor")
     assert "peer" not in state.preflight(repo, PLAN_FILE, "demo")
 
 
@@ -1623,3 +1617,234 @@ def test_execution_record_final_row_says_when_its_review_was_not_crossed(locked_
     state.run_path(locked_repo, STEM).write_text(json.dumps(run))
     row = next(l for l in state.execution_record(locked_repo, STEM).splitlines() if l.startswith("| final |"))
     assert row.split("|")[9].strip() == "review not crossed"
+
+
+def test_preflight_reports_whether_git_can_commit(repo, tmp_path, monkeypatch):
+    """Every job commits: a machine with no git identity fails at the first commit, so the start must know before any job."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("EMAIL", "")
+    for var in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "XDG_CONFIG_HOME"):
+        monkeypatch.delenv(var, raising=False)
+    missing = state.preflight(repo, PLAN_FILE, "demo")["git_identity"]
+    assert missing["ok"] is False and "identity" in missing["reason"]
+    subprocess.run(["git", "config", "user.name", "Bench"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "bench@localhost"], cwd=repo, check=True)
+    assert state.preflight(repo, PLAN_FILE, "demo")["git_identity"] == {"ok": True, "reason": None}
+    assert "git_identity" not in state.preflight(repo)
+
+
+@pytest.fixture
+def isolated(repo):
+    """The repo with a commit identity of its own (merge_job commits) and a run in isolated mode."""
+    subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=repo, check=True)
+    state.setup(repo, repo)
+    state.write_run(repo, PLAN_FILE, "isolated")
+    return repo
+
+
+def factory_dir(repo):
+    return repo.parent / f"{repo.name}-factory"
+
+
+def test_open_job_creates_the_integration_and_job_worktrees(isolated):
+    out = state.open_job(isolated, PLAN_FILE, 1, "demo", "isolated")
+    stem = Path(PLAN_FILE).stem
+    assert out["ok"] and out["stage"] == "build"
+    assert out["integration"] == f"factory/{stem}" and out["branch"] == f"factory/{stem}--{out['id']}"
+    assert Path(out["integration_worktree"]) == factory_dir(isolated) / f"_integration-{stem}"
+    assert Path(out["worktree"]) == factory_dir(isolated) / out["id"]
+    assert subprocess.run(["git", "-C", out["worktree"], "branch", "--show-current"], capture_output=True, text=True).stdout.strip() == out["branch"]
+    job = state.read_job(isolated, out["id"])
+    assert (job["branch"], job["worktree"], job["stage"], job["mode"]) == (out["branch"], out["worktree"], "build", "isolated")
+    assert state.read_run(isolated, stem)["integration"] == out["integration"]
+
+
+def test_open_job_reuses_the_integration_worktree(isolated):
+    first = state.open_job(isolated, PLAN_FILE, 1, "demo", "isolated")
+    second = state.open_job(isolated, PLAN_FILE, 2, "demo", "isolated")
+    assert second["ok"] and second["integration_worktree"] == first["integration_worktree"] and second["id"] != first["id"]
+
+
+def test_open_job_in_current_branch_mode_uses_the_repo(repo):
+    state.setup(repo, repo)
+    out = state.open_job(repo, PLAN_FILE, 1, "demo", "current-branch")
+    job = state.read_job(repo, out["id"])
+    assert (job["branch"], Path(job["worktree"]), job["stage"]) == ("main", repo, "build")
+
+
+def test_merge_job_lands_ticks_and_cleans_up(isolated):
+    out = state.open_job(isolated, PLAN_FILE, 1, "demo", "isolated")
+    wt = Path(out["worktree"])
+    (wt / "app/util.py").write_text("x = 2\n")
+    git(wt, "commit", "-qam", "work")
+    merged = state.merge_job(isolated, out["id"])
+    iwt = Path(out["integration_worktree"])
+    assert merged["ok"] and merged["head"] == subprocess.run(["git", "-C", str(iwt), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    assert (iwt / "app/util.py").read_text() == "x = 2\n"
+    assert "- [x] **Step 1" in (iwt / PLAN_FILE).read_text() and "- [ ] **Step 1: Do it" in (iwt / PLAN_FILE).read_text()
+    assert not wt.exists()
+    assert subprocess.run(["git", "-C", str(isolated), "branch", "--list", out["branch"]], capture_output=True, text=True).stdout.strip() == ""
+    assert state.read_job(isolated, out["id"])["stage"] == "merged"
+    assert "Merge " + out["id"] in subprocess.run(["git", "-C", str(iwt), "log", "-1", "--format=%s"], capture_output=True, text=True).stdout
+
+
+def test_merge_job_on_conflict_aborts_and_lands_nothing(isolated):
+    out = state.open_job(isolated, PLAN_FILE, 1, "demo", "isolated")
+    wt, iwt = Path(out["worktree"]), Path(out["integration_worktree"])
+    (wt / "app/util.py").write_text("x = 2\n")
+    git(wt, "commit", "-qam", "job")
+    (iwt / "app/util.py").write_text("x = 3\n")
+    git(iwt, "commit", "-qam", "other")
+    merged = state.merge_job(isolated, out["id"])
+    assert merged["ok"] is False and "conflict" in merged["reason"]
+    assert subprocess.run(["git", "-C", str(iwt), "status", "--porcelain"], capture_output=True, text=True).stdout == ""
+    assert wt.exists() and state.read_job(isolated, out["id"])["stage"] == "build"
+
+
+def test_merge_job_of_an_adhoc_plan_ticks_nothing(isolated):
+    plan = state.adhoc_plan(isolated, "tier=light Change x")
+    state.write_run(isolated, plan["plan_file"], "isolated")
+    out = state.open_job(isolated, plan["plan_file"], 1, "demo", "isolated")
+    git(Path(out["worktree"]), "commit", "-q", "--allow-empty", "-m", "work")
+    assert state.merge_job(isolated, out["id"])["ok"]
+    assert state.read_job(isolated, out["id"])["stage"] == "merged"
+
+
+def test_concern_creates_file_and_recovers_pending_without_overwriting(repo):
+    state.setup(repo, repo)
+    job_id = new(repo)["id"]
+    initial = state.concern(repo, job_id)
+    path = Path(initial["file"])
+    assert initial == {"ok": True, "file": str(path), "status": "pending", "resumed": False}
+    assert path.exists() and "## Points" in path.read_text()
+    assert state.read_job(repo, job_id)["concern"] == {"status": "pending", "file": "concern-1.md"}
+
+    path.write_text("# Concern 1\n\n## Points\n\n1. task.md says Works; app/util.py:1 misses it\n")
+    again = state.concern(repo, job_id)
+    assert again["ok"] and again["resumed"] and again["file"] == str(path)
+    assert "app/util.py:1" in path.read_text()
+    assert state.read_job(repo, job_id)["concerns"] == 1
+
+
+def test_concern_recovers_file_written_before_state_and_recreates_missing_file(repo):
+    state.setup(repo, repo)
+    job_id = new(repo)["id"]
+    path = state.jobs_dir(repo) / job_id / "concern-1.md"
+    path.write_text("# Concern 1\n\n## Points\n\n1. task.md: Works; app/util.py:1\n")
+    assert state.preflight(repo, PLAN_FILE, "demo")["jobs"][0]["concern_status"] == "pending"
+    recovered = state.concern(repo, job_id)
+    assert recovered["ok"] and recovered["resumed"]
+    assert "task.md" in path.read_text()
+    path.unlink()
+    recovered = state.concern(repo, job_id)
+    assert recovered["ok"] and recovered["resumed"] and path.exists()
+    assert state.read_job(repo, job_id)["concern"]["status"] == "pending"
+
+
+def test_concern_legacy_counter_without_state_is_resumable(repo):
+    state.setup(repo, repo)
+    job_id = new(repo)["id"]
+    job = state.read_job(repo, job_id)
+    job["concerns"] = 1
+    state.write_job(repo, job)
+    out = state.concern(repo, job_id)
+    assert out["ok"] and out["resumed"]
+    assert Path(out["file"]).exists()
+
+
+def test_concern_does_not_resolve_from_the_original_approve(repo):
+    state.setup(repo, repo)
+    job_id = new(repo)["id"]
+    path = Path(state.concern(repo, job_id)["file"])
+    folder = path.parent
+    (folder / "decision.md").write_text("APPROVE\n\n## Rationale\nLooks good.\n")
+    assert state.resolve_concern(repo, job_id)["ok"] is False  # the skeleton has no numbered points
+    path.write_text("# Concern 1\n\n## Points\n\n1. task.md: Works; app/util.py:1\n")
+    out = state.resolve_concern(repo, job_id)
+    assert out["ok"] is False and "## Concerns" in out["reason"]
+    assert state.read_job(repo, job_id)["concern"]["status"] == "pending"
+
+
+def test_approver_can_reject_an_unfounded_concern_and_land(repo):
+    state.setup(repo, repo)
+    job_id = new(repo)["id"]
+    folder = Path(state.concern(repo, job_id)["file"]).parent
+    (folder / "concern-1.md").write_text("# Concern 1\n\n## Points\n\n1. task.md: Works; app/util.py:1\n")
+    (folder / "decision.md").write_text(
+        "APPROVE\n\n## Rationale\nRequirement satisfied.\n\n## Concerns\n1. app/util.py:1 already satisfies task.md.\n"
+    )
+    answer = state.resolve_concern(repo, job_id)
+    assert answer["ok"] and answer["status"] == "resolved" and answer["verdict"] == "APPROVE"
+    view = state.preflight(repo, PLAN_FILE, "demo")["jobs"][0]
+    assert (view["concern_status"], view["concern_verdict"], view["concern_round"]) == ("resolved", "APPROVE", 0)
+    assert state.concern(repo, job_id)["ok"] is False  # never open a second concern
+    assert state.resolve_concern(repo, job_id)["ok"] is False
+    assert state.land_job(repo, job_id, "committed", "abc")["stage"] == "committed"
+
+
+def test_upheld_concern_returns_changes_to_the_builder(repo):
+    state.setup(repo, repo)
+    job_id = new(repo)["id"]
+    folder = Path(state.concern(repo, job_id)["file"]).parent
+    (folder / "concern-1.md").write_text("# Concern 1\n\n## Points\n\n1. task.md: Works; app/util.py:1\n")
+    (folder / "decision.md").write_text("CHANGES\n\n## Issues\n1. app/util.py:1 does not meet task.md.\n")
+    out = state.resolve_concern(repo, job_id)
+    assert out["ok"] and out["verdict"] == "CHANGES"
+    assert state.read_job(repo, job_id)["concern"] == {
+        "status": "resolved", "file": "concern-1.md", "verdict": "CHANGES", "round": 0
+    }
+    with pytest.raises(ValueError, match="new review round"):
+        state.land_job(repo, job_id, "committed", "abc")
+    state.set_stage(repo, job_id, "build")
+    assert state.read_job(repo, job_id)["stage"] == "build"
+    assert state.concern(repo, job_id)["ok"] is False
+    (repo / "app/util.py").write_text("x = 2\n")
+    assert state.route_job(repo, job_id)["lite"] is True
+    with pytest.raises(ValueError, match="fresh APPROVE"):
+        state.land_job(repo, job_id, "committed", "abc")
+    (folder / "round-1/review-code.md").write_text("VERDICT: PASS\n")
+    assert state.check_verdicts(repo, job_id)["all_pass"]
+    (folder / "decision.md").write_text("APPROVE\n\n## Rationale\nRework passed.\n")
+    assert state.land_job(repo, job_id, "committed", "abc")["stage"] == "committed"
+
+
+def test_pending_concern_blocks_direct_landing_and_recovers_on_cli(repo, capsys):
+    state.setup(repo, repo)
+    job_id = new(repo)["id"]
+    assert state.main(["concern", job_id, "--root", str(repo)]) == 0
+    first = json.loads(capsys.readouterr().out)
+    assert Path(first["file"]).is_file()
+    assert state.main(["concern", job_id, "--root", str(repo)]) == 0
+    assert json.loads(capsys.readouterr().out)["resumed"] is True
+    with pytest.raises(ValueError, match="pending concern"):
+        state.land_job(repo, job_id, "committed", "abc")
+    assert state.main(["land", job_id, "--root", str(repo), "--stage", "committed", "--head", "abc"]) == 1
+    assert json.loads(capsys.readouterr().out)["ok"] is False
+    assert state.read_job(repo, job_id)["stage"] == "spec"
+
+
+def test_pending_concern_blocks_isolated_merge(isolated):
+    out = state.open_job(isolated, PLAN_FILE, 1, "demo", "isolated")
+    state.concern(isolated, out["id"])
+    merged = state.merge_job(isolated, out["id"])
+    assert merged["ok"] is False and "pending concern" in merged["reason"]
+    assert Path(out["worktree"]).exists()
+    assert state.read_job(isolated, out["id"])["stage"] == "build"
+
+
+def test_resolve_concern_cli_refuses_unanswered_and_accepts_answer(repo, capsys):
+    state.setup(repo, repo)
+    job_id = new(repo)["id"]
+    path = Path(state.concern(repo, job_id)["file"])
+    path.write_text("# Concern 1\n\n## Points\n\n1. task.md: Works; app/util.py:1\n")
+    assert state.main(["resolve-concern", job_id, "--root", str(repo)]) == 1
+    assert json.loads(capsys.readouterr().out)["ok"] is False
+    (path.parent / "decision.md").write_text(
+        "CHANGES\n\n## Issues\n1. Missing requirement at app/util.py:1.\n"
+    )
+    assert state.main(["resolve-concern", job_id, "--root", str(repo)]) == 0
+    assert json.loads(capsys.readouterr().out)["verdict"] == "CHANGES"
