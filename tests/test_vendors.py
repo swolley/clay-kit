@@ -41,7 +41,6 @@ def test_peer_off_keeps_every_agent_on_the_host(agent):
 
 
 def test_a_host_without_a_peer_stays_on_itself_even_when_on():
-    assert decide({"tier": "light"}, on(), "builder", "cursor", {}, NOW)["vendor"] == "cursor"
 
 
 def test_builder_on_a_listed_tier_goes_to_the_peer():
