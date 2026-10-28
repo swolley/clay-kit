@@ -20,7 +20,7 @@ fields as options records one agent). The usage of your own session is not repor
    id and, in isolated mode, creates the branches and worktrees `orchestrator.md` names before it writes `task.md` and `job.json`, then
    moves the job to `build`; it prints `id`, `branch`, `worktree` and `integration_worktree`. `ok: false`: say its `reason` and stop.
    Run the repo's fresh-checkout setup in a new worktree. A job folder that has no `job.json` is an abandoned claim: start the task fresh.
-2. **Build.** A job with `lean` in `job.json` follows `lean.md` from here instead of steps 2 to 6. The job is in `build` already; on a resume or a rework set it with `state.py stage <job> build`. With the peer on, who builds is decided as `peer.md` says (outside the start, run `state.py vendor <job> --agent builder --host <host>` first: `cross_on: true` means follow `peer.md`). Spawn the `builder` as `hosts.md` says, with the model and effort
+2. **Build.** A job with `lean` in `job.json` follows `lean.md` from here instead of steps 2 to 6. The job is in `build` already; on a resume or a rework set it with `state.py stage <job> build`. With the peer on, who builds is decided as `peer.md` says (outside the start, run `state.py vendor <job> --agent builder --host <host> --probe` first: `cross_on: true` means follow `peer.md`). Spawn the `builder` as `hosts.md` says, with the model and effort
    `state.py model --host <host> --tier <tier>` prints for the task's tier (after any `fable` answer at the start),
    prompt `<paths> Build round 1.` plus `Port: <5100+10n>` (n = job number), and name it `builder-<job-id>` where the host allows it.
    Keep the agent id the spawn returns; it replaces the name when you resume the builder.

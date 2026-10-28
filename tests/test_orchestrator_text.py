@@ -759,3 +759,9 @@ def test_concern_reference_is_loaded_only_when_needed():
         t = read(f"skills/{command}/SKILL.md")
         assert "`concerns.md` only for a concern or its resume" in t
         assert "<plugin root>/reference/concerns.md" not in t.split("Read these parts")[1].split("Read `")[0]
+
+
+def test_the_peer_check_outside_the_start_is_a_probe():
+    for part in ("reference/peer.md", "reference/job-loop.md"):
+        flat = " ".join(read(part).split())
+        assert "--agent builder --host <host> --probe" in flat, part

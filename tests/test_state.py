@@ -1848,3 +1848,17 @@ def test_resolve_concern_cli_refuses_unanswered_and_accepts_answer(repo, capsys)
     )
     assert state.main(["resolve-concern", job_id, "--root", str(repo)]) == 0
     assert json.loads(capsys.readouterr().out)["verdict"] == "CHANGES"
+
+
+def test_vendor_probe_answers_without_recording(repo, capsys, monkeypatch, tmp_path):
+    start_cross(repo, monkeypatch, tmp_path, tiers=["light"])
+    j = new(repo)
+    out = vendor_cli(repo, capsys, j["id"], "--agent", "builder", "--host", "claude", "--probe")
+    assert out["cross_on"] is True and out["vendor"] == "codex"
+    assert "vendors" not in state.read_job(repo, j["id"])
+    state.vendor_down(repo, STEM, "claude", "limit", "2999-01-01T00:00:00Z")
+    out = vendor_cli(repo, capsys, j["id"], "--agent", "reviewer-code", "--host", "claude", "--probe")
+    job = state.read_job(repo, j["id"])
+    assert "vendors" not in job and "crossed" not in job
+    out = vendor_cli(repo, capsys, "--agent", "reviewer-final", "--host", "claude", "--plan", STEM, "--probe")
+    assert "vendor" not in (json.loads(state.run_path(repo, STEM).read_text()).get("final") or {})
