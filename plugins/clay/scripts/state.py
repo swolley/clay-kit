@@ -5,7 +5,7 @@ Each command prints JSON. `verdicts` exits 1 when the round is not complete and 
 
   state.py setup --root DIR --plugin-root DIR
   state.py adhoc --root DIR --text "[tier=NAME] TEXT"
-  state.py model --root DIR --host claude|codex|cursor (--tier T | --agent A) [--risky]
+  state.py model --root DIR --host claude|codex (--tier T | --agent A) [--risky]
   state.py run --root DIR --plan-file P --mode M --pace step|auto [--cross on|off --host H]
   state.py preflight --root DIR [--plan-file P --repo-name R] [--host H]
   state.py new-job --root DIR --plan-file P --task N --repo-name R --mode M --branch B --worktree W [--lean]
