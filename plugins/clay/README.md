@@ -210,7 +210,10 @@ which new agents go to the other vendor. A Codex peer runs in its `workspace-wri
 and `/tmp`, opens no network socket (localhost included) and cannot write `~/.cache` or other caches in your home. So a Codex reviewer or
 approver relies on the checks on record (`state.py verify --reuse`) and says in its file which one it could not run again, a Codex interface
 reviewer works from the code, and a Codex builder in isolated mode leaves its commit to the orchestrator. On Codex, starting a Claude peer
-(`claude -p` needs the network and writes `~/.claude`) runs outside the session's sandbox, with your approval.
+(`claude -p` needs the network and writes `~/.claude`) runs outside the session's sandbox, with your approval. A Claude peer's shell
+commands run in Claude Code's own sandbox, with the same limits as a Codex peer (worktree, job folder and a temp folder; no network;
+no retry outside the sandbox): on Linux it needs `bubblewrap` and `socat`, and without them the Claude peer does not start and its
+agents run on the session's host.
 
 ### Known limits on Codex
 

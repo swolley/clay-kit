@@ -770,3 +770,12 @@ def test_the_peer_check_outside_the_start_is_a_probe():
 def test_a_sandboxed_approver_reports_the_rerun_it_could_not_make():
     gate = " ".join(read("agents/approver.md").split("1. **Evidence.**")[1].split("2. **Reviews.**")[0].split())
     assert "`Sandbox:`" in gate and "could not re-run" in gate and "does not fail this gate" in gate
+
+
+def test_the_claude_peer_sandbox_is_documented():
+    flat = " ".join(read("reference/peer.md").split())
+    assert "Claude peer runs in Claude Code's sandbox" in flat
+    assert "A peer reviewer, approver or `reviewer-final` gets the line `Sandbox:" in flat
+    assert "`sandbox`: Claude Code's sandbox could not start" in flat and "--reason missing" in flat
+    readme = " ".join(read("README.md").split())
+    assert "bubblewrap" in readme and "socat" in readme

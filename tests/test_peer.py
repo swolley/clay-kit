@@ -268,3 +268,15 @@ def test_start_ends_the_orphan_cli_of_a_dead_runner(env):
     start(env["root"], "J1", "builder", 1, "codex", str(env["cwd"]), str(env["write"]), str(env["prompt"]))
     assert orphan.wait(timeout=3) == -signal.SIGKILL
     wait(env["root"], "J1", "builder-r1", timeout=10)
+
+
+def test_the_claude_peer_runs_in_a_strict_sandbox():
+    cmd = build_command("claude", "/wt", "/job", None, None, None, ["Bash"], "/x")
+    settings = json.loads(cmd[cmd.index("--settings") + 1])["sandbox"]
+    assert settings["enabled"] is True and settings["failIfUnavailable"] is True
+    assert settings["allowUnsandboxedCommands"] is False and settings["network"]["allowedDomains"] == []
+
+
+def test_a_sandbox_that_cannot_start_is_its_own_error():
+    out = '{"type": "result", "is_error": true, "result": "x"}'
+    assert peer.classify("claude", 1, out + "\nError: Sandbox is required but failed to initialize: bwrap not found", None) == "sandbox"

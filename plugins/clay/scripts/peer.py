@@ -28,6 +28,11 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 VENDORS = ("claude", "codex")
 LIMIT_PATTERNS = ("usage limit", "rate limit", "limit reached", "quota")
 AUTH_PATTERNS = ("not logged in", "please log in", "unauthorized", "authentication")
+SANDBOX_PATTERNS = ("sandbox is required", "failed to initialize", "sandbox can't", "sandbox cannot", "sandbox failed")
+# The Claude peer's Bash runs in Claude Code's sandbox, as close as it gets to Codex's workspace-write: writes only in its working
+# directory, the --add-dir folder and a temp dir, no network, no retry outside the sandbox, and no start at all without the sandbox.
+CLAUDE_SANDBOX = {"sandbox": {"enabled": True, "failIfUnavailable": True, "allowUnsandboxedCommands": False,
+                              "autoAllowBashIfSandboxed": True, "network": {"allowedDomains": []}}}
 TIMEOUTS = {"builder": 3600}
 CLAUDE_TOKENS = ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
 DEFAULT_TIMEOUT = 1200
@@ -73,7 +78,7 @@ def build_command(vendor: str, cwd: str, write: str, model: str | None, effort: 
         cmd += ["--effort", effort] if effort else []
         cmd += ["--output-format", "json", "--add-dir", write]
         cmd += ["--allowedTools", ",".join(tools)] if tools else []
-        cmd += ["--permission-mode", "acceptEdits"]
+        cmd += ["--permission-mode", "acceptEdits", "--settings", json.dumps(CLAUDE_SANDBOX)]
         return cmd + (["--resume", resume] if resume else [])
     raise ValueError(f"unknown vendor {vendor!r}")
 
@@ -153,13 +158,15 @@ def _error_text(output: str) -> str:
 
 
 def classify(vendor: str, returncode: int, output: str, rate_limits: dict | None) -> str | None:
-    """None for a run that succeeded, else limit, auth or exit. `missing` and `timeout` are decided by the runner."""
+    """None for a run that succeeded, else sandbox (Claude only), limit, auth or exit. `missing` and `timeout` are decided by the runner."""
     is_error = vendor == "claude" and any(e.get("is_error") is True for e in _events(output))
     if returncode == 0 and not is_error:
         return None
     if vendor == "codex" and rate_limits and (_flat(rate_limits) or {}).get("used_percent", 0) >= 100:
         return "limit"
     text = _error_text(output)
+    if vendor == "claude" and any(p in text for p in SANDBOX_PATTERNS):
+        return "sandbox"
     if any(p in text for p in LIMIT_PATTERNS):
         return "limit"
     if any(p in text for p in AUTH_PATTERNS):

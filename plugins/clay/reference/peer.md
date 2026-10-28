@@ -43,11 +43,14 @@ Before every agent the Job loop starts (and `reviewer-final`), ask `state.py ven
 ## Codex sandbox
 
 A Codex peer runs in `workspace-write`: it writes only its worktree, the job folder and `/tmp`, opens no network socket (localhost
-included) and cannot write `~/.cache` or other caches in the home folder. So:
+included) and cannot write `~/.cache` or other caches in the home folder. A Claude peer runs in Claude Code's sandbox (`peer.py` passes
+the settings): its shell writes only its worktree, the job folder and a temp folder, with no network and no retry outside the sandbox,
+but it can commit. So:
 - A Codex builder in isolated mode cannot commit (the gitdir stays read-only): its prompt adds `Commit: by the orchestrator`. When `wait`
   returns `done`, commit the paths under its `## Commit` in build.md in the job's worktree with that message, then go on as for any build.
-- A Codex reviewer, approver or `reviewer-final` gets the line `Sandbox: no network, no home caches. Rely on the recorded checks
-  (verify --reuse) and say in your file which check you could not run again.` A Codex `reviewer-interface` gets no `Port:`, so it works
+  A Claude builder commits as any builder does.
+- A peer reviewer, approver or `reviewer-final` gets the line `Sandbox: no network, no home caches. Rely on the recorded checks
+  (verify --reuse) and say in your file which check you could not run again.` A peer `reviewer-interface` gets no `Port:`, so it works
   from the code, as its file allows.
 
 ## When a run fails
@@ -55,6 +58,8 @@ included) and cannot write `~/.cache` or other caches in the home folder. So:
 - `limit`: `state.py vendor-down --plan <plan-stem> --vendor <peer> --reason limit [--until <rate_limits.resets_at>]` (epoch or ISO),
   and say it in one line.
 - `missing` or `auth`: `vendor-down ... --reason missing|auth`.
+- `sandbox`: Claude Code's sandbox could not start (on Linux it needs `bubblewrap` and `socat`): `vendor-down ... --reason missing`,
+  and say why in one line.
 - After any `vendor-down`, ask `state.py vendor` again for that agent and run it on the vendor it prints, peer or native (a builder
   starts fresh, as step 5 says).
 - `timeout`, `exit` or `lost`: one more run on the same vendor. A second failure sends the job to Needs human with the log,
