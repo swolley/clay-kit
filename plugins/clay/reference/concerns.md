@@ -6,7 +6,7 @@ Read this part only if the orchestrator sees an explicit task requirement missin
 
 1. Run `state.py concern <job>`. It creates `concern-1.md` before recording `concern.status: pending`. If an interruption left the file or state behind, the same command returns the original file with `resumed: true`; it does not spend another concern. Do not overwrite existing numbered points on resume.
 2. Fill `## Points` in that file with numbered findings. Every finding must quote the missing requirement from task.md and identify relevant code at `file:line`. An empty skeleton must never be sent to the approver.
-3. Read decision.md. If it already has a fresh `## Concerns` answer under `APPROVE`, or `## Issues` under `CHANGES`, go directly to resolution. Otherwise send the original approver back with the file path. Claude resumes it with SendMessage; Codex restarts a new approver with `Concerns: <absolute file>` and the usual job coordinates. The approver rewrites decision.md after comparing the findings with task.md and the diff. It must reject interpretations the task leaves open.
+3. Read decision.md. If it already has a fresh `## Concerns` answer under `APPROVE`, or `## Issues` under `CHANGES`, go directly to resolution. Otherwise send the original approver back with the file path. On Claude Code resume it as the host part says (`hosts-claude.md`, Resuming an agent); on Codex start a new approver with `Concerns: <absolute file>` and the usual job coordinates. The approver rewrites decision.md after comparing the findings with task.md and the diff. It must reject interpretations the task leaves open.
 
 ## Resolve and route
 
