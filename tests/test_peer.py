@@ -255,3 +255,15 @@ def test_commands():
 def test_builder_tools_include_bash():
     assert "Bash" in agent_tools("builder")
     assert agent_tools("no-such-agent") == []
+
+
+def test_start_ends_the_orphan_cli_of_a_dead_runner(env):
+    dead = subprocess.Popen(["true"])
+    dead.wait()
+    orphan = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    peer_dir = env["write"] / "peer"
+    peer_dir.mkdir()
+    (peer_dir / "builder-r1.status.json").write_text(json.dumps({"state": "running", "pid": dead.pid, "pgid": orphan.pid}))
+    start(env["root"], "J1", "builder", 1, "codex", str(env["cwd"]), str(env["write"]), str(env["prompt"]))
+    assert orphan.wait(timeout=3) == -signal.SIGKILL
+    wait(env["root"], "J1", "builder-r1", timeout=10)
