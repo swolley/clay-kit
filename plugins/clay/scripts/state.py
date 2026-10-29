@@ -1154,6 +1154,13 @@ def _first_round(folder: Path) -> str:
     return ", ".join(found)
 
 
+def _model_labels(vendor: str, models: list[str]) -> list[str]:
+    """How the record names who ran an agent: `vendor:model`, the bare model, or the vendor alone when its model was the CLI's
+    own default (a Codex peer with no models.json entry), so a peer agent never disappears from the record."""
+    named = [f"{vendor}:{m}" if vendor else m for m in models if m]
+    return named or ([vendor] if vendor else [])
+
+
 def execution_record(root, plan_stem: str) -> str:
     """What the run did, as a table without checkboxes so plan tools do not read it as work. Kept in the plan, which
     travels with the repo, since the job folders are local and are removed once the plan is closed."""
@@ -1178,7 +1185,7 @@ def execution_record(root, plan_stem: str) -> str:
         if n := len(list(folder.glob("answers-*.md"))):
             notes.append(f"{n} answered question(s)")
         findings = _findings(folder, bool(j.get("reviews")))
-        models = "/".join(sorted({f"{a['vendor']}:{m}" if a.get("vendor") else m for a in agents.values() for m in [a.get("model", ""), *a.get("models", [])] if m}))
+        models = "/".join(sorted({label for a in agents.values() for label in _model_labels(a.get("vendor", ""), [a.get("model", ""), *a.get("models", [])])}))
         if j.get("crossed") is False:
             notes.append("review not crossed")
         tier = f"{j['escalated_from']}→{j.get('tier', '')}" if j.get("escalated_from") else j.get("tier", "")
@@ -1189,8 +1196,8 @@ def execution_record(root, plan_stem: str) -> str:
         usage = [r.get("agent", {}) for r in reviews]
         t, m = sum(int(a.get("tokens", 0)) for a in usage), sum(int(a.get("ms", 0)) for a in usage)
         tokens, ms = tokens + t, ms + m
-        prefix = f"{v}:" if (v := (final.get("vendor") or {}).get("vendor")) else ""
-        models = "/".join(sorted({prefix + a["model"] for a in usage if a.get("model")}))
+        vendor = (final.get("vendor") or {}).get("vendor", "")
+        models = "/".join(sorted({label for a in usage for label in _model_labels(vendor, [a.get("model", "")])}))
         notes = "review not crossed" if final.get("crossed") is False else ""
         rows.append(f"| final | | {models} | {len(reviews)} | | {', '.join(r['verdict'] for r in reviews)} | | | {notes} | {t} | {m // 1000}s |")
     head = "| Task | Tier | Models | Rounds | First round | Reviews | Decision | Findings | Notes | Tokens | Agent time |\n|---|---|---|---|---|---|---|---|---|---|---|\n"

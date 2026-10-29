@@ -1879,3 +1879,23 @@ def test_vendor_probe_answers_without_recording(repo, capsys, monkeypatch, tmp_p
     assert "vendors" not in job and "crossed" not in job
     out = vendor_cli(repo, capsys, "--agent", "reviewer-final", "--host", "claude", "--plan", STEM, "--probe")
     assert "vendor" not in (json.loads(state.run_path(repo, STEM).read_text()).get("final") or {})
+
+
+def test_a_peer_agent_without_a_model_still_shows_its_vendor(locked_repo):
+    """A Codex peer with no models.json entry runs on the Codex default model, which clay does not know: the record names the vendor."""
+    state.write_run(locked_repo, PLAN_FILE, "current-branch")
+    j = state.new_job(locked_repo, PLAN_FILE, 1, repo_name="demo", mode="current-branch", branch="main", worktree=str(locked_repo))
+    state.record_agents(locked_repo, j["id"], [
+        {"role": "builder", "model": "sonnet", "vendor": "claude", "tokens": 1},
+        {"role": "code", "vendor": "codex", "session_id": "T1", "tokens": 2},
+    ])
+    row = next(l for l in state.execution_record(locked_repo, STEM).splitlines() if l.startswith("| 1 |"))
+    assert row.split("|")[3].strip() == "claude:sonnet/codex"
+    runs = locked_repo / "factory/jobs/_runs"
+    (runs / f"{STEM}-final.md").write_text("VERDICT: PASS\n\n## Findings\nNone.\n")
+    state.final_verdict(locked_repo, STEM, False, {"vendor": "codex", "tokens": 10, "ms": 1000})
+    run = state.read_run(locked_repo, STEM)
+    run["final"]["vendor"] = {"vendor": "codex", "reason": "opposite"}
+    state.run_path(locked_repo, STEM).write_text(json.dumps(run))
+    row = next(l for l in state.execution_record(locked_repo, STEM).splitlines() if l.startswith("| final |"))
+    assert row.split("|")[3].strip() == "codex"
