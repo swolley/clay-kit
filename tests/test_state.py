@@ -722,6 +722,23 @@ def test_a_check_stays_current_when_the_same_code_is_committed_again(repo):
     assert again["reused"] is True and again["n"] == first["n"] and again["current"] is True
 
 
+def test_a_check_stays_current_when_its_uncommitted_code_is_committed(repo):
+    """A Codex peer builder leaves its commit to the orchestrator: its checks ran on uncommitted code and must still count."""
+    state.setup(repo, repo)
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    git(repo, "checkout", "-q", "-b", "factory/demo/001")
+    j = state.new_job(repo, "docs/superpowers/plans/2026-01-01-demo.md", 1, repo_name="demo", mode="isolated", branch="factory/demo/001", worktree=str(repo), base=base)
+    (repo / "app/util.py").write_text("x = 2\n")
+    (repo / "app/new.py").write_text("y = 1\n")
+    first = state.run_check(repo, j["id"], "true")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "the builder's files, committed by the orchestrator")
+    again = state.run_check(repo, j["id"], "true", reuse=True)
+    assert again["reused"] is True and again["n"] == first["n"] and again["current"] is True
+    (repo / "app/util.py").write_text("x = 3\n")
+    assert state.run_check(repo, j["id"], "true", reuse=True)["reused"] is False
+
+
 # ---- composite commands: fewer round trips for the same bookkeeping ----
 
 
@@ -1295,6 +1312,18 @@ def test_lean_check_promotes_after_two_failed_runs(repo):
     assert state.lean_check(repo, j["id"])["promote"] == f"checks failed twice: {cmd}"
 
 
+def test_lean_check_does_not_count_the_red_runs_of_earlier_code(repo):
+    """Test first: the Verify command fails before the implementation exists, more than once; that is not a struggling build."""
+    j = lean_job(repo, "`python3 -c 'import app.util as u; assert u.x == 3'`")
+    cmd = "python3 -c 'import app.util as u; assert u.x == 3'"
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.run_check(repo, j["id"], cmd)
+    state.run_check(repo, j["id"], cmd)
+    (repo / "app/util.py").write_text("x = 3\n")
+    assert state.run_check(repo, j["id"], cmd)["exit"] == 0
+    assert state.lean_check(repo, j["id"]) == {"land": True}
+
+
 def test_lean_check_promotes_a_change_that_routes_to_security(repo):
     j = lean_job(repo)
     (repo / "app/auth/session.py").write_text("N = 60\n")
@@ -1848,3 +1877,37 @@ def test_resolve_concern_cli_refuses_unanswered_and_accepts_answer(repo, capsys)
     )
     assert state.main(["resolve-concern", job_id, "--root", str(repo)]) == 0
     assert json.loads(capsys.readouterr().out)["verdict"] == "CHANGES"
+
+
+def test_vendor_probe_answers_without_recording(repo, capsys, monkeypatch, tmp_path):
+    start_cross(repo, monkeypatch, tmp_path, tiers=["light"])
+    j = new(repo)
+    out = vendor_cli(repo, capsys, j["id"], "--agent", "builder", "--host", "claude", "--probe")
+    assert out["cross_on"] is True and out["vendor"] == "codex"
+    assert "vendors" not in state.read_job(repo, j["id"])
+    state.vendor_down(repo, STEM, "claude", "limit", "2999-01-01T00:00:00Z")
+    out = vendor_cli(repo, capsys, j["id"], "--agent", "reviewer-code", "--host", "claude", "--probe")
+    job = state.read_job(repo, j["id"])
+    assert "vendors" not in job and "crossed" not in job
+    out = vendor_cli(repo, capsys, "--agent", "reviewer-final", "--host", "claude", "--plan", STEM, "--probe")
+    assert "vendor" not in (json.loads(state.run_path(repo, STEM).read_text()).get("final") or {})
+
+
+def test_a_peer_agent_without_a_model_still_shows_its_vendor(locked_repo):
+    """A Codex peer with no models.json entry runs on the Codex default model, which clay does not know: the record names the vendor."""
+    state.write_run(locked_repo, PLAN_FILE, "current-branch")
+    j = state.new_job(locked_repo, PLAN_FILE, 1, repo_name="demo", mode="current-branch", branch="main", worktree=str(locked_repo))
+    state.record_agents(locked_repo, j["id"], [
+        {"role": "builder", "model": "sonnet", "vendor": "claude", "tokens": 1},
+        {"role": "code", "vendor": "codex", "session_id": "T1", "tokens": 2},
+    ])
+    row = next(l for l in state.execution_record(locked_repo, STEM).splitlines() if l.startswith("| 1 |"))
+    assert row.split("|")[3].strip() == "claude:sonnet/codex"
+    runs = locked_repo / "factory/jobs/_runs"
+    (runs / f"{STEM}-final.md").write_text("VERDICT: PASS\n\n## Findings\nNone.\n")
+    state.final_verdict(locked_repo, STEM, False, {"vendor": "codex", "tokens": 10, "ms": 1000})
+    run = state.read_run(locked_repo, STEM)
+    run["final"]["vendor"] = {"vendor": "codex", "reason": "opposite"}
+    state.run_path(locked_repo, STEM).write_text(json.dumps(run))
+    row = next(l for l in state.execution_record(locked_repo, STEM).splitlines() if l.startswith("| final |"))
+    assert row.split("|")[3].strip() == "codex"

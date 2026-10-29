@@ -44,6 +44,8 @@ for the builder. The original APPROVE does not count until you rewrite decision.
    (`<State command> checks <job id> --root <repo>`): a run with `current: true` ran against the code as it stands and counts as
    evidence, even for the whole suite. A criterion with no current run you run yourself. Besides that, re-run at least one check
    yourself without `--reuse` (`<State command> verify <job id> --root <repo> --cmd '<command>'`), the cheapest one that covers a criterion.
+   When your prompt has a `Sandbox:` line and a check cannot run there (it needs the network, a socket or a home cache), name it in
+   decision.md: a check you could not re-run for that reason does not fail this gate when the check's recorded run is current and passed.
 2. **Reviews.** Each reviewer selected for the final round, run or carried, has `VERDICT: PASS`, and nothing in their
    observations describes a genuine defect.
 3. **Landing.** In isolated mode, `git merge-tree --write-tree <integration branch> <branch>` reports no conflicts.

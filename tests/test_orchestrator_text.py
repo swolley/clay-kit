@@ -544,7 +544,7 @@ def test_completion_runs_the_final_review_first():
 
 def test_lean_reference_names_its_commands():
     t = read("reference/lean.md")
-    for word in ("lean-check", "promote", "open-job", "--lean", "lean_reason", "long", "session's model"):
+    for word in ("lean-check", "promote", "open-job", "--lean", "lean_reason", "long", "`Lean: yes`"):
         assert word in t, word
 
 
@@ -759,3 +759,37 @@ def test_concern_reference_is_loaded_only_when_needed():
         t = read(f"skills/{command}/SKILL.md")
         assert "`concerns.md` only for a concern or its resume" in t
         assert "<plugin root>/reference/concerns.md" not in t.split("Read these parts")[1].split("Read `")[0]
+
+
+def test_the_peer_check_outside_the_start_is_a_probe():
+    for part in ("reference/peer.md", "reference/job-loop.md"):
+        flat = " ".join(read(part).split())
+        assert "--agent builder --host <host> --probe" in flat, part
+
+
+def test_a_sandboxed_approver_reports_the_rerun_it_could_not_make():
+    gate = " ".join(read("agents/approver.md").split("1. **Evidence.**")[1].split("2. **Reviews.**")[0].split())
+    assert "`Sandbox:`" in gate and "could not re-run" in gate and "does not fail this gate" in gate
+
+
+def test_the_claude_peer_sandbox_is_documented():
+    flat = " ".join(read("reference/peer.md").split())
+    assert "Claude peer runs in Claude Code's sandbox" in flat
+    assert "A peer reviewer, approver or `reviewer-final` gets the line `Sandbox:" in flat
+    assert "`sandbox`: Claude Code's sandbox could not start" in flat and "--reason missing" in flat
+    readme = " ".join(read("README.md").split())
+    assert "bubblewrap" in readme and "socat" in readme
+
+
+def test_the_final_reviewer_runs_checks_in_the_code_tree():
+    flat = " ".join(read("agents/reviewer-final.md").split())
+    assert "The jobs' worktrees are gone by now" in flat and "run it in `Code:`" in flat and "`Verify`" in flat
+
+
+def test_a_lean_task_is_built_by_a_builder_agent_not_the_session():
+    lean = " ".join(read("reference/lean.md").split())
+    assert "Do the builder's work yourself" not in lean and "Spawn the `builder`" in lean and "Record its usage" in lean
+    builder = " ".join(read("agents/builder.md").split("## Lean jobs")[1].split("\n## ")[0].split())
+    assert "`Lean: yes`" in builder and "red runs on earlier code do not count" in builder and "`<State command> verify` once the work is done" in builder
+    assert "the session builds them" not in read("README.md")
+    assert "built by the session" not in read("reference/peer.md")

@@ -34,7 +34,7 @@ plan, tell the user in one line and ask before running.
    recorded in `agents` are the ones actually passed, and the plan file is never edited. The answer holds for the whole run and is
    asked again on a resumed run. `factory-task` with an explicit `tier=fable` is not asked again, the user chose it.
 3. Lean: `preflight` also gives each task `lean` and `lean_reason`, and `lean_count` and `long`; with `lean_count` above 0 the
-   mode question adds the lean choice and the start message the note on the session's model (`lean.md`).
+   mode question adds the lean choice (`lean.md`).
 4. The target repo is a git repo. Isolated mode needs a clean main checkout only for the final merge.
 5. Resume (below), then mode choice, then start. When `peer.found`, the mode question adds "work with <peer>: yes (recommended) / no", asked again on a resumed run;
    `state.py run` gets `--cross on|off --host <host>`, and with yes read `peer.md`.
@@ -56,7 +56,7 @@ Resuming: keep the worktree and branch, never recreate. If they are missing, or 
 longer points at the `head` in `job.json`, set `needs-human` and say why. `build` with a build.md for the recorded `build_round` and `STATUS: READY`: go straight to Route (step 3), or to `lean-check` for a job
 with `lean` (`lean.md`).
 `build` without build.md: start a fresh
-builder with the task and the commits already on the branch; for a job with `lean`, go on building in the session (`lean.md`). Round partly done: keep finished
+builder with the task and the commits already on the branch; for a job with `lean` too, with the line `Lean: yes` (`lean.md`). Round partly done: keep finished
 review files, rerun only the missing reviewers. `approve` without decision.md: rerun the approver. `approve` on a short-path job (`lite` in `job.json`): run `state.py verdicts` first, since a
 decision.md may be left from an earlier round; `CHANGES` or a missing review goes back to step 5 or reruns the approver, and only `all_pass` lets decision.md count.
 A named builder does not survive its session; a resumed builder, like any builder whose agent is gone, on any host, is a new agent that reads build.md,

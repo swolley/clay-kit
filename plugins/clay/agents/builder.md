@@ -72,6 +72,12 @@ understand.
 For each acceptance criterion run its verification command, plus the repo's own checks for what you touched,
 through `verify`, and keep the real output. A statement such as "this should work" is not proof.
 
+## Lean jobs
+
+When your prompt has the line `Lean: yes`, no reviewer reads this job: its own checks gate it, and two failed runs of a `Verify`
+command on the code as it stands send it back to the full review (red runs on earlier code do not count). Run each `Verify` command of the task through `<State command> verify` once the work is done and, in isolated mode,
+committed: a run made before the last commit is stale. When such a run fails, fix the cause and run it again.
+
 ## Saving the work
 
 - `isolated`: commit with short one-line messages, naming each path explicitly, and leave the working tree clean.

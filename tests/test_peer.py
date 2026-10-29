@@ -68,7 +68,8 @@ def env(tmp_path, monkeypatch):
     for path in (write / "peer").glob("*.status.json"):
         status = json.loads(path.read_text())
         for pgid in (status.get("pgid"), status.get("pid")):
-            if isinstance(pgid, int) and pgid > 0:
+            # Only a live leader: a hand-written status names reaped pids, which the system may already have given to another group.
+            if peer._alive(pgid):
                 try:
                     os.killpg(pgid, signal.SIGKILL)
                 except (ProcessLookupError, PermissionError):
@@ -255,3 +256,27 @@ def test_commands():
 def test_builder_tools_include_bash():
     assert "Bash" in agent_tools("builder")
     assert agent_tools("no-such-agent") == []
+
+
+def test_start_ends_the_orphan_cli_of_a_dead_runner(env):
+    dead = subprocess.Popen(["true"])
+    dead.wait()
+    orphan = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    peer_dir = env["write"] / "peer"
+    peer_dir.mkdir()
+    (peer_dir / "builder-r1.status.json").write_text(json.dumps({"state": "running", "pid": dead.pid, "pgid": orphan.pid}))
+    start(env["root"], "J1", "builder", 1, "codex", str(env["cwd"]), str(env["write"]), str(env["prompt"]))
+    assert orphan.wait(timeout=3) == -signal.SIGKILL
+    wait(env["root"], "J1", "builder-r1", timeout=10)
+
+
+def test_the_claude_peer_runs_in_a_strict_sandbox():
+    cmd = build_command("claude", "/wt", "/job", None, None, None, ["Bash"], "/x")
+    settings = json.loads(cmd[cmd.index("--settings") + 1])["sandbox"]
+    assert settings["enabled"] is True and settings["failIfUnavailable"] is True
+    assert settings["allowUnsandboxedCommands"] is False and settings["network"]["allowedDomains"] == []
+
+
+def test_a_sandbox_that_cannot_start_is_its_own_error():
+    out = '{"type": "result", "is_error": true, "result": "x"}'
+    assert peer.classify("claude", 1, out + "\nError: Sandbox is required but failed to initialize: bwrap not found", None) == "sandbox"

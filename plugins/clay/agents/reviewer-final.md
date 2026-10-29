@@ -16,6 +16,8 @@ wrote: commits, file list, the whole diff of the run) and `Output:`, the file yo
 earlier review, and a `Diff:` that holds only the fix made for it. Never `cd`: a host may ask before a `cd` followed by git, since the target's hooks or config could run.
 Run git as `git -C <Code> ...` and give every other command absolute paths; use git only to read a whole
 file or older history.
+The jobs' worktrees are gone by now: when a finding needs a check to confirm it (a plan's `Verify` command, a test), run it in `Code:`,
+with absolute paths. When your prompt has a `Sandbox:` line and the check cannot run there, say so in the finding.
 
 ## What to read
 
