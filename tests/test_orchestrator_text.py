@@ -779,3 +779,8 @@ def test_the_claude_peer_sandbox_is_documented():
     assert "`sandbox`: Claude Code's sandbox could not start" in flat and "--reason missing" in flat
     readme = " ".join(read("README.md").split())
     assert "bubblewrap" in readme and "socat" in readme
+
+
+def test_the_final_reviewer_runs_checks_in_the_code_tree():
+    flat = " ".join(read("agents/reviewer-final.md").split())
+    assert "The jobs' worktrees are gone by now" in flat and "run it in `Code:`" in flat and "`Verify`" in flat
