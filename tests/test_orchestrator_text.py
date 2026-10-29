@@ -544,7 +544,7 @@ def test_completion_runs_the_final_review_first():
 
 def test_lean_reference_names_its_commands():
     t = read("reference/lean.md")
-    for word in ("lean-check", "promote", "open-job", "--lean", "lean_reason", "long", "session's model"):
+    for word in ("lean-check", "promote", "open-job", "--lean", "lean_reason", "long", "`Lean: yes`"):
         assert word in t, word
 
 
@@ -784,3 +784,12 @@ def test_the_claude_peer_sandbox_is_documented():
 def test_the_final_reviewer_runs_checks_in_the_code_tree():
     flat = " ".join(read("agents/reviewer-final.md").split())
     assert "The jobs' worktrees are gone by now" in flat and "run it in `Code:`" in flat and "`Verify`" in flat
+
+
+def test_a_lean_task_is_built_by_a_builder_agent_not_the_session():
+    lean = " ".join(read("reference/lean.md").split())
+    assert "Do the builder's work yourself" not in lean and "Spawn the `builder`" in lean and "Record its usage" in lean
+    builder = " ".join(read("agents/builder.md").split("## Lean jobs")[1].split("\n## ")[0].split())
+    assert "`Lean: yes`" in builder and "never through `verify`" in builder and "`<State command> verify` once the work is done" in builder
+    assert "the session builds them" not in read("README.md")
+    assert "built by the session" not in read("reference/peer.md")

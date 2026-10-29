@@ -12,7 +12,7 @@ Before every agent the Job loop starts (and `reviewer-final`), ask `state.py ven
 `--agent` one of `builder`, `reviewer-code`, `reviewer-security`, `reviewer-interface`, `approver`; for the final review
 `state.py vendor --agent reviewer-final --plan <plan-stem> --host <host> [--risky]`. It prints `vendor`, `peer`, `model`,
 `effort`, `reason`, `crossed` and `cross_on`, and records the choice. Its `model` and `effort` replace those of `state.py model`.
-- A lean job is built by the session; its final review goes to the peer.
+- A lean job's builder is native; its final review goes to the peer.
 - Round 3's escalated builder and a rework builder ask again, so they may change vendor.
 - `crossed: false` for a reviewer, the approver or `reviewer-final` (never the builder): say `review not crossed` in one line (the vendor opposite to the builder is over its threshold or exhausted).
 - `vendor: null`: both vendors are unusable. Stop as in `auto` pace: list the waiting jobs and release the lock (`job-loop.md`, `lock.md`).
