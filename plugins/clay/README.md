@@ -33,7 +33,7 @@ Every command is a skill named `factory-<verb>`, so on Claude Code it is typed `
    approver lands it or escalates it. Reviewer findings are checked, not applied blindly; a job has
    at most three rounds. A `light` or `medium` task that only the code reviewer would read takes a short path: the approver writes the code review itself. When a second round still asks for changes, the third is built by a fresh builder one tier up. After a rework round only the reviewers that asked for changes, or whose paths changed, run again; a lens that passed keeps its verdict. Reviewers and the approver read one ready-made `diff.patch` per round, and the builder's checks are recorded by `state.py verify` once per state of the code, so the suite is not run again by every agent. Each task's steps are ticked in the commit that lands it. A builder keeps the documentation the task names under `Docs` true in the same change and records under `## Deviations` what it did differently from the plan; the code reviewer blocks a stale document. When every task has landed a final reviewer reads the plan's whole branch for what only shows across tasks; its findings get one fix task and a recheck of that fix, and what is still open is reported to you. When a plan is finished its header says `status: completed` and one `## Delivery status` section names the documentation that describes the work now (`Documented in`), lists the divergences and keeps the run's history in an execution record; the plan is never deleted, and the local job folders are then removed.
    `/factory-run <plan> lean` goes further for simple tasks (light or medium, files that only the code reviewer would read, declared
-   `Accept` and `Verify`): the session builds them and their own checks gate them, with no reviewer or approver per task, and the
+   `Accept` and `Verify`): a builder on the task's cheap tier model builds them and their own checks gate them, with no reviewer or approver per task, and the
    final review of the branch reads them all; a task whose diff or checks say otherwise goes back to the full loop. Without the word the
    run proposes it when some tasks qualify, `full` turns it off, and `/factory-task lean verify="<command>" <text>` does the same for one task.
 4. When all tasks have landed, you choose how the work reaches your main branch. Nothing is ever pushed.
@@ -68,6 +68,13 @@ Codex has no band or pane; the static dashboard below works on every host.
 State lives in `factory/jobs/` (ignored by git). A static dashboard shows it, with selectable text, copy buttons and the usage of each agent:
 `/factory-run` copies the page to `factory/jobs/dashboard.html`; serve that folder with
 `cd factory/jobs && python3 -m http.server` and open `/dashboard.html`.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/images/dashboard-dark.png">
+  <img alt="Factory board: jobs grouped by plan and repository, with stage, tier, reviewer verdicts and ready commands" src="../../docs/images/dashboard-light.png" width="800">
+</picture>
+
+The band and the pane render only inside Claude Code, so this page is the preview shown here.
 
 ## Plan format and why it follows superpowers
 
@@ -203,7 +210,10 @@ which new agents go to the other vendor. A Codex peer runs in its `workspace-wri
 and `/tmp`, opens no network socket (localhost included) and cannot write `~/.cache` or other caches in your home. So a Codex reviewer or
 approver relies on the checks on record (`state.py verify --reuse`) and says in its file which one it could not run again, a Codex interface
 reviewer works from the code, and a Codex builder in isolated mode leaves its commit to the orchestrator. On Codex, starting a Claude peer
-(`claude -p` needs the network and writes `~/.claude`) runs outside the session's sandbox, with your approval.
+(`claude -p` needs the network and writes `~/.claude`) runs outside the session's sandbox, with your approval. A Claude peer's shell
+commands run in Claude Code's own sandbox, with the same limits as a Codex peer (worktree, job folder and a temp folder; no network;
+no retry outside the sandbox): on Linux it needs `bubblewrap` and `socat`, and without them the Claude peer does not start and its
+agents run on the session's host.
 
 ### Known limits on Codex
 
