@@ -75,8 +75,7 @@ through `verify`, and keep the real output. A statement such as "this should wor
 ## Lean jobs
 
 When your prompt has the line `Lean: yes`, no reviewer reads this job: its own checks gate it, and two failed runs of a `Verify`
-command send it back to the full review. So watch each new test fail with a narrow command run directly (the test alone), never
-through `verify`. Run each `Verify` command of the task through `<State command> verify` once the work is done and, in isolated mode,
+command on the code as it stands send it back to the full review (red runs on earlier code do not count). Run each `Verify` command of the task through `<State command> verify` once the work is done and, in isolated mode,
 committed: a run made before the last commit is stale. When such a run fails, fix the cause and run it again.
 
 ## Saving the work

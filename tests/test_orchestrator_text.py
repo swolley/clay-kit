@@ -790,6 +790,6 @@ def test_a_lean_task_is_built_by_a_builder_agent_not_the_session():
     lean = " ".join(read("reference/lean.md").split())
     assert "Do the builder's work yourself" not in lean and "Spawn the `builder`" in lean and "Record its usage" in lean
     builder = " ".join(read("agents/builder.md").split("## Lean jobs")[1].split("\n## ")[0].split())
-    assert "`Lean: yes`" in builder and "never through `verify`" in builder and "`<State command> verify` once the work is done" in builder
+    assert "`Lean: yes`" in builder and "red runs on earlier code do not count" in builder and "`<State command> verify` once the work is done" in builder
     assert "the session builds them" not in read("README.md")
     assert "built by the session" not in read("reference/peer.md")

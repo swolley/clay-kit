@@ -1312,6 +1312,18 @@ def test_lean_check_promotes_after_two_failed_runs(repo):
     assert state.lean_check(repo, j["id"])["promote"] == f"checks failed twice: {cmd}"
 
 
+def test_lean_check_does_not_count_the_red_runs_of_earlier_code(repo):
+    """Test first: the Verify command fails before the implementation exists, more than once; that is not a struggling build."""
+    j = lean_job(repo, "`python3 -c 'import app.util as u; assert u.x == 3'`")
+    cmd = "python3 -c 'import app.util as u; assert u.x == 3'"
+    (repo / "app/util.py").write_text("x = 2\n")
+    state.run_check(repo, j["id"], cmd)
+    state.run_check(repo, j["id"], cmd)
+    (repo / "app/util.py").write_text("x = 3\n")
+    assert state.run_check(repo, j["id"], cmd)["exit"] == 0
+    assert state.lean_check(repo, j["id"]) == {"land": True}
+
+
 def test_lean_check_promotes_a_change_that_routes_to_security(repo):
     j = lean_job(repo)
     (repo / "app/auth/session.py").write_text("N = 60\n")

@@ -29,7 +29,7 @@ when its tier is `light` or `medium`, it declares `Files` whose routing (`routin
    build.md routes the job as in the Job loop: `NEEDS_INPUT` goes to `questions.md`, `BLOCKED` to Needs human.
 3. **Gate.** `state.py lean-check <job>`. `land: true` goes to Landing (`orchestrator.md`), as any approved job. Otherwise it prints
    `promote` with the reason: the job is not lean or its tier is no longer light or medium, it changed nothing, the change routes to
-   another lens, isolated mode left files uncommitted, a check failed twice, or a `Verify` command has no
+   another lens, isolated mode left files uncommitted, a check failed twice on the code as it stands, or a `Verify` command has no
    run, a stale run (the code changed after it) or a failing one.
 4. **Promote.** `state.py promote <job> --reason "<reason>"`, then continue at step 3 (Route) of the Job loop with the build as it
    stands: reviewers and approver read it as any builder's, at the task's tier, and a resume or rework spawns the `builder` agent.

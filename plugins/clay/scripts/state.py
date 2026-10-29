@@ -585,7 +585,7 @@ def lean_eligibility(task, rules, adhoc: bool = False) -> tuple[bool, str]:
 
 def lean_check(root, job_id: str) -> dict:
     """The gate of a lean job, in place of review and approval: it lands when its change still needs only the code lens, it is
-    not risky, and every Verify command's latest run is current and passed, with fewer than two failed runs. Otherwise the
+    not risky, and every Verify command's latest run is current and passed, with fewer than two failed runs on the code as it stands. Otherwise the
     reason it goes to the full loop."""
     job = read_job(root, job_id)
     if not job.get("lean"):
@@ -608,7 +608,8 @@ def lean_check(root, job_id: str) -> dict:
     runs = {cmd: [r for r in records if r["cmd"] == cmd] for cmd in commands}
     current = tree_state(job, root)
     for reason, failed in (
-        ("checks failed twice", lambda rs: sum(1 for r in rs if r["exit"] != 0) >= 2),
+        # Failures on earlier code are the red runs of test-first work; two on the code as it stands is a struggling build.
+        ("checks failed twice", lambda rs: sum(1 for r in rs if r["exit"] != 0 and r["state"] == current) >= 2),
         ("no recorded run", lambda rs: not rs),
         ("stale run", lambda rs: rs[-1]["state"] != current),
         ("failing run", lambda rs: rs[-1]["exit"] != 0),
