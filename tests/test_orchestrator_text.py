@@ -793,3 +793,11 @@ def test_a_lean_task_is_built_by_a_builder_agent_not_the_session():
     assert "`Lean: yes`" in builder and "red runs on earlier code do not count" in builder and "`<State command> verify` once the work is done" in builder
     assert "the session builds them" not in read("README.md")
     assert "built by the session" not in read("reference/peer.md")
+
+
+def test_parallel_tasks_start_from_the_ready_command():
+    """The rules for starting tasks together live in `state.ready` (tested in test_state); the text names it and its limit."""
+    orch = " ".join(read("reference/orchestrator.md").split())
+    assert "`state.py ready --root <repo> --plan-file <plan>`" in orch and "at most 3 jobs at once" in orch
+    assert "plan order" in orch and "declared `Depends` and a non-empty `Files`" in orch
+    assert "fails the task's Verify" in orch

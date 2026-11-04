@@ -39,11 +39,9 @@ Ask once per run, with the question tool, and record the answer in the run state
 branch, checked out in its own worktree `<repo-parent>/<repo-name>-factory/_integration-<plan-slug>`.
 Per job: branch `factory/<plan-slug>--<job-id>` (not nested under the integration branch, which git refuses) and worktree `<repo-parent>/<repo-name>-factory/<job-id>`,
 created from the integration branch. `state.py open-job` creates them all. Run the repo's fresh-checkout setup in the worktree; if it fails, stop.
-Tasks run in plan order. Run two tasks in parallel only when both declared `Depends` and a non-empty `Files`
-(the parser lists what a task left out in `defaults_applied`; such a task is assumed to follow the one before it),
-their `Files` do not overlap and their dependencies have landed. When a task goes `needs-human`, do not start
-the tasks that depend on it, or any later task if it declared nothing; continue only with independent ones
-and say so. The user's checkout is never touched.
+Tasks start as `state.py ready --root <repo> --plan-file <plan>` lists them under `ready`: plan order; two together only when both
+declared `Depends` and a non-empty `Files` that do not overlap; at most 3 jobs at once; the dependents of a `needs-human` task held back.
+Start every task of `ready` in one message and call it again whenever a job lands. The user's checkout is never touched.
 
 **Current branch.** The user confirms the branch you name (warn explicitly when it is the default
 branch). Require a clean working tree. Jobs run strictly in sequence, in the repo itself. The builder
@@ -58,7 +56,7 @@ A task's steps are ticked in the commit that lands it, never later: a plan whose
 
 Isolated: `state.py merge-job <job>` merges the job branch into the integration worktree, ticks the task in the plan there (not
 for an ad hoc plan), commits "Merge <job-id>", removes the job worktree, deletes the job branch and records the job as `merged`.
-`ok: false` (a conflict, already aborted): Needs human. Current branch: tick the task, then commit
+`ok: false` (a conflict, or a merged tree that fails the task's Verify; already aborted): Needs human. Current branch: tick the task, then commit
 the paths from build.md and the plan with the message from build.md (an ad hoc task has no plan in the repo: skip the tick), then
 `state.py land <job> --stage committed --head <sha>`, which also refreshes `done` in the run state.
 
