@@ -1705,6 +1705,55 @@ def test_open_job_in_current_branch_mode_uses_the_repo(repo):
     assert (job["branch"], Path(job["worktree"]), job["stage"]) == ("main", repo, "build")
 
 
+@pytest.fixture
+def submodule(tmp_path):
+    """A super-repo with a submodule at Modules/X that holds the plan, left on a detached HEAD as `submodule update` does."""
+    src = tmp_path / "src"
+    src.mkdir()
+    git(src, "init", "-q", "-b", "main")
+    (src / "app").mkdir()
+    (src / "app/util.py").write_text("x = 1\n")
+    (src / "docs/superpowers/plans").mkdir(parents=True)
+    (src / "docs/superpowers/plans/2026-01-01-demo.md").write_text(PLAN)
+    git(src, "add", "-A")
+    git(src, "commit", "-q", "-m", "init")
+    sup = tmp_path / "super"
+    sup.mkdir()
+    git(sup, "init", "-q", "-b", "main")
+    git(sup, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(src), "Modules/X")
+    git(sup, "commit", "-q", "-m", "add the submodule")
+    sub = sup / "Modules/X"
+    subprocess.run(["git", "config", "user.name", "t"], cwd=sub, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=sub, check=True)
+    git(sub, "checkout", "-q", "--detach")
+    return sup, sub
+
+
+def test_a_submodules_worktrees_live_next_to_the_super_repo_not_inside_it(submodule):
+    sup, sub = submodule
+    state.setup(sub, sub)
+    state.write_run(sub, PLAN_FILE, "isolated")
+    out = state.open_job(sub, PLAN_FILE, 1, "demo", "isolated")
+    assert out["ok"]
+    base = sup.parent / f"{sup.name}-factory" / "Modules/X"
+    assert Path(out["worktree"]) == base / out["id"]
+    assert Path(out["integration_worktree"]).parent == base
+    assert not (sub.parent / "X-factory").exists()
+    assert "factory" not in subprocess.run(["git", "status", "--porcelain"], cwd=sup, capture_output=True, text=True).stdout
+
+
+def test_a_plain_repo_keeps_its_factory_folder_beside_it(repo):
+    assert state.factory_dir(repo) == factory_dir(repo)
+
+
+def test_current_branch_mode_refuses_a_detached_head(submodule):
+    _, sub = submodule
+    state.setup(sub, sub)
+    out = state.open_job(sub, PLAN_FILE, 1, "demo", "current-branch")
+    assert out["ok"] is False and "detached" in out["reason"]
+    assert not list((sub / "factory/jobs").glob("0*"))
+
+
 def test_merge_job_lands_ticks_and_cleans_up(isolated):
     out = state.open_job(isolated, PLAN_FILE, 1, "demo", "isolated")
     wt = Path(out["worktree"])
