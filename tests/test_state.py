@@ -1911,3 +1911,192 @@ def test_a_peer_agent_without_a_model_still_shows_its_vendor(locked_repo):
     state.run_path(locked_repo, STEM).write_text(json.dumps(run))
     row = next(l for l in state.execution_record(locked_repo, STEM).splitlines() if l.startswith("| final |"))
     assert row.split("|")[3].strip() == "codex"
+
+
+def test_write_json_replaces_the_file_whole_and_leaves_nothing_behind(tmp_path):
+    path = tmp_path / "run.json"
+    state.write_json(path, {"a": 1})
+    state.write_json(path, {"a": 2, "b": [1, 2]})
+    assert json.loads(path.read_text()) == {"a": 2, "b": [1, 2]}
+    assert [p.name for p in tmp_path.iterdir()] == ["run.json"]
+
+
+def test_a_reader_never_sees_a_torn_state_file_while_writers_race(tmp_path):
+    """Parallel jobs update the run state from one orchestrator turn to the next; a reader that met half a file got {} from read_run and
+    then wrote that back."""
+    import threading
+
+    path = tmp_path / "run.json"
+    state.write_json(path, {"n": 0, "pad": "x" * 200_000})
+    stop, torn = threading.Event(), []
+
+    def writer(k):
+        i = 0
+        while not stop.is_set():
+            i += 1
+            state.write_json(path, {"n": k * 1000 + i, "pad": "y" * 200_000})
+
+    def reader():
+        for _ in range(400):
+            try:
+                json.loads(path.read_text())
+            except ValueError as exc:
+                torn.append(str(exc))
+
+    writers = [threading.Thread(target=writer, args=(k,)) for k in (1, 2)]
+    for t in writers:
+        t.start()
+    reader()
+    stop.set()
+    for t in writers:
+        t.join()
+    assert torn == []
+
+
+def par_plan(repo, tasks: str) -> str:
+    rel = "docs/superpowers/plans/2026-02-02-par.md"
+    (repo / rel).write_text("# Par\n\n**Spec:** none\n\n" + tasks)
+    git(repo, "add", rel)
+    git(repo, "commit", "-qm", "par plan")
+    return rel
+
+
+def par_task(n, title, depends="none", files=None):
+    lines = [f"### Task {n}: {title}", "", "**Tier:** light"]
+    if depends is not None:
+        lines.append(f"**Depends:** {depends}")
+    if files is not None:
+        lines.append(f"**Files:** {files}")
+    lines += ["**Accept:** 1. Works.", "", "- [ ] **Step 1: Do it**", "", ""]
+    return "\n".join(lines)
+
+
+def par_job(repo, plan, task, stage):
+    j = state.new_job(repo, plan, task, repo_name="demo", mode="current-branch", branch="main", worktree=str(repo))
+    state.set_stage(repo, j["id"], stage)
+    return j
+
+
+def ready_tasks(repo, plan, **kw):
+    return [t["task"] for t in state.ready(repo, plan, **kw)["ready"]]
+
+
+def test_independent_tasks_that_declare_files_start_together_up_to_the_limit(repo):
+    plan = par_plan(repo, par_task(1, "A", files="`app/a.py`") + par_task(2, "B", files="`app/b.py`") + par_task(3, "C", files="`app/c.py`"))
+    assert ready_tasks(repo, plan) == [1, 2, 3]
+    assert ready_tasks(repo, plan, limit=2) == [1, 2]
+    assert state.ready(repo, plan)["limit"] == 3
+
+
+def test_tasks_that_share_a_file_or_a_folder_do_not_start_together(repo):
+    plan = par_plan(repo, par_task(1, "A", files="`app/a.py`") + par_task(2, "B", files="`app/a.py`") + par_task(3, "C", files="`app/`") + par_task(4, "D", files="`lib/d.py`"))
+    out = state.ready(repo, plan)
+    assert [t["task"] for t in out["ready"]] == [1, 4]
+    waiting = {w["task"]: w["reason"] for w in out["waiting"]}
+    assert "task 1" in waiting[2] and "files" in waiting[2] and 3 in waiting
+
+
+def test_a_task_waits_for_the_tasks_it_depends_on_to_land(repo):
+    plan = par_plan(repo, par_task(1, "A", files="`app/a.py`") + par_task(2, "B", files="`app/b.py`") + par_task(3, "C", depends="1, 2", files="`app/c.py`"))
+    assert ready_tasks(repo, plan) == [1, 2]
+    par_job(repo, plan, 1, "merged")
+    j2 = par_job(repo, plan, 2, "build")
+    out = state.ready(repo, plan)
+    assert out["ready"] == [] and out["in_flight"] == [2] and [w["task"] for w in out["waiting"]] == [3]
+    state.set_stage(repo, j2["id"], "merged")
+    assert ready_tasks(repo, plan) == [3]
+
+
+def test_jobs_in_flight_count_against_the_limit_and_block_their_files(repo):
+    plan = par_plan(repo, par_task(1, "A", files="`app/a.py`") + par_task(2, "B", files="`app/a.py`") + par_task(3, "C", files="`app/c.py`") + par_task(4, "D", files="`app/d.py`"))
+    par_job(repo, plan, 1, "review")
+    assert ready_tasks(repo, plan, limit=2) == [3]
+    assert ready_tasks(repo, plan, limit=3) == [3, 4]
+
+
+def test_a_task_that_declares_nothing_runs_alone_after_the_one_before_it(repo):
+    plan = par_plan(repo, par_task(1, "A", files="`app/a.py`") + par_task(2, "B", depends=None, files=None) + par_task(3, "C", files="`app/c.py`"))
+    assert ready_tasks(repo, plan) == [1, 3]
+    j1 = par_job(repo, plan, 1, "build")
+    assert ready_tasks(repo, plan) == [3]
+    state.set_stage(repo, j1["id"], "merged")
+    j3 = par_job(repo, plan, 3, "build")
+    assert ready_tasks(repo, plan) == []
+    state.set_stage(repo, j3["id"], "merged")
+    assert ready_tasks(repo, plan) == [2]
+
+
+def test_needs_human_blocks_its_dependents_and_the_tasks_that_declare_nothing(repo):
+    plan = par_plan(repo, par_task(1, "A", files="`app/a.py`") + par_task(2, "B", depends="1", files="`app/b.py`")
+                    + par_task(3, "C", depends=None, files=None) + par_task(4, "D", files="`app/d.py`"))
+    par_job(repo, plan, 1, "needs-human")
+    out = state.ready(repo, plan)
+    assert [t["task"] for t in out["ready"]] == [4]
+    assert sorted(b["task"] for b in out["blocked"]) == [1, 2, 3]
+
+
+def test_ready_skips_what_has_landed_or_is_ticked(repo):
+    plan = par_plan(repo, par_task(1, "A", files="`app/a.py`").replace("- [ ]", "- [x]") + par_task(2, "B", files="`app/b.py`") + par_task(3, "C", files="`app/c.py`"))
+    par_job(repo, plan, 2, "merged")
+    assert ready_tasks(repo, plan) == [3]
+
+
+def test_ready_cli_prints_the_selection(repo, capsys):
+    plan = par_plan(repo, par_task(1, "A", files="`app/a.py`") + par_task(2, "B", files="`app/b.py`"))
+    assert state.main(["ready", "--root", str(repo), "--plan-file", plan, "--limit", "1"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert [t["task"] for t in out["ready"]] == [1] and out["limit"] == 1
+
+
+def par_verified(n, title, files, verify):
+    return par_task(n, title, files=files).replace("**Accept:**", f"**Verify:** `{verify}`\n**Accept:**")
+
+
+def test_merge_checks_the_merged_tree_when_another_job_landed_first(isolated):
+    """Two parallel jobs can each pass alone and break together: the second landing runs its Verify on the tree it would produce."""
+    keep = 'test "$(cat app/util.py)" = "x = 1"'
+    plan = par_plan(isolated, par_verified(1, "A", "`app/util.py`", "true") + par_verified(2, "B", "`app/auth/session.py`", keep))
+    state.write_run(isolated, plan, "isolated")
+    a, b = (state.open_job(isolated, plan, n, "demo", "isolated") for n in (1, 2))
+    (Path(a["worktree"]) / "app/util.py").write_text("x = 2\n")
+    git(Path(a["worktree"]), "commit", "-qam", "a")
+    (Path(b["worktree"]) / "app/auth/session.py").write_text("N = 31\n")
+    git(Path(b["worktree"]), "commit", "-qam", "b")
+    assert state.merge_job(isolated, a["id"])["ok"]
+    failed = state.merge_job(isolated, b["id"])
+    assert failed["ok"] is False and "merged tree fails" in failed["reason"] and keep in failed["reason"]
+    iwt = Path(a["integration_worktree"])
+    assert subprocess.run(["git", "-C", str(iwt), "status", "--porcelain"], capture_output=True, text=True).stdout == ""
+    assert state.read_job(isolated, b["id"])["stage"] == "build" and Path(b["worktree"]).exists()
+
+
+def test_merge_lands_a_parallel_job_whose_verify_passes_on_the_merged_tree(isolated):
+    plan = par_plan(isolated, par_verified(1, "A", "`app/util.py`", "true") + par_verified(2, "B", "`app/auth/session.py`", "true"))
+    state.write_run(isolated, plan, "isolated")
+    a, b = (state.open_job(isolated, plan, n, "demo", "isolated") for n in (1, 2))
+    for job, rel, text in ((a, "app/util.py", "x = 2\n"), (b, "app/auth/session.py", "N = 31\n")):
+        (Path(job["worktree"]) / rel).write_text(text)
+        git(Path(job["worktree"]), "commit", "-qam", "work")
+    assert state.merge_job(isolated, a["id"])["ok"] and state.merge_job(isolated, b["id"])["ok"]
+    assert state.read_job(isolated, b["id"])["stage"] == "merged"
+
+
+def test_merge_does_not_rerun_verify_when_the_job_was_cut_from_the_tip(isolated):
+    """A single job's own Verify is already on record from its builder; only a landing after another one has anything new to check."""
+    plan = par_plan(isolated, par_verified(1, "A", "`app/util.py`", "false"))
+    state.write_run(isolated, plan, "isolated")
+    a = state.open_job(isolated, plan, 1, "demo", "isolated")
+    (Path(a["worktree"]) / "app/util.py").write_text("x = 2\n")
+    git(Path(a["worktree"]), "commit", "-qam", "a")
+    assert state.merge_job(isolated, a["id"])["ok"]
+
+
+def test_merge_lands_a_job_of_a_plan_that_is_not_committed_and_says_it_ticked_nothing(isolated):
+    rel = "docs/superpowers/plans/2026-03-03-loose.md"
+    (isolated / rel).write_text("# Loose\n\n**Spec:** none\n\n" + par_task(1, "A", files="`app/util.py`"))
+    state.write_run(isolated, rel, "isolated")
+    a = state.open_job(isolated, rel, 1, "demo", "isolated")
+    (Path(a["worktree"]) / "app/util.py").write_text("x = 2\n")
+    git(Path(a["worktree"]), "commit", "-qam", "a")
+    out = state.merge_job(isolated, a["id"])
+    assert out["ok"] and out["plan_ticked"] is False

@@ -42,6 +42,7 @@ import subprocess
 import sys
 import stat
 import tempfile
+import threading
 import time
 from datetime import datetime, timezone
 from glob import escape as glob_escape
@@ -71,9 +72,18 @@ def read_job(root, job_id: str) -> dict:
     return json.loads((jobs_dir(root) / job_id / "job.json").read_text())
 
 
+def write_json(path, data) -> None:
+    """Replace a state file whole: write beside it, then rename over it. Parallel jobs have the orchestrator update the job, run and
+    lock files in quick succession, and a plain write lets a reader meet half a file."""
+    path = Path(path)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    tmp.write_text(json.dumps(data, indent=2))
+    os.replace(tmp, path)
+
+
 def write_job(root, job: dict) -> None:
     job["updated"] = now()
-    (jobs_dir(root) / job["id"] / "job.json").write_text(json.dumps(job, indent=2))
+    write_json((jobs_dir(root) / job["id"] / "job.json"), job)
     touch_lock(root, job.get("plan", ""))
 
 
@@ -191,7 +201,7 @@ def new_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, b
         "lean": lean, "verify": _verify_commands(task),
         "phases": [{"stage": "spec", "start": t, "end": None}],
     }
-    (folder / "job.json").write_text(json.dumps(job, indent=2))
+    write_json((folder / "job.json"), job)
     touch_lock(root, job["plan"])
     return {"id": job_id, "folder": str(folder)}
 
@@ -246,7 +256,7 @@ def open_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, 
     if rp.exists():
         run = json.loads(rp.read_text())
         run.update(integration=integration, integration_worktree=str(iwt))
-        rp.write_text(json.dumps(run, indent=2))
+        write_json(rp, run)
     return {"ok": True, **out, "branch": branch, "worktree": str(wt), "integration": integration, "integration_worktree": str(iwt)}
 
 
@@ -318,6 +328,56 @@ def _landing_concern_problem(root, job: dict) -> str | None:
     return None
 
 
+def _overlap(a: str, b: str) -> bool:
+    """Whether two declared paths can touch the same file: equal, or one is a folder holding the other."""
+    a, b = a.strip().rstrip("/"), b.strip().rstrip("/")
+    return a == b or a.startswith(b + "/") or b.startswith(a + "/")
+
+
+def ready(root, plan_file: str, limit: int = 3) -> dict:
+    """Which tasks of a plan may start now, in plan order. A task starts alongside others only when it declared `Depends` and a
+    non-empty `Files`, its dependencies have landed (one that declared none follows the task before it), its `Files` overlap
+    neither a job in flight nor a task chosen before it, and fewer than `limit` jobs would run. A task that declared nothing
+    starts only when nothing is in flight, and alone. A task whose job needs a person blocks its dependents and every task that
+    declared nothing. Returns `ready`, `in_flight` (task numbers), `waiting` and `blocked`, each task with its reason."""
+    root = Path(root)
+    path = _plan_path(root, plan_file)
+    tasks = [t for t in parse_plan(path.read_text()).tasks if t.kind == "task"]
+    jobs = [j for j in load_jobs(root) if j.get("plan") == path.stem]
+    landed = {t.number for t in tasks if t.done} | {j["task"] for j in jobs if j.get("stage") in TERMINAL}
+    stuck = {j["task"] for j in jobs if j.get("stage") == "needs-human"}
+    flying = [j["task"] for j in jobs if j.get("stage") not in TERMINAL and j["task"] not in stuck]
+    by_number = {t.number: t for t in tasks}
+    paths = lambda n: [*by_number[n].files, *by_number[n].files_create, *by_number[n].files_delete] if n in by_number else []
+    busy = [(n, p) for n in flying for p in paths(n)]
+    picked, waiting, blocked, order = [], [], [], [t.number for t in tasks]
+    for i, t in enumerate(tasks):
+        if t.number in landed or t.number in flying:
+            continue
+        if t.number in stuck:
+            blocked.append({"task": t.number, "reason": "its job needs a person"})
+            continue
+        declared = "depends" in t.fields_seen and bool(t.files + t.files_create)
+        deps = t.depends if "depends" in t.fields_seen else ([order[i - 1]] if i else [])
+        if (hit := [d for d in deps if d in stuck]) or (not declared and stuck):
+            blocked.append({"task": t.number, "reason": f"waits for task {(hit or sorted(stuck))[0]}, whose job needs a person"})
+            continue
+        if missing := [d for d in deps if d not in landed]:
+            waiting.append({"task": t.number, "reason": f"waits for task {missing[0]} to land"})
+        elif not declared and (flying or picked):
+            waiting.append({"task": t.number, "reason": "declared no Depends and Files, so it runs alone"})
+        elif declared and len(flying) + len(picked) >= limit:
+            waiting.append({"task": t.number, "reason": f"{limit} jobs already run"})
+        elif declared and (clash := next(((n, p, q) for p in paths(t.number) for n, q in busy if _overlap(p, q)), None)):
+            waiting.append({"task": t.number, "reason": f"its files overlap task {clash[0]}'s ({clash[2]})"})
+        else:
+            picked.append({"task": t.number, "title": t.title, "tier": t.tier})
+            busy += [(t.number, p) for p in paths(t.number)]
+            if not declared:
+                break  # nothing starts beside a task that declared nothing
+    return {"ready": picked, "in_flight": flying, "waiting": waiting, "blocked": blocked, "limit": limit}
+
+
 def merge_job(root, job_id: str) -> dict:
     """Isolated landing in one step: merge the job branch into the integration worktree, tick the task in the plan there (not for
     an ad hoc plan, which is not in the repo), commit "Merge <job-id>", remove the job worktree, delete the job branch where it was
@@ -332,11 +392,20 @@ def merge_job(root, job_id: str) -> dict:
     if merge.returncode:
         _git_run(iwt, "merge", "--abort")
         return {"ok": False, "reason": "conflict: " + (merge.stdout + merge.stderr).strip()[-400:]}
-    plan = Path(run.get("path") or "")
+    plan, ticked = Path(run.get("path") or ""), None
     if plan.parts and "_runs" not in plan.parts:
         rel = plan.relative_to(root.resolve()) if plan.is_absolute() else plan
-        tick_plan(root, str(iwt / rel), job["task"])
-        _git_run(iwt, "add", str(rel))
+        ticked = (iwt / rel).exists()  # a plan never committed is not in the integration branch: nothing to tick there
+        if ticked:
+            tick_plan(root, str(iwt / rel), job["task"])
+            _git_run(iwt, "add", str(rel))
+    # Another job landed since this one was cut: each passed alone, so run its Verify on the tree they make together.
+    if _git_run(iwt, "merge-base", "--is-ancestor", "HEAD", job["branch"]).returncode and job.get("verify"):
+        for cmd in job["verify"]:
+            check = subprocess.run(cmd, shell=True, cwd=iwt, capture_output=True, text=True)
+            if check.returncode:
+                _git_run(iwt, "merge", "--abort")
+                return {"ok": False, "reason": f"the merged tree fails `{cmd}`: " + (check.stdout + check.stderr).strip()[-300:]}
     done = _git_run(iwt, "commit", "-m", f"Merge {job_id}")
     if done.returncode:
         _git_run(iwt, "merge", "--abort")
@@ -345,7 +414,7 @@ def merge_job(root, job_id: str) -> dict:
     removed = _git_run(root, "worktree", "remove", job["worktree"]).returncode == 0
     deleted = _git_run(iwt, "branch", "-d", job["branch"]).returncode == 0
     land_job(root, job_id, "merged", head)
-    return {"ok": True, "head": head, "worktree_removed": removed, "branch_deleted": deleted}
+    return {"ok": True, "head": head, "worktree_removed": removed, "branch_deleted": deleted, "plan_ticked": ticked}
 
 
 def git_identity(root) -> dict:
@@ -739,7 +808,7 @@ def run_check(root, job_id: str, cmd: str, reuse: bool = False, timeout: int = 1
     log = folder / f"{n}.log"
     log.write_text(out)
     record = {"n": n, "cmd": cmd, "exit": code, "state": state_now, "at": now(), "ms": int((time.monotonic() - started) * 1000), "log": str(log)}
-    (jobs_dir(root) / job_id / "checks.json").write_text(json.dumps([*records, record], indent=2))
+    write_json((jobs_dir(root) / job_id / "checks.json"), [*records, record])
     touch_lock(root, job.get("plan", ""))
     return check_view(record, state_now)
 
@@ -788,7 +857,7 @@ def write_run(root, plan_file: str, mode: str, pace: str = "step", cross: str | 
         run["cross"] = {"on": cross == "on" and host in PEER, "peer": PEER.get(host), **cross_config(root)}
         run["vendors"] = carried_marks(run.get("vendors") or {}, now())
     rp.parent.mkdir(parents=True, exist_ok=True)
-    rp.write_text(json.dumps(run, indent=2))
+    write_json(rp, run)
     return run
 
 
@@ -860,7 +929,7 @@ def final_diff(root, plan_stem: str, fix: bool = False) -> dict:
     patch.write_text("\n".join(lines) + "\n\n" + git(root, "diff", span))
     final.update({f"{key}head": tip, f"{key}base": start, f"{key}commits": len(commits)})
     run["final"] = final
-    rp.write_text(json.dumps(run, indent=2))
+    write_json(rp, run)
     return {"ok": True, "patch": str(patch), "base": start, "head": tip, "commits": len(commits), "risky": risky, "reused": False, "lean": lean}
 
 
@@ -881,7 +950,7 @@ def final_verdict(root, plan_stem: str, fix: bool, agent: dict, fix_job: str | N
     final["recheck" if fix else "review"] = {"verdict": verdict, "findings": findings, "agent": agent}
     if fix_job:
         final["fix_job"] = fix_job
-    rp.write_text(json.dumps(run, indent=2))
+    write_json(rp, run)
     return {"ok": True, "verdict": verdict, "findings": findings}
 
 
@@ -922,7 +991,7 @@ def vendor(root, job_id: str | None, agent: str, host: str, plan_stem: str | Non
         final["vendor"] = record
         if not out["crossed"] and cross.get("on"):
             final["crossed"] = False
-        run_path(root, stem).write_text(json.dumps(run, indent=2))
+        write_json(run_path(root, stem), run)
     elif job:
         job.setdefault("vendors", {})[agent] = record
         if out["reason"] == "not crossed":
@@ -952,7 +1021,7 @@ def vendor_down(root, plan_stem: str, vendor: str, reason: str, until: str | Non
         entry["exhausted_until"] = until or END_OF_RUN
     else:
         entry["off"] = True
-    rp.write_text(json.dumps(run, indent=2))
+    write_json(rp, run)
     return {"vendor": vendor, **entry}
 
 
@@ -967,7 +1036,7 @@ def land_job(root, job_id: str, stage: str, head: str) -> dict:
     if rp.exists():
         run = json.loads(rp.read_text())
         run["done"] = landed_count(root, job["plan"])
-        rp.write_text(json.dumps(run, indent=2))
+        write_json(rp, run)
     return job
 
 
@@ -997,7 +1066,7 @@ def touch_lock(root, plan_stem: str) -> None:
     if lock:
         lock["heartbeat"] = now()
         try:
-            lock_path(root, plan_stem).write_text(json.dumps(lock, indent=2))
+            write_json(lock_path(root, plan_stem), lock)
         except OSError:
             pass
 
@@ -1032,7 +1101,7 @@ def lock_acquire(root, plan_file: str, run_id: str, force: bool = False, stale_m
             "started": now(), "heartbeat": now()}
     lp = lock_path(root, stem)
     lp.parent.mkdir(parents=True, exist_ok=True)
-    lp.write_text(json.dumps(lock, indent=2))
+    write_json(lp, lock)
     return {"ok": True, "held": True, "reacquired": False}
 
 
@@ -1371,6 +1440,10 @@ def main(argv: list[str]) -> int:
     mj = sub.add_parser("merge-job")
     mj.add_argument("--root", default=".")
     mj.add_argument("job")
+    rd = sub.add_parser("ready")
+    rd.add_argument("--root", default=".")
+    rd.add_argument("--plan-file", required=True)
+    rd.add_argument("--limit", type=int, default=3)
     for action in ("concern", "resolve-concern"):
         cn = sub.add_parser(action)
         cn.add_argument("--root", default=".")
@@ -1422,6 +1495,9 @@ def main(argv: list[str]) -> int:
             sp.add_argument("--stage", dest="to_stage", default="committed")
             sp.add_argument("--head", required=True)
     a = ap.parse_args(argv)
+    if a.cmd == "ready":
+        print(json.dumps(ready(a.root, a.plan_file, a.limit), indent=2))
+        return 0
     if a.cmd in ("open-job", "merge-job", "concern", "resolve-concern"):
         if a.cmd == "open-job":
             out = open_job(a.root, a.plan_file, a.task, a.repo_name, a.mode, a.lean)
