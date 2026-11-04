@@ -215,8 +215,13 @@ def begin_job(root, plan_file: str, task_number: int, repo_name: str, mode: str,
 
 
 def factory_dir(root) -> Path:
-    """Where the worktrees of isolated runs live: next to the repo, never inside it."""
+    """Where the worktrees of isolated runs live: next to the repo, never inside it. A submodule's go next to its
+    super-repo, under the submodule's own path, so they never show up as untracked files of the super-repo."""
     root = Path(root).resolve()
+    out = _git_run(root, "rev-parse", "--show-superproject-working-tree")
+    if out.returncode == 0 and out.stdout.strip():
+        top = Path(out.stdout.strip()).resolve()
+        return top.parent / f"{top.name}-factory" / root.relative_to(top)
     return root.parent / f"{root.name}-factory"
 
 
@@ -231,8 +236,10 @@ def open_job(root, plan_file: str, task_number: int, repo_name: str, mode: str, 
     then its job.json, so a failure leaves at most an abandoned claim. Current branch: the job runs in the repo on its branch."""
     root = Path(root)
     if mode != "isolated":
-        return {"ok": True, **begin_job(root, plan_file, task_number, repo_name, mode,
-                                        git(root, "branch", "--show-current").strip(), str(root), lean=lean)}
+        branch = git(root, "branch", "--show-current").strip()
+        if not branch:
+            return {"ok": False, "reason": "HEAD is detached (a submodule is usually left that way): check out a branch first, or run isolated"}
+        return {"ok": True, **begin_job(root, plan_file, task_number, repo_name, mode, branch, str(root), lean=lean)}
     path = _plan_path(root, plan_file)
     task = next(t for t in parse_plan(path.read_text(), default_repo=repo_name).tasks if t.number == task_number)
     integration, base_dir = f"factory/{path.stem}", factory_dir(root)

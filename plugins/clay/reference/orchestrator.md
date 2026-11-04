@@ -36,7 +36,7 @@ runtime sits under `<repo>/factory/jobs/`, which git never tracks:
 Ask once per run, with the question tool, and record the answer in the run state. Recommend isolated.
 
 **Isolated.** Per plan and repo: integration branch `factory/<plan-slug>` from the repo's main
-branch, checked out in its own worktree `<repo-parent>/<repo-name>-factory/_integration-<plan-slug>`.
+branch, checked out in its own worktree `<repo-parent>/<repo-name>-factory/_integration-<plan-slug>` (a submodule's: beside its super-repo, under its path).
 Per job: branch `factory/<plan-slug>--<job-id>` (not nested under the integration branch, which git refuses) and worktree `<repo-parent>/<repo-name>-factory/<job-id>`,
 created from the integration branch. `state.py open-job` creates them all. Run the repo's fresh-checkout setup in the worktree; if it fails, stop.
 Tasks start as `state.py ready --root <repo> --plan-file <plan>` lists them under `ready`: plan order; two together only when both
